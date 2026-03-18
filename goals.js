@@ -91,9 +91,13 @@ function renderGoals() {
                         <button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="openBookChat('${goal.bookName}')" title="צ'אט">
                             <i class="fas fa-comment"></i>
                         </button>
-                        <button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" ${connection ? 'disabled' : ''} onclick="openChavrutaSearch('${goal.bookName}')" title="${connection ? 'כבר לומד בחברותא' : 'מצא חברותא'}">
-                            <i class="fas fa-user-plus" ${connection ? 'style="color: #94a3b8;"' : ''}></i>
-                        </button>
+                        ${connection
+                    ? `<button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-green-500 dark:text-green-400" onclick="showUserDetails('${connection.email}')" title="לומד בחברותא עם ${partnerName}">
+                                   <i class="fas fa-user-friends"></i>
+                               </button>`
+                    : `<button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="openChavrutaSearch('${goal.bookName}')" title="מצא חברותא">
+                                   <i class="fas fa-user-plus"></i>
+                               </button>`}
                     </div>
                     <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
                         <button class="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-slate-600 dark:text-slate-300" onclick="updateProgress(${goal.id}, -1)">
@@ -166,6 +170,8 @@ function renderGoals() {
     const booksEl = document.getElementById('stat-books');
     const pagesEl = document.getElementById('stat-pages');
     const completedEl = document.getElementById('stat-completed');
+    const myRewardPoints = currentUser ? (currentUser.reward_points || 0) : 0;
+    const totalScore = totalLearned + myRewardPoints;
 
     if (booksEl && pagesEl && completedEl && typeof animateValue === 'function') {
         const oldBooks = parseInt(booksEl.innerText.replace(/,/g, '')) || 0;
@@ -173,16 +179,17 @@ function renderGoals() {
         const oldCompleted = parseInt(completedEl.innerText.replace(/,/g, '')) || 0;
 
         animateValue(booksEl, oldBooks, activeBooksCount, 1000);
-        animateValue(pagesEl, oldPages, totalLearned, 1000);
+        animateValue(pagesEl, oldPages, totalScore, 1000);
         animateValue(completedEl, oldCompleted, completedBooksCount, 1000);
     } else {
         if (booksEl) booksEl.innerText = activeBooksCount;
-        if (pagesEl) pagesEl.innerText = totalLearned;
+        if (pagesEl) pagesEl.innerText = totalScore;
         if (completedEl) completedEl.innerText = completedBooksCount;
     }
 
     // שמירת סטטיסטיקה למטמון לטעינה מהירה בפעם הבאה
-    const stats = { books: activeBooksCount, pages: totalLearned, completed: completedBooksCount };
+    // עדכון: שומרים את הניקוד הכולל במקום רק דפים
+    const stats = { books: activeBooksCount, pages: totalScore, completed: completedBooksCount };
     localStorage.setItem('torahApp_stats', JSON.stringify(stats));
 
     // Rating updated elsewhere
@@ -568,51 +575,6 @@ async function addQuickLog() {
     document.getElementById('quickHebrewDate').innerText = '';
 }
 
-function renderGoals() {
-    const list = document.getElementById('goalsList');
-    const tasksList = document.getElementById('dailyTasksList');
-    const archiveList = document.getElementById('archiveList');
-    if (!list || !tasksList || !archiveList) return;
-
-    list.innerHTML = ''; tasksList.innerHTML = ''; archiveList.innerHTML = '';
-    let hasTasks = false, totalLearned = 0;
-
-    userGoals.forEach(goal => {
-        if (goal.status === 'active') {
-            renderGoalCard(goal, list, true);
-            totalLearned += goal.currentUnit;
-
-            if (goal.targetDate) {
-                hasTasks = true;
-                const days = Math.max(1, Math.ceil((new Date(goal.targetDate) - new Date()) / 86400000));
-                const totalLeft = goal.totalUnits - goal.currentUnit;
-                const dailyTarget = (totalLeft / days).toFixed(1);
-
-                const taskDiv = document.createElement('div');
-                taskDiv.className = 'task-row';
-
-                // בדיקה אם המשימה היומית הושלמה (לפי חישוב פשוט של התקדמות)
-                if (totalLeft <= 0) {
-                    taskDiv.innerHTML = `<div><strong>${goal.bookName}</strong></div><span class="task-highlight" style="background:#dcfce7; color:#16a34a;">סיימת את הספר!</span>`;
-                } else {
-                    taskDiv.innerHTML = `<div><strong>${goal.bookName}</strong></div><span class="task-highlight">יעד יומי: ${dailyTarget}</span>`;
-                }
-                tasksList.appendChild(taskDiv);
-            }
-        } else {
-            renderGoalCard(goal, archiveList, false);
-            totalLearned += goal.totalUnits;
-        }
-    });
-
-    // updateRankProgressBar(totalLearned); // הוסר לבקשת המשתמש
-    document.getElementById('dailyTasksContainer').style.display = hasTasks ? 'block' : 'none';
-    document.getElementById('stat-books').innerText = userGoals.filter(g => g.status === 'active').length;
-    document.getElementById('stat-pages').innerText = totalLearned;
-    document.getElementById('stat-completed').innerText = userGoals.filter(g => g.status === 'completed').length;
-    // Rating is updated via loadChatRating called in syncGlobalData
-}
-
 window.updateGoalNotes = async function (goalId, newNotes) {
     if (!requireAuth()) return;
     const goal = userGoals.find(g => g.id == goalId);
@@ -666,4 +628,3 @@ async function updateRankProgressBar(score) {
         rFooter.innerText = `עוד ${nextThreshold - score} דפים לדרגת ${nextRank}`;
     }
 }
-

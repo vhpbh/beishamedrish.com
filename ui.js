@@ -47,6 +47,9 @@ function setupInterfaceChanges() {
             <div id="profile-menu-achievements" class="profile-menu-item" onclick="toggleProfileMenu(); showAchievements();">
                 <i class="fas fa-medal"></i> הישגים
             </div>
+            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('shop');">
+                <i class="fas fa-store"></i> חנות הזכויות
+            </div>
             <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('calendar');">
                 <i class="fas fa-calendar-alt"></i> לוח זמנים
             </div>
@@ -110,6 +113,11 @@ function setupInterfaceChanges() {
         const uiStyle = document.createElement('style');
         uiStyle.id = 'app-ui-improvements';
         uiStyle.innerHTML = `
+            /* הוספת סמן עכבר לחיץ לאלמנטים אינטראקטיביים */
+            .result-item, .search-tag, .inbox-item, .profile-menu-item, .chat-list-item, .lb-card, .siyum-card, .tier-card, .amount-chip, .user-select-item {
+                cursor: pointer;
+            }
+
             /* 1. אנימציה להופעת הודעות בצ'אט */
             @keyframes floatIn {
                 from { opacity: 0; transform: translateY(15px); }
@@ -154,6 +162,79 @@ function setupInterfaceChanges() {
                 transform: translateY(100%);
                 opacity: 0;
                 pointer-events: none;
+            }
+
+            /* 4. עיצוב פופאפ תיוגים */
+            .mentions-popup {
+                position: absolute;
+                bottom: 100%;
+                left: 0;
+                right: 0;
+                margin-bottom: 12px;
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
+                max-height: 280px;
+                overflow-y: auto;
+                z-index: 50;
+                display: none;
+                overflow-x: hidden;
+                padding: 4px;
+            }
+            body.dark-mode .mentions-popup {
+                background: #1e293b;
+                border-color: #334155;
+                box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+            }
+            .mention-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 10px 12px;
+                cursor: pointer;
+                border-radius: 12px;
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .mention-item:hover, .mention-item.selected {
+                background-color: #f1f5f9;
+                transform: translateX(4px);
+            }
+            body.dark-mode .mention-item:hover, body.dark-mode .mention-item.selected {
+                background-color: #334155;
+            }
+            .mention-avatar {
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #60a5fa, #3b82f6);
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 700;
+                font-size: 14px;
+                flex-shrink: 0;
+                box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
+                text-transform: uppercase;
+            }
+            
+            /* עיצוב תיוג בתוך הודעה */
+            .mention {
+                color: #2563eb;
+                font-weight: bold;
+                cursor: pointer;
+                transition: color 0.2s;
+            }
+            .mention:hover {
+                text-decoration: underline;
+                color: #1d4ed8;
+            }
+            body.dark-mode .mention {
+                color: #60a5fa;
+            }
+            body.dark-mode .mention:hover {
+                color: #93c5fd;
             }
         `;
         document.head.appendChild(uiStyle);

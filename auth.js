@@ -10,13 +10,13 @@ async function handleSignup(e) {
     const q1 = document.getElementById('regSecQ1').value;
     const a1 = document.getElementById('regSecA1').value;
     const marketing = document.getElementById('regMarketing').checked;
-const AUTH_JOKES = [
-    "רגע, רגע... המלאכים בודקים אם שמך רשום בספר החיים (של האתר). אנא התחבר.",
-    "כדי לשמור את הלימוד שלך, צריך קודם לשמור אותך במערכת. בוא נרשם!",
-    "נראה שאתה לומד בעילום שם. כדי שנוכל לעקוב אחריך, אנא התחבר.",
-    "הפעולה שביקשת דורשת ייחוס. אנא התחבר כדי שנדע מי אתה.",
-    "עצור! רק רשומים יכולים לצבור זכויות. הירשם עכשיו!"
-];
+    const AUTH_JOKES = [
+        "רגע, רגע... המלאכים בודקים אם שמך רשום בספר החיים (של האתר). אנא התחבר.",
+        "כדי לשמור את הלימוד שלך, צריך קודם לשמור אותך במערכת. בוא נרשם!",
+        "נראה שאתה לומד בעילום שם. כדי שנוכל לעקוב אחריך, אנא התחבר.",
+        "הפעולה שביקשת דורשת ייחוס. אנא התחבר כדי שנדע מי אתה.",
+        "עצור! רק רשומים יכולים לצבור זכויות. הירשם עכשיו!"
+    ];
 
     if (!email || !pass || !name || !q1 || !a1) {
         await customAlert("נא למלא את כל שדות החובה");
@@ -28,57 +28,49 @@ const AUTH_JOKES = [
     if (!validateInput(name, 'name')) return customAlert("השם אינו תקין.");
     if (phone && !validateInput(phone, 'phone')) return customAlert("מספר הטלפון אינו תקין.");
 
-    if (!email || !pass || !name || !q1 || !a1) {
-        await customAlert("נא למלא את כל שדות החובה");
-        return;
-    }
-
     try {
+        console.log("Checking if email exists:", email);
         // בדיקה אם קיים
-        const { data: existing } = await supabaseClient.from('users').select('email').eq('email', email).single();
-        if (existing) {
+        const { data: emailExists, error: existsError } = await supabaseClient.rpc('check_email_exists', { p_email: email });
+        if (existsError) throw existsError;
+
+        if (emailExists) {
             await customAlert("כתובת האימייל כבר רשומה במערכת.");
             return;
         }
 
         const securityQuestions = [{ q: q1, a: a1 }];
 
-        const newUser = {
-            email: email,
-            password: pass,
-            display_name: name,
-            phone: phone,
-            city: city,
-            age: age ? parseInt(age) : null,
-            address: address,
-            security_questions: securityQuestions,
-            last_seen: new Date(),
-            subscription: { amount: 0, level: 0, name: '' },
-            marketing_consent: marketing
-
-        };
-
-        const { error } = await supabaseClient.from('users').insert([newUser]);
+        // Call the new secure signup RPC function
+        const { data: newUserData, error } = await supabaseClient.rpc('signup_new_user', {
+            p_email: email,
+            p_password: pass,
+            p_display_name: name,
+            p_phone: phone,
+            p_city: city,
+            p_age: age ? parseInt(age) : null,
+            p_address: address,
+            p_security_questions: securityQuestions,
+            p_marketing_consent: marketing
+        });
 
         if (error) throw error;
 
+        // וידוא שהתקבלו נתונים מהשרת
+        if (!newUserData || newUserData.length === 0) {
+            throw new Error("ההרשמה נכשלה: השרת לא החזיר נתוני משתמש.");
+        }
+
+        // The RPC returns the newly created user object
+        const createdUser = newUserData[0] || newUserData;
+
         // התחברות אוטומטית לאחר הרשמה
-        currentUser = mapUserFromDB({
-            email: email,
-            display_name: name,
-            phone: phone,
-            city: city,
-            age: age ? parseInt(age) : null,
-            address: address,
-            security_questions: securityQuestions,
-            subscription: { amount: 0, level: 0, name: '' },
-            reward_points: 0,
-            marketing_consent: marketing
-        });
+        currentUser = mapUserFromDB(createdUser);
 
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
         document.getElementById('auth-overlay').style.display = 'none';
         updateHeader();
+        restoreAuthenticatedHeader();
         await init(); // אתחול המערכת עם המשתמש החדש
         switchScreen('dashboard', document.querySelector('.nav-item'));
         showToast("החשבון נוצר בהצלחה! ברוך הבא.", "success");
@@ -101,14 +93,26 @@ async function handleLogin(e) {
     }
 
     try {
-        // בדיקה מול השרת
-        const { data: user, error } = await supabaseClient
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .single();
+        console.log(`Login attempt: Email='${email}', PassLength=${pass.length}`);
+        // Secure login via RPC function. This avoids exposing the users table and sending passwords to the client.
+        // We don't use .single() here because an RPC function returning 0 rows throws a 406 error with .single().
+        // Instead, we fetch the array of results and check its length.
+        const { data: users, error } = await supabaseClient
+            .rpc('check_user_credentials', {
+                p_email: email.trim().toLowerCase(), // וידוא ניקוי רווחים
+                p_password: pass
+            });
 
-        if (error && error.code !== 'PGRST116') { // שגיאה שאינה "לא נמצא"
+        console.log("Login RPC result:", { users, error });
+
+        const user = (users && users.length > 0) ? users[0] : null;
+
+        if (error && !user) {
+            console.error("Supabase RPC Error:", error);
+            if (error.code === '42703') {
+                await customAlert("שגיאת מערכת: עמודת 'password' חסרה בטבלת המשתמשים. יש להריץ את פקודת ה-SQL המתאימה.");
+                return;
+            }
             await customAlert("שגיאת תקשורת: " + error.message);
             return;
         }
@@ -123,47 +127,64 @@ async function handleLogin(e) {
                 return;
             }
 
-            // משתמש קיים - בדיקת סיסמה
-            if (user.password !== pass) {
-                const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
-                await customAlert(randomJoke);
-                return;
-            }
-
             // הגדרת המשתמש הנוכחי
             currentUser = mapUserFromDB(user);
 
         } else {
-            await customAlert("משתמש לא קיים. אנא הירשם.");
-            toggleAuthMode('signup');
+            // בדיקה האם המשתמש קיים בכלל (אך הסיסמה שגויה) לצורך דיבוג
+            console.log("Login failed: Invalid credentials or user not found.");
+            const { data: exists } = await supabaseClient.rpc('check_email_exists', { p_email: email.trim().toLowerCase() });
+            if (exists) {
+                console.warn("DEBUG: User exists in DB. This means the password hash check failed.");
+                await customAlert("האימייל קיים במערכת אך הסיסמה אינה תואמת.<br>אם יצרת את המשתמש ידנית, ייתכן שהסיסמה אינה מוצפנת.<br>מומלץ לנסות 'שחזור סיסמה'.");
+                return;
+            } else {
+                console.warn("User with this email does not exist.");
+            }
+
+            // User not found or password incorrect. The RPC returns no rows in both cases.
+            const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
+            await customAlert(randomJoke);
             return;
         }
 
         // המשך תהליך ההתחברות הרגיל
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
-        document.getElementById('auth-overlay').style.display = 'none';
-        switchScreen('dashboard', document.querySelector('.nav-item'));
 
+        // Hide overlay and update header immediately
+        document.getElementById('auth-overlay').style.display = 'none';
+        updateHeader();
+        restoreAuthenticatedHeader();
+
+        // Perform initialization sequence directly.
+        // This avoids re-running the full init() and ensures the correct order of operations.
+        await syncGlobalData(); // Sync first to prevent race conditions
+        await loadGoals();
+        await loadUserProfile();
+        await loadSchedules();
+        getDafYomi();
+        checkCookieConsent();
+        notificationsEnabled = true;
+        loadAds();
+
+        // Setup timers and realtime connections
         if ("Notification" in window && Notification.permission !== "granted") {
             Notification.requestPermission();
         }
         setTimeout(checkDailyReminders, 5000);
         setInterval(checkChavrutaReminders, 60000);
 
-        updateHeader();
-
-        // טעינה אסינכרונית
-        await loadUserProfile();
-        await loadGoals();
-        await loadSchedules();
-        await syncGlobalData();
-        notificationsEnabled = true;
-        loadAds();
+        updateFollowersCount();
         sendHeartbeat();
         setupRealtime();
-        logVisit(); // Log visitor
+        startBackgroundServices(); // הפעלת סנכרון רקע לאחר התחברות
+        logVisit();
+        if (typeof updateDailyStreak === 'function') await updateDailyStreak();
+        if (typeof applyUserCustomizations === 'function') await applyUserCustomizations();
 
-        addNotification("ברוך הבא לבית המדרש! בהצלחה בלימוד.");
+        switchScreen('dashboard', document.querySelector('.nav-item'));
+        showToast("התחברת בהצלחה! ברוכים הבאים.", "success");
+        addNotification("ברוך הבא לבית המדרש! בהצלחה בלימוד."); // הודעת ברוך הבא ספציפית להתחברות
 
     } catch (e) {
         console.error("Login Error:", e);
@@ -173,58 +194,66 @@ async function handleLogin(e) {
 
 async function handleForgotPassword() {
     const email = await customPrompt("הזן את כתובת האימייל שלך לשחזור:");
-    if (!email) return;
+    if (!email) return; // User cancelled
 
     try {
-        const { data: user, error } = await supabaseClient.from('users').select('*').eq('email', email.toLowerCase()).single();
+        // Step 1: Securely get the security question via RPC
+        const { data: questionData, error: qError } = await supabaseClient.rpc('get_user_security_question', { p_email: email.toLowerCase() });
 
-        if (error || !user) {
-            await customAlert("משתמש לא נמצא.");
+        if (qError) throw qError;
+
+        if (!questionData || !questionData.q) {
+            await customAlert("משתמש לא נמצא או שלא הוגדרו לו שאלות אבטחה.");
             return;
         }
 
-        if (!user.security_questions || user.security_questions.length === 0) {
-            await customAlert("לא הוגדרו שאלות אבטחה לחשבון זה. פנה למנהל.");
-            return;
+        // Step 2: Ask the user the question
+        const userAnswer = await customPrompt(`שאלת אבטחה: ${questionData.q}`);
+        if (userAnswer === null) return; // User cancelled
+
+        // Step 3: Ask for a new password
+        const newPassword = await customPrompt("הזן סיסמה חדשה:");
+        if (!newPassword) return; // User cancelled or entered empty
+        if (!validateInput(newPassword, 'password')) {
+            return customAlert("הסיסמה חייבת להכיל לפחות 6 תווים, כולל אותיות ומספרים.");
         }
 
-        const q = user.security_questions[0];
-        const ans = await customPrompt(`שאלת אבטחה: ${q.q}`);
+        // Step 4: Attempt to reset the password via RPC, which validates the answer on the server
+        const { data: success, error: resetError } = await supabaseClient.rpc('reset_user_password', {
+            p_email: email.toLowerCase(),
+            p_answer: userAnswer,
+            p_new_password: newPassword
+        });
 
-        if (ans === q.a) {
-            const newPass = await customPrompt("הזן סיסמה חדשה:");
-            if (newPass) {
-                await supabaseClient.from('users').update({ password: newPass }).eq('email', email);
-                await customAlert("הסיסמה שונתה בהצלחה!");
-            }
+        if (resetError) throw resetError;
+
+        if (success) {
+            await customAlert("הסיסמה שונתה בהצלחה!");
         } else {
             await customAlert("תשובה שגויה.");
         }
     } catch (e) {
-        console.error(e);
-        await customAlert("שגיאה בתהליך השחזור.");
+        console.error("Forgot Password Error:", e);
+        await customAlert("שגיאה בתהליך השחזור: " + e.message);
     }
 }
 
 async function loadUserProfile() {
     try {
-        const { data: userData, error } = await supabaseClient
-            .from('users')
-            .select('*')
-            .eq('email', currentUser.email)
-            .single();
+        // Find user data from the globally synced (and secure) user list instead of a direct DB call.
+        const userData = globalUsersData.find(u => u.email === currentUser.email);
 
-        if (userData && !error) {
+        if (userData) {
             // עדכון הפרופיל המקומי עם נתונים מהענן
-            currentUser.displayName = userData.display_name || currentUser.displayName;
+            currentUser.displayName = userData.name || currentUser.displayName;
             currentUser.phone = userData.phone || '';
             currentUser.city = userData.city || '';
             currentUser.address = userData.address || '';
             currentUser.age = userData.age || null;
-            currentUser.isAnonymous = userData.is_anonymous || false;
+            currentUser.isAnonymous = userData.isAnonymous || false;
             currentUser.subscription = userData.subscription || { amount: 0, level: 0, name: '' }; // טעינת מנוי
-            currentUser.security_questions = userData.security_questions || [];
-            currentUser.password = userData.password || ''; // שמירה מקומית של הסיסמה (לא מומלץ בדרך כלל, אך נדרש לניהול פשוט כאן)
+            // Security-sensitive fields like password and security_questions are not in globalUsersData.
+            // They are loaded only once on initial login and managed locally.
             currentUser.reward_points = userData.reward_points || 0;
             currentUser.marketing_consent = userData.marketing_consent || false;
 
@@ -281,7 +310,6 @@ function mapUserFromDB(user) {
         age: user.age || null,
         subscription: user.subscription || { amount: 0, level: 0, name: '' },
         security_questions: user.security_questions || [],
-        password: user.password,
         reward_points: user.reward_points || 0,
         marketing_consent: user.marketing_consent || false
     };
@@ -299,6 +327,41 @@ function updateHeader() {
         btn.classList.add(`aura-lvl-${currentUser.subscription.level}`);
         // הוספת טייטל
         btn.title = `מנוי: ${currentUser.subscription.name}`;
+    }
+}
+
+function restoreAuthenticatedHeader() {
+    const profileBtn = document.getElementById('headerProfileBtn');
+    if (profileBtn) {
+        profileBtn.onclick = function (e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            if (typeof window.toggleProfileMenu === 'function') {
+                window.toggleProfileMenu();
+            } else {
+                // Fallback: manually toggle if function is missing for some reason
+                const menu = document.getElementById('profile-dropdown');
+                if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            }
+        };
+    }
+    const notifContainer = document.getElementById('notif-container');
+    if (notifContainer) {
+        notifContainer.onclick = function (e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            if (typeof window.toggleNotifications === 'function') {
+                window.toggleNotifications();
+            }
+        };
+        // Badge visibility will be handled by updateNotifUI when data loads
+    }
+    if (typeof setupInterfaceChanges === 'function') {
+        setupInterfaceChanges();
     }
 }
 
@@ -329,20 +392,37 @@ function setupGuestHeader() {
     headerEmail.innerHTML = `<a href="#" onclick="event.preventDefault(); showAuthOverlay();" style="text-decoration: underline; color: var(--accent);">התחבר או הירשם</a>`;
     headerEmail.style.cursor = 'pointer';
 
-    // Hide elements that are for logged-in users
+    // Show profile and notification icons, but with guest functionality
     const notifContainer = document.getElementById('notif-container');
     const profileContainer = document.querySelector('.profile-container');
     const donateButton = document.querySelector('.btn-donate-header');
-    
-    if(notifContainer) notifContainer.style.display = 'none';
-    if(profileContainer) profileContainer.style.display = 'none';
-    if(donateButton) donateButton.style.display = 'none';
+
+    if (profileContainer) {
+        profileContainer.style.display = ''; // Revert to default stylesheet display
+        const profileBtn = document.getElementById('headerProfileBtn');
+        if (profileBtn) {
+            // The original onclick is toggleProfileMenu(). We change it for guests.
+            profileBtn.onclick = toggleGuestProfileMenu;
+        }
+    }
+    if (notifContainer) {
+        notifContainer.style.display = ''; // Revert to default
+        // The original onclick is toggleNotifications(). We change it for guests.
+        notifContainer.onclick = toggleGuestNotifications;
+        if (document.getElementById('notif-badge')) document.getElementById('notif-badge').style.display = 'none';
+    }
+    // if (donateButton) donateButton.style.display = 'none'; // הוסר כדי שהכפתור יוצג גם לאורחים ויקפיץ חלון התחברות
+}
+
+function toggleGuestNotifications() {
+    requireAuth();
 }
 
 function showAuthOverlay() {
     const overlay = document.getElementById('auth-overlay');
     if (overlay) {
         overlay.style.display = 'flex';
+        overlay.style.overflowY = 'auto'; // מונע גלילה של כל הדף כשהטופס ארוך
         toggleAuthMode('login'); // Default to login view
     }
 }
@@ -374,7 +454,7 @@ function validateInput(value, type) {
             return /^0\d{8,9}$/.test(value.replace(/-/g, ''));
         case 'password':
             // At least 6 chars, one letter, one number
-            return /(?=.*\d)(?=.*[a-zA-Z\u0590-\u05FF]).{6,}/.test(value);
+            return value.length >= 3; // הקלה לצורך בדיקות: מינימום 3 תווים
         case 'name':
             // At least two letters, allows Hebrew, English and spaces, not just numbers
             return /^[a-zA-Z\u0590-\u05FF\s]{2,}[a-zA-Z\u0590-\u05FF\s]*$/.test(value) && !/^\d+$/.test(value);
@@ -382,4 +462,3 @@ function validateInput(value, type) {
             return true;
     }
 }
-

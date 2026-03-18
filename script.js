@@ -22,11 +22,12 @@ async function init() {
         document.getElementById('auth-overlay').style.display = 'none';
         updateHeader();
 
-        // טעינת פרופיל מהענן
-        await loadUserProfile();
+        // סנכרון נתונים גלובליים תחילה, כדי שיהיו זמינים לפונקציות הבאות
+        await syncGlobalData();
 
         // טעינת לימודים
         await loadGoals();
+        await loadUserProfile(); // טעינת פרופיל מהענן לאחר שהנתונים הגלובליים סונכרנו
 
         // טעינת רייטינג מהזכרון (להצגה מיידית)
         const cachedRating = localStorage.getItem('torahApp_rating');
@@ -48,12 +49,8 @@ async function init() {
         getDafYomi(); // טעינת הדף היומי
         // סנכרון נתונים גלובליים
         checkCookieConsent();
-
         // טעינת מצב לילה
         if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true); // null event
-
-        // setupInterfaceChanges(); // הועבר מחוץ לתנאי כדי שירוץ תמיד
-        await syncGlobalData();
         notificationsEnabled = true;
 
         // הוספת onclick לכפתור הסיומים לאחר שהכל נטען
@@ -65,17 +62,31 @@ async function init() {
         updateFollowersCount(); // עדכון מונה עוקבים בטעינה
         sendHeartbeat();
         setupRealtime();
+        startBackgroundServices(); // הפעלת סנכרון רקע
         logVisit(); // Log visitor
-        
+
+        // בקשת הרשאות להתראות והפעלת תזכורות
+        if ("Notification" in window && Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+        setTimeout(checkDailyReminders, 5000);
+        setInterval(checkChavrutaReminders, 60000);
+
         // === הוספה: החלת התאמות אישיות (רקעים/אייקונים) ===
         if (typeof applyUserCustomizations === 'function') {
             await applyUserCustomizations();
         }
+
+        // === הוספה: עדכון רצף יומי ומתן נקודות ===
+        if (typeof updateDailyStreak === 'function') {
+            await updateDailyStreak();
+        }
     } else {
-        // New Guest Mode
         document.getElementById('auth-overlay').style.display = 'none';
+        // New Guest Mode
         setupGuestHeader();
         await syncGlobalData(); // To get public data like users for leaderboard
+        startBackgroundServices(); // הפעלת סנכרון רקע גם לאורחים (עבור טבלת מובילים)
         renderLeaderboard();
         loadAds();
         getDafYomi();
@@ -85,8 +96,66 @@ async function init() {
     }
 }
 
+async function updateDailyStreak() {
+    if (!currentUser) return;
 
+    try {
+        const { data: user, error } = await supabaseClient
+            .from('users')
+            .select('current_streak, last_streak_date')
+            .eq('email', currentUser.email)
+            .single();
 
+        if (error) {
+            // It might fail if columns don't exist yet. Don't throw, just log.
+            console.warn("Could not get streak data, columns might be missing.", error.message);
+            return;
+        }
+
+        const today = new Date();
+        // Use UTC dates to avoid timezone issues
+        const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())).toISOString().split('T')[0];
+
+        const lastStreakDateStr = user.last_streak_date;
+
+        let newStreak = user.current_streak || 0;
+        let pointsToAdd = 0;
+        let updatePayload = {};
+        let needsUpdate = false;
+
+        if (lastStreakDateStr !== todayDate) {
+            // Not updated today yet
+            const yesterday = new Date();
+            yesterday.setUTCDate(today.getUTCDate() - 1);
+            const yesterdayDate = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate())).toISOString().split('T')[0];
+
+            if (lastStreakDateStr === yesterdayDate) {
+                // Streak continues
+                newStreak++;
+                pointsToAdd = 10 * newStreak; // Example: 10 points per day in streak, increasing
+                updatePayload = { current_streak: newStreak, last_streak_date: todayDate };
+                showToast(`רצף של ${newStreak} ימים! קיבלת ${pointsToAdd} נקודות זכות.`, 'success');
+                needsUpdate = true;
+            } else {
+                // Streak broken or first day
+                newStreak = 1;
+                pointsToAdd = 10; // Points for starting
+                updatePayload = { current_streak: 1, last_streak_date: todayDate };
+                showToast(`התחלת רצף לימוד יומי! קיבלת ${pointsToAdd} נקודות זכות.`, 'success');
+                needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+                if (pointsToAdd > 0) {
+                    await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
+                }
+                await supabaseClient.from('users').update(updatePayload).eq('email', currentUser.email);
+            }
+        }
+    } catch (e) {
+        console.error("Error updating daily streak:", e);
+    }
+}
 
 function checkCookieConsent() {
     if (!localStorage.getItem('torahApp_cookie_consent')) {
@@ -179,13 +248,15 @@ function renderLeaderboard() {
 
     // 2. הוסף את עצמך ידנית עם הנתונים המקומיים המעודכנים ביותר
     const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
+    const myRewardPoints = currentUser ? (currentUser.reward_points || 0) : 0;
+    const myTotalScore = myScore + myRewardPoints;
     const myActiveBooks = userGoals.filter(g => g.status === 'active').map(g => g.bookName);
 
     if (currentUser) {
         all.push({
             id: 'me',
             name: (currentUser.isAnonymous ? "אנונימי" : currentUser.displayName) + " (אני)",
-            learned: myScore,
+            learned: myTotalScore,
             email: currentUser.email,
             books: myActiveBooks,
             city: currentUser.city
@@ -221,51 +292,51 @@ function renderLeaderboard() {
             myCardHTML = `
                 <div class="lb-me-card">
                     <div style="display:flex; align-items:center; gap:1rem;">
-                        <div style="color:#ffb700; font-weight:900; font-size:1.25rem; width:2rem; text-align:center;">${rank}</div>
-                        <div style="width:3.5rem; height:3.5rem; border-radius:50%; background:#e2e8f0; display:flex; align-items:center; justify-content:center; border:2px solid white; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
-                            <i class="fas fa-user" style="color:#94a3b8; font-size:1.5rem;"></i>
+                        <div style="color:var(--accent); font-weight:900; font-size:1.25rem; width:2rem; text-align:center;">${rank}</div>
+                        <div style="width:3.5rem; height:3.5rem; border-radius:50%; background:var(--border-color); display:flex; align-items:center; justify-content:center; border:2px solid var(--card-bg); box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+                            <i class="fas fa-user" style="color:var(--text-main); opacity:0.6; font-size:1.5rem;"></i>
                         </div>
                         <div>
-                            <h3 style="font-weight:bold; color:#1d180c; margin:0;">${u.name}</h3>
-                            <p style="font-size:0.75rem; color:#a18745; font-weight:500; margin:0;">${getRankName(u.learned)} • ${u.city || 'ירושלים'}</p>
+                            <h3 style="font-weight:bold; color:var(--text-main); margin:0;">${u.name}</h3>
+                            <p style="font-size:0.75rem; color:var(--text-main); opacity:0.8; font-weight:500; margin:0;">${getRankName(u.learned)} • ${u.city || 'ירושלים'}</p>
                         </div>
                     </div>
                     <div style="text-align:left;">
-                        <p style="font-size:1.25rem; font-weight:900; color:#ffb700; margin:0;">${score}</p>
-                        <p style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:bold; opacity:0.6; margin:0;">${scoreLabel}</p>
+                        <p style="font-size:1.25rem; font-weight:900; color:var(--accent); margin:0;">${score}</p>
+                        <p style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:bold; opacity:0.6; margin:0; color: var(--text-main);">${scoreLabel}</p>
                     </div>
                 </div>
             `;
         }
 
         // Render List Item
-        let rankColorClass = 'color:#a18745; opacity:0.6;';
+        let rankColorClass = 'color:var(--text-main); opacity:0.6;';
         let rankIcon = '';
         if (rank === 1) {
-            rankColorClass = 'color:#ffb700; font-weight:900; font-size:1.5rem;';
-            rankIcon = `<div style="position:absolute; top:-4px; right:-4px; background:#ffb700; color:white; padding:2px; border-radius:50%; border:2px solid white; display:flex;"><span class="material-icons-round" style="font-size:10px;">star</span></div>`;
+            rankColorClass = 'color:var(--accent); font-weight:900; font-size:1.5rem;';
+            rankIcon = `<div style="position:absolute; top:-4px; right:-4px; background:var(--accent); color:white; padding:2px; border-radius:50%; border:2px solid var(--card-bg); display:flex;"><span class="material-icons-round" style="font-size:10px;">star</span></div>`;
         } else if (rank === 2) {
-            rankColorClass = 'color:#a18745; font-weight:900; font-size:1.25rem; opacity:0.8;';
+            rankColorClass = 'color:var(--text-main); font-weight:900; font-size:1.25rem; opacity:0.8;';
         } else if (rank === 3) {
-            rankColorClass = 'color:#a18745; font-weight:900; font-size:1.25rem; opacity:0.6;';
+            rankColorClass = 'color:var(--text-main); font-weight:900; font-size:1.25rem; opacity:0.6;';
         }
 
         newHTML += `
         <div class="lb-card" style="animation-delay:${i * 0.05}s" onclick="showUserDetails('${idToSend}')">
             <div style="display:flex; align-items:center; gap:1rem;">
                 <div style="${rankColorClass} width:2rem; text-align:center;">${rank}</div>
-                <div style="position:relative; width:3rem; height:3rem; border-radius:50%; background:#f1f5f9; display:flex; align-items:center; justify-content:center;">
-                    <i class="fas fa-user" style="color:#cbd5e1;"></i>
+                <div style="position:relative; width:3rem; height:3rem; border-radius:50%; background:var(--bg); display:flex; align-items:center; justify-content:center;">
+                    <i class="fas fa-user" style="color:var(--border-color);"></i>
                     ${rankIcon}
                 </div>
                 <div>
-                    <h3 style="font-weight:bold; color:#1d180c; margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${u.name} ${badge}</h3>
-                    <p style="font-size:0.75rem; color:#a18745; margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${getRankName(u.learned)} • ${u.city || 'לא צוין'}</p>
+                    <h3 style="font-weight:bold; color:var(--text-main); margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${u.name} ${badge}</h3>
+                    <p style="font-size:0.75rem; color:var(--text-main); opacity:0.8; margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${getRankName(u.learned)} • ${u.city || 'לא צוין'}</p>
                 </div>
             </div>
             <div style="text-align:left;">
-                <p style="font-size:1.125rem; font-weight:bold; color:#1d180c; margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${score}</p>
-                <p style="font-size:0.65rem; opacity:0.6; font-weight:bold; text-transform:uppercase; margin:0;">${scoreLabel}</p>
+                <p style="font-size:1.125rem; font-weight:bold; color:var(--text-main); margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${score}</p>
+                <p style="font-size:0.65rem; opacity:0.6; font-weight:bold; text-transform:uppercase; margin:0; color:var(--text-main);">${scoreLabel}</p>
             </div>
         </div>`;
     });
@@ -381,11 +452,11 @@ function renderChavrutaResults(matches, bookName) {
     // שמירת התוצאות למשתנה גלובלי לשימוש בדף התוצאות
     currentChavrutaSearchResults = matches;
     currentSearchBook = bookName;
-    
+
     // סגירת המודאל ומעבר לדף התוצאות
     closeModal();
     switchScreen('chavruta-results');
-    
+
     // אתחול המסננים ורינדור הדף
     resetChavrutaFilters();
 }
@@ -467,7 +538,14 @@ async function showUserDetails(uid) {
     }
 
     // --- Populate Header ---
-    document.getElementById('modalUserName').innerText = user.name;
+    // For admin, show original name even if anonymous
+    const displayName = (isAdminMode && user.original_name) ? user.original_name : user.name;
+    document.getElementById('modalUserName').innerText = displayName;
+    // Add a tag if user is anonymous and admin is viewing
+    if (isAdminMode && user.isAnonymous) {
+        document.getElementById('modalUserName').innerHTML += ` <span style="color: #f59e0b; font-size: 0.8rem; font-weight: normal;">(במצב אנונימי)</span>`;
+    }
+
     document.getElementById('modalUserRank').innerHTML = `<i class="fas fa-medal" style="margin-left: 5px;"></i> דרגה: ${getRankName(user.learned)}`;
     document.getElementById('modalUserAge').innerText = user.age ? `גיל: ${user.age}` : '';
 
@@ -480,9 +558,9 @@ async function showUserDetails(uid) {
     if (user.subscription && user.subscription.level > 0) {
         const tier = SUBSCRIPTION_TIERS.find(t => t.level === user.subscription.level);
         const color = tier ? tier.color : 'gold';
-        
+
         subDiv.innerHTML = `<div class="subscription-badge" style="background:${color}20; color:${color}; border:1px solid currentColor;"><i class="fas fa-crown"></i> ${user.subscription.name}</div>`;
-        
+
         // Apply aura to the avatar container
         avatarDiv.classList.add(`aura-lvl-${user.subscription.level}`, 'aura-base');
         avatarDiv.style.borderRadius = '50%'; // Ensure roundness for aura effect
@@ -490,7 +568,7 @@ async function showUserDetails(uid) {
 
     // --- Contact Info & Privacy ---
     const contactContainer = document.getElementById('modalContactInfo');
-    const showFullDetails = (uid === 'me' || approvedPartners.has(user.email));
+    const showFullDetails = (isAdminMode || uid === 'me' || approvedPartners.has(user.email));
     let contactHtml = '';
 
     // City (always visible)
@@ -615,7 +693,7 @@ async function checkAndSendRequest(email, book, btnElement) {
         return;
     }
 
-    if(btnElement) btnElement.disabled = true;
+    if (btnElement) btnElement.disabled = true;
 
     const success = await sendChavrutaRequest(email, book);
 
@@ -685,7 +763,7 @@ async function renderFollowsList(type, tabEl) {
     }
 
     const emails = data.map(item => type === 'followers' ? item.follower_email : item.following_email);
-    
+
     const { data: users, error: usersError } = await supabaseClient
         .from('users')
         .select('display_name, email, subscription')
@@ -779,9 +857,6 @@ async function saveProfile() {
     if (phone && !validateInput(phone, 'phone')) {
         return customAlert("מספר הטלפון שהוזן אינו תקין.");
     }
-    if (newPass && !validateInput(newPass, 'password')) {
-        return customAlert("הסיסמה החדשה חייבת להכיל לפחות 6 תווים, כולל אותיות ומספרים.");
-    }
 
 
     // עדכון מקומי
@@ -791,11 +866,6 @@ async function saveProfile() {
     currentUser.address = address;
     currentUser.age = age ? parseInt(age) : null;
     currentUser.isAnonymous = isAnon;
-
-    if (newPass) currentUser.password = newPass;
-    if (secQ && secA) {
-        currentUser.security_questions = [{ q: secQ, a: secA }];
-    }
 
     localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
@@ -821,10 +891,27 @@ async function saveProfile() {
         subscription: currentUser.subscription,
         last_seen: new Date()
     };
-    if (newPass) updateData.password = newPass;
-    if (secQ && secA) updateData.security_questions = [{ q: secQ, a: secA }];
 
     try {
+        // עדכון סיסמה בנפרד ובצורה מאובטחת
+        if (newPass) {
+            if (!validateInput(newPass, 'password')) {
+                return customAlert("הסיסמה החדשה חייבת להכיל לפחות 6 תווים, כולל אותיות ומספרים.");
+            }
+            const { error: passError } = await supabaseClient.rpc('update_user_password', {
+                p_email: currentUser.email,
+                p_new_password: newPass
+            });
+            if (passError) throw passError;
+            showToast('הסיסמה עודכנה בהצלחה!', "success");
+            document.getElementById('profileNewPass').value = ''; // ניקוי השדה
+        }
+
+        // עדכון שאלות אבטחה
+        if (secQ && secA) {
+            updateData.security_questions = [{ q: secQ, a: secA }];
+        }
+
         const { error } = await supabaseClient
             .from('users')
             .upsert(updateData);
@@ -843,7 +930,8 @@ async function saveProfile() {
 }
 
 
-function switchScreen(name, el) {
+function switchScreen(name, el, chatFilter) {
+
     if (name === 'chats' && !requireAuth()) return;
 
     // איפוס תצוגת הוספה למצב ברירת מחדל (תפריט)
@@ -857,7 +945,7 @@ function switchScreen(name, el) {
     const headerEmail = document.getElementById('headerUserEmail');
     const spacer = document.getElementById('bottom-spacer');
     const container = document.querySelector('.container');
-    
+
     // איפוס סגנונות קונטיינר למצב רגיל
     container.style.maxWidth = '';
     container.style.margin = '';
@@ -887,7 +975,12 @@ function switchScreen(name, el) {
             headerEmail.innerHTML = ''; // Hide text but keep element for layout
         } else {
             headerEmail.style.display = 'block';
-            headerEmail.innerText = currentUser ? (currentUser.displayName || currentUser.email) : 'לא מחובר';
+            if (currentUser) {
+                headerEmail.innerText = currentUser.displayName || currentUser.email;
+            } else {
+                headerEmail.innerHTML = `<a href="#" onclick="event.preventDefault(); showAuthOverlay();" style="text-decoration: underline; color: var(--accent);">התחבר או הירשם</a>`;
+                headerEmail.style.cursor = 'pointer';
+            }
         }
 
         if (name === 'chats') {
@@ -917,7 +1010,7 @@ function switchScreen(name, el) {
     if (name === 'chavrutas') renderChavrutas();
     if (name === 'calendar') renderCalendar();
     if (name === 'community') renderCommunity(); // Mazal Tov moved to chats
-    if (name === 'chats') renderChatList('personal');
+    if (name === 'chats') renderChatList(chatFilter || 'personal');
     if (name === 'archive') loadChatRating();
     if (name === 'shop') renderShop();
     if (name === 'ads') loadAds();
@@ -976,6 +1069,10 @@ function removeNotification(index) {
 
 // פתיחה/סגירה של תפריט ההודעות
 function toggleNotifications() {
+    const profileDropdown = document.getElementById('profile-dropdown');
+    if (profileDropdown) {
+        profileDropdown.style.display = 'none';
+    }
     const dropdown = document.getElementById('notif-dropdown');
     const isOpening = dropdown.style.display === 'none';
 
@@ -1137,7 +1234,7 @@ async function openNotes(goalId) {
     localStorage.setItem('current_notes_context', JSON.stringify(currentNotesData));
 
     const modalContent = document.querySelector('#notesModal .modal-content');
-    
+
     // ניקוי קונטיינר ישן אם קיים
     const container = document.getElementById('notesContainer');
     if (container) container.remove();
@@ -1251,7 +1348,13 @@ async function completeGoal(goalId) {
             message: `המשתמש ${currentUser.displayName} סיים את המסכת <strong>${bookName}</strong>!`,
             is_html: true
         }));
-        await supabaseClient.from('chat_messages').insert(msgs);
+        // Can't use RPC for batch insert easily, so we loop.
+        for (const m of msgs) {
+            await supabaseClient.rpc('send_message', {
+                p_sender_email: m.sender_email, p_receiver_email: m.follower_email,
+                p_message: m.message, p_is_html: m.is_html
+            });
+        }
     }
 }
 
@@ -1293,7 +1396,8 @@ async function updateProgress(goalId, change) {
 
         // עדכון סטטיסטיקה כללית
         let totalLearned = userGoals.reduce((sum, g) => sum + (g.currentUnit || 0), 0);
-        document.getElementById('stat-pages').innerText = totalLearned;
+        const currentPoints = currentUser ? (currentUser.reward_points || 0) : 0;
+        document.getElementById('stat-pages').innerText = (totalLearned + currentPoints).toLocaleString();
         updateRankProgressBar(totalLearned);
     } else {
         renderGoals(); // Fallback אם הכרטיס לא נמצא
@@ -1496,6 +1600,10 @@ async function processDonation() {
         const tier = getTierByAmount(finalAmount);
         if (!tier) return customAlert(`סכום המינימום למנוי הוא ${SUBSCRIPTION_TIERS[0].price}₪.`);
 
+        const donationMsg = `כרגע אין אפשרות סליקה ישירות מתוך האתר, אך נשמח אם תבצעו את תרומתכם באתר הזה<br><a href="https://ko-fi.com/beithmidrash" target="_blank" style="color:var(--accent); text-decoration:underline;">https://ko-fi.com/beithmidrash</a><br>ופרטי התרומה שלכם יתעדכנו באתר.`;
+
+        await customAlert(donationMsg, true);
+
         // שמירת המנוי למשתמש
         currentUser.subscription = { amount: finalAmount, level: tier.level, name: tier.name, subscription_date: new Date().toISOString() };
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
@@ -1510,9 +1618,12 @@ async function processDonation() {
             const msg = `היי! בדיוק הצטרפתי למנוי "${tier.name}" בבית המדרש כדי להחזיק תורה. לא תרצה לעשות זאת גם אתה?${buttonHtml}`;
             approvedPartners.forEach(async (email) => {
                 try {
-                    await supabaseClient.from('chat_messages').insert([{
-                        sender_email: currentUser.email, receiver_email: email, message: msg, is_html: true
-                    }]);
+                    await supabaseClient.rpc('send_message', {
+                        p_sender_email: currentUser.email,
+                        p_receiver_email: email,
+                        p_message: msg,
+                        p_is_html: true
+                    });
                 } catch (e) { console.error("Failed to notify partner", e); }
             });
         }
@@ -1528,18 +1639,32 @@ async function processDonation() {
                 message: `המשתמש ${currentUser.displayName} תרם לחיזוק בית המדרש!`,
                 is_html: true
             }));
-            await supabaseClient.from('chat_messages').insert(msgs);
+            // Can't use RPC for batch insert easily, so we loop.
+            for (const m of msgs) {
+                await supabaseClient.rpc('send_message', {
+                    p_sender_email: m.sender_email, p_receiver_email: m.receiver_email,
+                    p_message: m.message, p_is_html: m.is_html
+                });
+            }
         }
     } else {
+
+        const donationMsg = `כרגע אין אפשרות סליקה ישירות מתוך האתר, אך נשמח אם תבצעו את תרומתכם באתר הזה<br><a href="https://ko-fi.com/beithmidrash" target="_blank" style="color:var(--accent); text-decoration:underline;">https://ko-fi.com/beithmidrash</a><br>ופרטי התרומה שלכם יתעדכנו באתר.`;
+
+        await customAlert(donationMsg, true);
+
         // תרומה חד פעמית
         if (approvedPartners.size > 0) {
             const buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectOneTime(${finalAmount})'>גם אני רוצה לתרום</button>`;
             const msg = `היי! הרגע תרמתי ₪${finalAmount} לחיזוק בית המדרש. זכות גדולה! ממליץ גם לך :)${buttonHtml}`;
             approvedPartners.forEach(async (email) => {
                 try {
-                    await supabaseClient.from('chat_messages').insert([{
-                        sender_email: currentUser.email, receiver_email: email, message: msg, is_html: true
-                    }]);
+                    await supabaseClient.rpc('send_message', {
+                        p_sender_email: currentUser.email,
+                        p_receiver_email: email,
+                        p_message: msg,
+                        p_is_html: true
+                    });
                 } catch (e) { console.error("Failed to notify partner", e); }
             });
         }
@@ -1588,7 +1713,7 @@ function renderChavrutaResultsPage() {
     const container = document.getElementById('chavrutaResultsPageContainer');
     const countLabel = document.getElementById('resultsCountLabel');
     const userCityDisplay = document.getElementById('userCityDisplay');
-    
+
     if (currentUser && currentUser.city) {
         userCityDisplay.innerText = currentUser.city;
     } else {
@@ -1643,7 +1768,7 @@ function renderChavrutaResultsPage() {
                         ${user.isAnonymous ? '<i class="fas fa-user-secret"></i>' : '<i class="fas fa-user"></i>'}
                     </div>
                     ${user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000) ?
-                    '<div class="absolute -bottom-2 -left-2 bg-green-500 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 shadow-sm"></div>' : ''}
+                '<div class="absolute -bottom-2 -left-2 bg-green-500 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 shadow-sm"></div>' : ''}
                 </div>
                 <div class="text-center">
                     <h3 class="font-bold text-lg leading-tight">${displayName} ${badge}</h3>
@@ -1684,7 +1809,7 @@ function filterChavrutaByAge(min, max, btn) {
     activeAgeFilter = { min, max };
     document.querySelectorAll('.filter-age-btn').forEach(b => b.classList.replace('bg-amber-500', 'bg-slate-100'));
     document.querySelectorAll('.filter-age-btn').forEach(b => b.classList.replace('text-white', 'text-slate-600'));
-    
+
     btn.classList.replace('bg-slate-100', 'bg-amber-500');
     btn.classList.replace('text-slate-600', 'text-white');
     renderChavrutaResultsPage();
@@ -1701,7 +1826,7 @@ function updateCustomCheckboxVisual(id) {
     const input = document.getElementById(id);
     const visual = document.getElementById('visual-' + id);
     const icon = visual.querySelector('span');
-    
+
     if (input.checked) {
         visual.classList.remove('border-slate-300', 'dark:border-slate-600');
         visual.classList.add('bg-amber-500', 'border-amber-500');
@@ -1944,12 +2069,12 @@ async function saveSchedule() {
 function renderCalendar() {
     const container = document.getElementById('calendarView');
     if (!container) return;
-    
+
     // Header
     let html = `
     <div class="flex items-center gap-3 mb-6 justify-start">
         <h2 class="text-2xl font-bold text-gray-800 dark:text-white m-0">לוח זמנים שבועי</h2>
-        <div class="text-blue-900 dark:text-blue-400">
+        <div class="text-amber-500">
             <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
             </svg>
@@ -1985,7 +2110,7 @@ function renderCalendar() {
         }
     }
     if (!hasEvents) html += '<div style="text-align:center; color:#94a3b8; padding:20px;">אין זמני לימוד קבועים.</div>';
-    
+
     html += '</div>';
     container.innerHTML = html;
 }
@@ -2225,6 +2350,11 @@ function setupRealtime() {
                 renderMazalTovInMainArea();
             }
         })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, () => {
+            syncGlobalData();
+            if (typeof loadChatRating === 'function') loadChatRating();
+        })
+        
         .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, (payload) => {
             handleRealtimeMessage(payload);
         })
@@ -2431,6 +2561,141 @@ document.addEventListener('keydown', async (e) => {
     }
 });
 
+function switchAdminTab(tabName) {
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+
+    const section = document.getElementById('admin-sec-' + tabName);
+    const button = document.querySelector(`.admin-tab-btn[onclick*="'${tabName}'"]`);
+
+    if (section) section.classList.add('active');
+    if (button) button.classList.add('active');
+
+    // Call render function for the specific tab
+    if (tabName === 'users') renderAdminUsersTable();
+    if (tabName === 'reports') renderAdminReports();
+    if (tabName === 'inbox') renderAdminInbox();
+    if (tabName === 'suggestions') renderAdminSuggestions();
+    if (tabName === 'roadmap') renderAdminRoadmap();
+    // Add other tab functions here as needed
+}
+
+async function renderAdminRoadmap() {
+    const container = document.getElementById('admin-sec-roadmap');
+    container.innerHTML = `
+        <h3 style="color:#fff; border:none;">ניהול מפת דרכים</h3>
+        <div id="adminRoadmapForm" style="background:#0f172a; padding:15px; border-radius:8px; border:1px solid #334155; margin-bottom:20px;">
+            <h4 style="color: #fff; margin-top:0; border:none;">הוסף/ערוך פיצ'ר</h4>
+            <input type="hidden" id="roadmapFeatureId">
+            <input type="text" id="roadmapFeatureTitle" class="admin-input" placeholder="כותרת הפיצ'ר">
+            <textarea id="roadmapFeatureDesc" class="admin-input" placeholder="תיאור מפורט" style="height: 80px;"></textarea>
+            <select id="roadmapFeatureStatus" class="admin-input">
+                <option value="planned">בתכנון</option>
+                <option value="in_progress">בטיפול</option>
+                <option value="done">בוצע</option>
+            </select>
+            <input type="number" id="roadmapFeatureOrder" class="admin-input" placeholder="סדר תצוגה (0 ראשון)">
+            <button class="admin-btn" style="background: #22c55e;" onclick="saveRoadmapFeature()">שמור פיצ'ר</button>
+            <button class="admin-btn" style="background: #334155;" onclick="clearRoadmapForm()">נקה טופס</button>
+        </div>
+        <div id="adminRoadmapList">טוען רשימה...</div>
+    `;
+
+    const { data: features, error } = await supabaseClient
+        .from('roadmap_features')
+        .select('*')
+        .order('sort_order', { ascending: true });
+
+    if (error) {
+        document.getElementById('adminRoadmapList').innerHTML = 'שגיאה בטעינת הפיצ\'רים.';
+        return;
+    }
+
+    const listContainer = document.getElementById('adminRoadmapList');
+    let listHtml = '<div style="display:flex; flex-direction:column; gap:10px;">';
+    features.forEach(f => {
+        listHtml += `
+            <div style="background:#1e293b; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <strong>${f.title}</strong>
+                    <span style="color:#94a3b8; font-size:0.8rem;"> (סטטוס: ${f.status}, סדר: ${f.sort_order})</span>
+                </div>
+                <div>
+                    <button class="admin-btn" style="background:#3b82f6;" onclick='editRoadmapFeature(${JSON.stringify(f)})'>ערוך</button>
+                    <button class="admin-btn" style="background:#ef4444;" onclick="deleteRoadmapFeature(${f.id})">מחק</button>
+                </div>
+            </div>
+        `;
+    });
+    listHtml += '</div>';
+    listContainer.innerHTML = listHtml;
+}
+
+function clearRoadmapForm() {
+    document.getElementById('roadmapFeatureId').value = '';
+    document.getElementById('roadmapFeatureTitle').value = '';
+    document.getElementById('roadmapFeatureDesc').value = '';
+    document.getElementById('roadmapFeatureStatus').value = 'planned';
+    document.getElementById('roadmapFeatureOrder').value = '';
+}
+
+function editRoadmapFeature(feature) {
+    document.getElementById('roadmapFeatureId').value = feature.id;
+    document.getElementById('roadmapFeatureTitle').value = feature.title;
+    document.getElementById('roadmapFeatureDesc').value = feature.description;
+    document.getElementById('roadmapFeatureStatus').value = feature.status;
+    document.getElementById('roadmapFeatureOrder').value = feature.sort_order;
+    document.getElementById('adminRoadmapForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function saveRoadmapFeature() {
+    const id = document.getElementById('roadmapFeatureId').value;
+    const title = document.getElementById('roadmapFeatureTitle').value;
+    const description = document.getElementById('roadmapFeatureDesc').value;
+    const status = document.getElementById('roadmapFeatureStatus').value;
+    const sort_order = document.getElementById('roadmapFeatureOrder').value;
+
+    if (!title) {
+        return customAlert('חובה להזין כותרת.');
+    }
+
+    const featureData = {
+        title,
+        description,
+        status,
+        sort_order: sort_order ? parseInt(sort_order) : 0
+    };
+
+    if (id) {
+        featureData.id = parseInt(id);
+    }
+
+    const { error } = await supabaseClient.from('roadmap_features').upsert(featureData);
+
+    if (error) {
+        console.error(error);
+        await customAlert('שגיאה בשמירת הפיצ\'ר: ' + error.message);
+    } else {
+        showToast('הפיצ\'ר נשמר בהצלחה!', 'success');
+        clearRoadmapForm();
+        renderAdminRoadmap();
+    }
+}
+
+async function deleteRoadmapFeature(id) {
+    if (!await customConfirm('האם למחוק את הפיצ\'ר הזה?')) return;
+
+    const { error } = await supabaseClient.from('roadmap_features').delete().eq('id', id);
+
+    if (error) {
+        console.error(error);
+        await customAlert('שגיאה במחיקת הפיצ\'ר: ' + error.message);
+    } else {
+        showToast('הפיצ\'ר נמחק!', 'info');
+        renderAdminRoadmap();
+    }
+}
+
 // --- בחירת משתמשים למחיקת צ'אט ---
 let selectedUsersForDelete = [];
 
@@ -2508,26 +2773,6 @@ async function sendSystemBroadcast() {
     }
 }
 
-function customPrompt(msg, defaultVal = '') {
-    return new Promise(resolve => {
-        document.getElementById('cPromptMsg').innerText = msg;
-        const input = document.getElementById('cPromptInput');
-        input.value = defaultVal;
-        document.getElementById('customPromptModal').style.display = 'flex';
-        bringToFront(document.getElementById('customPromptModal'));
-        input.focus();
-
-        document.getElementById('cPromptOk').onclick = () => {
-            document.getElementById('customPromptModal').style.display = 'none';
-            resolve(input.value);
-        };
-        document.getElementById('cPromptCancel').onclick = () => {
-            document.getElementById('customPromptModal').style.display = 'none';
-            resolve(null);
-        };
-    });
-}
-
 async function checkBanLifted() {
     const email = sessionStorage.getItem('banned_email');
     if (!email) {
@@ -2545,8 +2790,56 @@ async function checkBanLifted() {
 
 /* --- ניהול תפריט פרופיל --- */
 function toggleProfileMenu() {
+    const notifDropdown = document.getElementById('notif-dropdown');
+    if (notifDropdown) {
+        notifDropdown.style.display = 'none';
+    }
     const menu = document.getElementById('profile-dropdown');
     menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+
+function toggleGuestProfileMenu() {
+    const notifDropdown = document.getElementById('notif-dropdown');
+    if (notifDropdown) {
+        notifDropdown.style.display = 'none';
+    }
+    const menu = document.getElementById('profile-dropdown');
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        return;
+    }
+
+    // Populate with guest options
+    menu.innerHTML = `
+        <div class="profile-menu-item" onclick="requireAuth()">
+            <i class="fas fa-medal"></i> הישגים
+        </div>
+        <div class="profile-menu-item" onclick="requireAuth()">
+            <i class="fas fa-store"></i> חנות הזכויות
+        </div>
+        <div class="profile-menu-item" onclick="requireAuth()">
+            <i class="fas fa-calendar-alt"></i> לוח זמנים
+        </div>
+        <div class="profile-menu-item" onclick="requireAuth()">
+            <i class="fas fa-user-edit"></i> עריכת פרופיל
+        </div>
+        <div class="profile-menu-item" onclick="requireAuth()">
+            <i class="fas fa-users"></i> עוקבים
+        </div>
+        <div class="profile-menu-item" style="display: flex; justify-content: space-between; align-items: center;">
+            <span><i class="fas fa-moon"></i> מצב לילה</span>
+            <label class="switch">
+                <input type="checkbox" id="darkModeSwitch" onchange="toggleDarkMode(event)">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="profile-menu-item" onclick="showAuthOverlay(); toggleProfileMenu();">
+            <i class="fas fa-sign-in-alt"></i> התחבר או הירשם
+        </div>
+    `;
+    // Set dark mode switch state
+    if (document.getElementById('darkModeSwitch')) document.getElementById('darkModeSwitch').checked = localStorage.getItem('torahApp_darkMode') === 'true';
+    menu.style.display = 'block';
 }
 
 // סגירת התפריט בלחיצה בחוץ
@@ -2568,6 +2861,13 @@ document.addEventListener('click', function (event) {
     if (searchContainer && !searchContainer.contains(event.target)) {
         closeSearchDropdown();
     }
+
+    // Close chat menu if clicked outside
+    const chatMenuContainer = document.querySelector('.chat-menu-container');
+    if (chatMenuContainer && !chatMenuContainer.contains(event.target)) {
+        const chatMenu = document.getElementById('chat-menu-dropdown');
+        if (chatMenu) chatMenu.classList.remove('active');
+    }
 });
 
 async function sendAppeal() {
@@ -2585,9 +2885,15 @@ async function sendAppeal() {
     }
 
     try {
-        await supabaseClient.from('chat_messages').insert([{
-            sender_email: email, receiver_email: 'admin@system', message: 'ערעור חסימה: ' + msg
-        }]);
+        // Using RPC to bypass RLS for banned users
+        const { error } = await supabaseClient.rpc('send_message', {
+            p_sender_email: email,
+            p_receiver_email: 'admin@system',
+            p_message: 'ערעור חסימה: ' + msg,
+            p_is_html: false
+        });
+
+        if (error) throw error;
         showToast("הפנייה נשלחה למנהל האתר.", "success");
         document.getElementById('appealMsg').value = '';
     } catch (e) { console.error(e); await customAlert("שגיאה בשליחה"); }
@@ -2975,12 +3281,16 @@ async function sendThreadMessage() {
     const finalMsg = `${finalContent} <span style="display:none">ref:${activeThreadId}</span>`;
 
     try {
-        await supabaseClient.from('chat_messages').insert([{
-            sender_email: currentUser.email,
-            receiver_email: activeThreadChatId,
-            message: finalMsg,
-            is_html: true
-        }]);
+        // Using RPC to bypass RLS, similar to sendMessage
+        const { error } = await supabaseClient.rpc('send_message', {
+            p_sender_email: currentUser.email,
+            p_receiver_email: activeThreadChatId,
+            p_message: finalMsg,
+            p_is_html: true
+        });
+
+        if (error) throw error;
+
         input.value = '';
 
         // הוספה מיידית לתצוגה
@@ -2994,7 +3304,10 @@ async function sendThreadMessage() {
         // Manually append to thread view
         // No need to append manually if realtime works, but for instant feedback we can rely on realtime or append a temp one.
         // Since we have realtime listener for chat_messages, it should appear automatically.
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error("Error sending thread message:", e);
+        await customAlert("שגיאה בשליחת התגובה: " + e.message);
+    }
 }
 
 function toggleChatMenu(event) {
@@ -3035,6 +3348,7 @@ async function logAdClick() {
 async function getDafYomi() {
     try {
         const res = await fetch('https://www.sefaria.org/api/calendars');
+        if (!res.ok) throw new Error(`Status: ${res.status}`);
         const data = await res.json();
         if (data && data.calendar_items) {
             const dafItem = data.calendar_items.find(item => item.title.en === 'Daf Yomi');
@@ -3164,9 +3478,21 @@ document.addEventListener('mousedown', (e) => {
 
 // סגירת תפריטי הודעות בלחיצה בחוץ
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('.msg-actions-menu')) {
-        document.querySelectorAll('.msg-menu-dropdown').forEach(el => el.classList.remove('active'));
-    }
+    // סגירת תפריטי שרשור (משתמשים ב-active)
+    const clickedMsgWrapper = e.target.closest('.msg-actions-menu');
+    document.querySelectorAll('.msg-menu-dropdown.active').forEach(dropdown => {
+        if (!clickedMsgWrapper || !clickedMsgWrapper.contains(dropdown)) {
+            dropdown.classList.remove('active');
+        }
+    });
+
+    // סגירת תפריטי צ'אט ראשי (משתמשים ב-hidden)
+    const clickedChatWrapper = e.target.closest('.chat-action-menu-container');
+    document.querySelectorAll('.chat-action-dropdown:not(.hidden)').forEach(dropdown => {
+        if (!clickedChatWrapper || !clickedChatWrapper.contains(dropdown)) {
+            dropdown.classList.add('hidden');
+        }
+    });
 });
 
 
@@ -3211,13 +3537,13 @@ function showAchievements() {
 
     const remaining = Math.max(0, nextThreshold - totalLearned);
     const rating = currentUser.chat_rating || 0;
-    
+
     // חישוב דרגת רייטינג
     const ratingRank = getRatingRankName(rating);
     const ratingThresholds = [50, 150, 300, 500, 750, 1000, 1800, 3500, 5000, 10000, 50000];
     let nextRatingThreshold = 50000;
     let nextRatingRankName = "";
-    
+
     for (let t of ratingThresholds) {
         if (rating < t) {
             nextRatingThreshold = t;
@@ -3239,7 +3565,7 @@ function showAchievements() {
                 <div class="progress-bar" style="width:${Math.min(100, (totalLearned / nextThreshold) * 100)}%;"></div>
             </div>
             <div style="text-align:center; font-size:0.9rem; color:#64748b; margin-top:5px;">
-                ${remaining > 0 ? `עוד ${remaining} דפים לדרגת ${nextRank}` : 'הגעת לפסגה!'}
+                ${remaining > 0 ? `עוד ${remaining} דפים לדרגת <strong>${nextRank}</strong>` : 'הגעת לפסגה!'}
             </div>
         </div>
         
@@ -3252,7 +3578,7 @@ function showAchievements() {
                 <div class="progress-bar" style="width:${ratingProgress}%; background: linear-gradient(90deg, #ec4899, #8b5cf6);"></div>
             </div>
             <div style="text-align:center; font-size:0.9rem; color:#64748b; margin-top:5px;">
-                ${rating < 50000 ? `עוד ${ratingRemaining} נקודות לדרגת ${nextRatingRankName}` : 'הגעת לפסגת הרייטינג!'}
+                ${rating < 50000 ? `עוד ${ratingRemaining} נקודות לדרגת <strong>${nextRatingRankName}</strong>` : 'הגעת לפסגת הרייטינג!'}
             </div>
         </div>
         
@@ -3271,6 +3597,128 @@ function showAchievements() {
     document.getElementById('achievementsContent').innerHTML = content;
     modal.style.display = 'flex';
     bringToFront(modal);
+}
+
+async function openRoadmapModal() {
+    const modal = document.getElementById('roadmapModal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    bringToFront(modal);
+
+    // Load the template
+    try {
+        let templateHtml;
+        try {
+            const response = await fetch('roadmap.html');
+            if (!response.ok) throw new Error('Roadmap template not found');
+            templateHtml = await response.text();
+        } catch (fetchErr) {
+            console.warn("Could not fetch roadmap.html (CORS/Offline), using fallback.", fetchErr);
+            // Fallback template if fetch fails (e.g. file:/// protocol)
+            templateHtml = `
+            <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden relative flex flex-col m-4 max-h-[80vh]">
+                <button aria-label="סגור" class="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors z-10" onclick="document.getElementById('roadmapModal').style.display='none'">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                </button>
+                <header class="pt-8 pb-4 px-8 flex flex-col items-center text-center border-b border-slate-100 dark:border-slate-800">
+                    <h1 class="text-xl font-bold text-slate-800 dark:text-white mb-2">מפת הדרכים שלנו</h1>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
+                </header>
+                <main id="roadmap-list-area" class="p-6 flex-1 overflow-y-auto space-y-4">
+                    <div class="text-center p-5 text-slate-400">טוען...</div>
+                </main>
+            </div>`;
+        }
+
+        modal.innerHTML = templateHtml;
+
+        // Now fetch data and render
+        const listArea = document.getElementById('roadmap-list-area');
+        const { data: features, error } = await supabaseClient
+            .from('roadmap_features')
+            .select('*')
+            .order('sort_order', { ascending: true });
+
+        if (error) {
+            listArea.innerHTML = `<div class="text-center p-10 text-red-500">שגיאה בטעינת מפת הדרכים.</div>`;
+            return;
+        }
+
+        if (!features || features.length === 0) {
+            listArea.innerHTML = `<div class="text-center p-10 text-slate-500">מפת הדרכים תתפרסם בקרוב.</div>`;
+            return;
+        }
+
+        renderRoadmapFeatures(features, listArea);
+
+    } catch (e) {
+        modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
+    }
+}
+
+function renderRoadmapFeatures(features, container) {
+    let html = '';
+    features.forEach(feature => {
+        let iconHtml = '';
+        let statusColor = '';
+        let statusText = '';
+        let statusBadgeClass = '';
+
+        switch (feature.status) {
+            case 'done':
+                iconHtml = '<i class="fas fa-check"></i>';
+                statusColor = 'bg-green-500';
+                statusText = 'בוצע';
+                statusBadgeClass = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+                break;
+            case 'in_progress':
+                iconHtml = '<i class="fas fa-spinner fa-spin"></i>';
+                statusColor = 'bg-blue-500';
+                statusText = 'בטיפול';
+                statusBadgeClass = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+                break;
+            case 'planned':
+                iconHtml = '<i class="far fa-circle"></i>';
+                statusColor = 'bg-slate-400';
+                statusText = 'בתכנון';
+                statusBadgeClass = 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+                break;
+        }
+
+        html += `
+        <div class="roadmap-item bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+            <div class="p-4 flex items-center justify-between cursor-pointer" onclick="toggleRoadmapItem(this)">
+                <div class="flex items-center gap-4">
+                    <div class="w-8 h-8 rounded-full ${statusColor} text-white flex items-center justify-center text-sm flex-shrink-0">
+                        ${iconHtml}
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-slate-700 dark:text-slate-200">${feature.title}</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full w-fit mt-1 ${statusBadgeClass}">${statusText}</span>
+                    </div>
+                </div>
+                <i class="fas fa-chevron-down text-slate-400 transition-transform"></i>
+            </div>
+            <div class="roadmap-item-description" style="display: none; padding: 0 1rem 1rem 1rem; border-top: 1px solid var(--border-color);">
+                <p class="text-sm text-slate-600 dark:text-slate-400 pt-4">${feature.description || 'אין פירוט נוסף.'}</p>
+            </div>
+        </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function toggleRoadmapItem(element) {
+    const description = element.nextElementSibling;
+    const icon = element.querySelector('.fa-chevron-down');
+    if (description.style.display === 'none') {
+        description.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        description.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
 }
 
 function toHebrewDateString(dateString) {

@@ -13,7 +13,7 @@ async function sendChavrutaRequest(receiverEmail, bookName) {
         console.log("שולח בקשה:", { receiverEmail, bookName });
 
         // וודא ששם המשתנה כאן (supabase) תואם למה שהגדרת למעלה
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('chavruta_requests')
             .insert([{
                 sender_email: currentUser.email,
@@ -71,15 +71,21 @@ async function respondToRequest(reqId, action) {
                 const partnerEmail = reqData.sender_email === currentUser.email ? reqData.receiver_email : reqData.sender_email;
                 approvedPartners.add(partnerEmail);
                 chavrutaConnections.push({ email: partnerEmail, book: reqData.book_name });
-                renderChavrutas();
+
+                // Find partner name for chat
+                const partnerUser = globalUsersData.find(u => u.email === partnerEmail);
+                const partnerName = partnerUser ? partnerUser.name : partnerEmail.split('@')[0];
+
+                // Switch to chats screen and open the chat, fulfilling the request for it to appear immediately.
+                switchScreen('chats', document.querySelector('.floating-nav-item[onclick*="chats"]'));
+                openChat(partnerEmail, partnerName);
             }
         }
 
         // רענון הנתונים כדי לעדכן את רשימת החברים המאושרים
         document.getElementById('notif-list').innerHTML = '<p style="color:#999; text-align:center;">אין הודעות חדשות</p>';
         document.getElementById('notif-badge').style.display = 'none';
-        renderChavrutas();
-        setTimeout(syncGlobalData, 2000);
+        syncGlobalData(); // Sync immediately to ensure data consistency
 
     } catch (e) {
         console.error(e);
@@ -93,7 +99,7 @@ async function checkIncomingRequests() {
 
     try {
         // שליפת בקשות שבהן המשתמש הנוכחי הוא הנמען והסטטוס ממתין
-        const { data: requests, error } = await supabase
+        const { data: requests, error } = await supabaseClient
             .from('chavruta_requests')
             .select('*')
             .eq('receiver_email', currentUser.email)
@@ -121,7 +127,7 @@ async function checkIncomingRequests() {
                             onclick="respondToRequest('${req.id}', 'rejected')">דחה</button>
                     </div>
                 `;
-                
+
                 // הוספת ההתראה למערכת
                 if (typeof addNotification === 'function') {
                     addNotification(htmlContent, `req-${req.id}`, true);

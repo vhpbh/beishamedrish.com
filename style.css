@@ -322,6 +322,13 @@
             box-shadow: 0 0 0 2px var(--accent);
         }
 
+        .auth-input[type="email"],
+        .auth-input[type="password"],
+        .auth-input[type="tel"] {
+            direction: ltr;
+            text-align: left;
+        }
+
         body.dark-mode .auth-input {
             background-color: #334155;
             color: white;
@@ -1316,7 +1323,8 @@
             width: 100%;
             max-width: 500px;
             padding: 0 1rem;
-            pointer-events: none; /* Allow clicking through the container area */
+            pointer-events: none;
+            /* Allow clicking through the container area */
         }
 
         .floating-nav {
@@ -1326,12 +1334,14 @@
             align-items: center;
             justify-content: space-between;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-            pointer-events: auto; /* Re-enable clicks on the nav itself */
+            pointer-events: auto;
+            /* Re-enable clicks on the nav itself */
         }
 
         .floating-nav-container {
             transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
         .floating-nav-container.nav-hidden {
             transform: translate(-50%, 200%);
         }
@@ -1438,6 +1448,7 @@
         .card-shadow {
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
         }
+
         /* מתג */
         .switch {
             position: relative;
@@ -1875,7 +1886,8 @@
         .chat-footer {
             padding: 1rem;
             background: var(--card-bg);
-            border-top: none; /* Removed mysterious line */
+            border-top: none;
+            /* Removed mysterious line */
             display: flex;
             gap: 0.75rem;
             align-items: center;
@@ -1897,8 +1909,10 @@
 
         .chat-footer input:focus {
             outline: none;
-            box-shadow: none; /* Removed ugly border */
-            background: #f1f5f9; /* Slight highlight like main chat */
+            box-shadow: none;
+            /* Removed ugly border */
+            background: #f1f5f9;
+            /* Slight highlight like main chat */
         }
 
         .chat-footer .btn {
@@ -2460,9 +2474,20 @@
         }
 
         @keyframes celebrate {
-            0% { transform: scale(0.5); opacity: 0; }
-            50% { transform: scale(1.05); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            50% {
+                transform: scale(1.05);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
 
         .animate-popup {
@@ -2698,6 +2723,7 @@
             padding-bottom: 5px;
             scrollbar-width: none;
         }
+
         #search-tags-container::-webkit-scrollbar {
             display: none;
         }
@@ -3512,6 +3538,7 @@
             padding: 8px;
             background: var(--bg);
             border-bottom: 1px solid var(--border-color);
+            display: block;
         }
 
         body.dark-mode .chat-tabs {
@@ -3524,6 +3551,7 @@
             background: #e2e8f0;
             border-radius: 10px;
             padding: 4px;
+            width: 100%;
         }
 
         body.dark-mode .chat-tabs .chat-tabs-inner {
@@ -3556,9 +3584,17 @@
         }
 
         /* Tailwind-like utilities for chat */
-        .rounded-chat { border-radius: 1.25rem; }
-        .rounded-tr-sm { border-top-right-radius: 0.25rem; }
-        .rounded-tl-sm { border-top-left-radius: 0.25rem; }
+        .rounded-chat {
+            border-radius: 1.25rem;
+        }
+
+        .rounded-tr-sm {
+            border-top-right-radius: 0.25rem;
+        }
+
+        .rounded-tl-sm {
+            border-top-left-radius: 0.25rem;
+        }
 
         .chat-list-container {
             padding: 8px;
@@ -3573,7 +3609,8 @@
             border: 1px solid transparent;
             transition: background-color 0.2s;
             cursor: pointer;
-            margin: 0 8px; /* Added margin to prevent sticking to edges */
+            margin: 0 8px;
+            /* Added margin to prevent sticking to edges */
         }
 
         .chat-list-item:hover {
@@ -3994,15 +4031,19 @@
         .soft-shadow {
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
         }
+
         .day-strip {
             border-right: 4px solid #f59e0b;
         }
+
         .floating-nav-container {
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 
-    transform: translate(-50%, 0);
-}
-.floating-nav-container.nav-hidden {
-    transform: translate(-50%, 150px); /* Move it down by more than its height */
+            transform: translate(-50%, 0);
+        }
 
-}
+        .floating-nav-container.nav-hidden {
+            transform: translate(-50%, 150px);
+            /* Move it down by more than its height */
+
+        }

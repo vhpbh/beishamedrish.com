@@ -349,39 +349,3 @@ function showToast(text, type = 'info') {
         setTimeout(() => toast.remove(), 500);
     }, duration);
 }
-
-function customConfirm(msg) {
-    return new Promise(resolve => {
-        document.getElementById('cConfirmMsg').innerText = msg;
-        document.getElementById('customConfirmModal').style.display = 'flex';
-        bringToFront(document.getElementById('customConfirmModal'));
-        document.getElementById('cConfirmOk').onclick = () => {
-            document.getElementById('customConfirmModal').style.display = 'none';
-            resolve(true);
-        };
-        document.getElementById('cConfirmCancel').onclick = () => {
-            document.getElementById('customConfirmModal').style.display = 'none';
-            resolve(false);
-        };
-    });
-}
-
-function customAlert(msg, isHtml = false) {
-    return new Promise(resolve => {
-        document.getElementById('cAlertMsg').innerText = msg;
-        const msgEl = document.getElementById('cAlertMsg');
-        document.getElementById('customAlertModal').style.display = 'flex';
-        bringToFront(document.getElementById('customAlertModal'));
-        if (isHtml) {
-            msgEl.innerHTML = msg;
-        } else {
-            msgEl.innerText = msg;
-        }
-        const btn = document.getElementById('cAlertBtn');
-        btn.onclick = () => {
-            document.getElementById('customAlertModal').style.display = 'none';
-            resolve();
-        };
-    });
-}
-

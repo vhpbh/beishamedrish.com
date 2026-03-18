@@ -3,8 +3,20 @@ const SUPABASE_URL = 'https://dsaxhbmyvjtdmcbxnnlj.supabase.co';
 // אם אתה מקבל שגיאות 401, עליך להעתיק את המפתח הנכון מ: Supabase Dashboard -> Project Settings -> API -> anon public
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15dmp0ZG1jYnhubmxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-setInterval(syncGlobalData, 10000);
-setInterval(sendHeartbeat, 60000); // עדכון סטטוס מחובר כל דקה
+
+let syncInterval = null;
+let heartbeatInterval = null;
+
+function startBackgroundServices() {
+    if (!syncInterval) syncInterval = setInterval(syncGlobalData, 10000);
+    if (!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 60000);
+}
+
+function stopBackgroundServices() {
+    if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+}
+
 // שים לב לשינוי השם ל- supabaseClient
 let globalUsersData = [];
 let blockedUsers = JSON.parse(localStorage.getItem('torahApp_blocked') || "[]");
@@ -20,12 +32,11 @@ let lastChatListHash = ''; // משתנה למניעת הבהוב בצ'אט
 
 async function syncGlobalData() {
     try {
-        console.log("מתחיל סנכרון נתונים מהענן...");
+        // console.log("מתחיל סנכרון נתונים מהענן...");
 
-        // שליפת משתמשים
-        const { data: users, error: usersError } = await supabaseClient
-            .from('users')
-            .select('*');
+        // Securely fetch public user data via RPC, avoiding direct table access and password exposure.
+        const { data: users, error: usersError } = await supabaseClient.rpc('get_public_users_data');
+
         if (usersError) {
             console.error("Supabase Users Error:", usersError);
             if (usersError.code === "PGRST301" || usersError.code === "401" || (usersError.message && usersError.message.includes("JWT"))) await customAlert("שגיאת התחברות (401):<br>מפתח ה-API בקובץ api.js אינו תקין.<br>יש להעתיק את מפתח ה-anon public מלוח הבקרה של Supabase.", true);
@@ -74,7 +85,7 @@ async function syncGlobalData() {
                     if (a.status === b.status) return new Date(b.startDate) - new Date(a.startDate);
                     return a.status === 'active' ? -1 : 1;
                 });
-    
+
                 // עדכון תצוגה אם אנחנו במסך הראשי
                 if (document.getElementById('screen-dashboard').classList.contains('active')) renderGoals();
             }
@@ -113,11 +124,10 @@ async function syncGlobalData() {
 
         // --- בדיקת הודעות צ'אט שלא נקראו (כולל ממנהל) ---
         if (currentUser) {
-            const { data: unreadChats, error: chatError } = await supabaseClient
-                .from('chat_messages')
-                .select('*')
-                .eq('receiver_email', currentUser.email)
-                .eq('is_read', false);
+            // Using RPC to bypass RLS
+            const { data: unreadChats, error: chatError } = await supabaseClient.rpc('get_my_unread_messages', {
+                p_my_email: currentUser.email
+            });
 
             if (unreadChats && unreadChats.length > 0) {
                 unreadChats.forEach(msg => {
@@ -150,20 +160,23 @@ async function syncGlobalData() {
                 const userCompletedGoals = goals.filter(g => (g.user_email || "").trim().toLowerCase() === uEmail && g.status === 'completed');
 
                 // חישוב ניקוד
-                const totalScore = goals
+                const pagesLearned = goals
                     .filter(g => (g.user_email || "").trim().toLowerCase() === uEmail)
                     .reduce((sum, g) => sum + (g.current_unit || 0), 0);
+
+                const totalScore = pagesLearned + (user.reward_points || 0);
 
                 return {
                     id: user.email,
                     name: user.is_anonymous ? "לומד אנונימי" : (user.display_name || "לומד"),
+                    original_name: user.display_name || "לומד", // שם מקורי עבור מנהל
                     city: user.city || "",
                     phone: user.phone || "",
                     address: user.address || "",
                     age: user.age || null,
                     lastSeen: user.last_seen, // נמיר לתאריך עברי בתצוגה
                     email: user.email,
-                    learned: totalScore, // ← זה חשוב!
+                    learned: totalScore, // ← זה חשוב! (שם המשתנה נשאר learned מסיבות תאימות)
                     books: userPersonalGoals.map(g => g.book_name), // ← וזה!
                     completedBooks: userCompletedGoals.map(g => g.book_name),
                     isAnonymous: user.is_anonymous,
@@ -172,7 +185,10 @@ async function syncGlobalData() {
                     password: user.password || '***', // הוספת שדה סיסמה אם קיים
                     reward_points: user.reward_points || 0,
                     chat_rating: user.chat_rating || 0, // דירוג חברתי
-                    isBot: user.is_bot || false,
+                    isBot: user.is_bot || false, // הוספת שדות רצף
+                    current_streak: user.current_streak || 0,
+                    last_streak_date: user.last_streak_date,
+                    badges: user.badges || [],
                     is_banned: user.is_banned || false
                 };
             });
@@ -183,13 +199,13 @@ async function syncGlobalData() {
                 const user = globalUsersData.find(u => u.email === email);
                 const dot = document.getElementById(`online-${email}`);
                 if (user && dot) {
-                    const isOnline = user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000);
+                    const isOnline = email === 'admin@system' || (user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000));
                     if (isOnline) dot.classList.add('active');
                     else dot.classList.remove('active');
                 }
             });
 
-            console.log("סונכרנו בהצלחה: " + globalUsersData.length + " לומדים.");
+            // console.log("סונכרנו בהצלחה: " + globalUsersData.length + " לומדים.");
             renderLeaderboard();
             if (document.getElementById('screen-chavrutas').classList.contains('active')) renderChavrutas();
             if (document.getElementById('screen-chats').classList.contains('active')) renderChatList(currentChatFilter, null, true);
@@ -200,6 +216,7 @@ async function syncGlobalData() {
         // עדכון מסך ניהול בזמן אמת אם הוא פתוח
         if (document.getElementById('screen-admin').classList.contains('active')) renderAdminPanel();
         if (document.getElementById('admin-sec-reports').classList.contains('active')) renderAdminReports();
+        if (document.getElementById('admin-sec-donations') && document.getElementById('admin-sec-donations').classList.contains('active')) renderAdminDonations();
 
         loadChatRating(); // Update rating in dashboard
         // רענון פתקים אם המודאל פתוח (תיקון סנכרון)

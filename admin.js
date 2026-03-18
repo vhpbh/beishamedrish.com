@@ -202,10 +202,22 @@ async function adminDeleteBot(email) {
 
 function switchAdminTab(tabName) {
     document.querySelectorAll('.admin-section').forEach(el => el.classList.remove('active'));
-    document.getElementById(`admin-sec-${tabName}`).classList.add('active');
+
+    let section = document.getElementById(`admin-sec-${tabName}`);
+    // יצירה דינמית של האזור אם הוא חסר (למניעת מסך ריק)
+    if (!section) {
+        const parent = document.getElementById('admin-sec-users')?.parentNode || document.querySelector('.admin-content-area') || document.body;
+        section = document.createElement('div');
+        section.id = `admin-sec-${tabName}`;
+        section.className = 'admin-section';
+        parent.appendChild(section);
+    }
+    section.classList.add('active');
 
     document.querySelectorAll('.admin-tab-btn').forEach(el => el.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    if (typeof event !== 'undefined' && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+    }
 
     if (tabName === 'users') renderAdminUsersTable();
     if (tabName === 'reports') renderAdminReports();
@@ -282,12 +294,22 @@ function renderAdminUsersTable() {
         const onlineIndicator = isOnline ? '<span style="display:inline-block; width:8px; height:8px; background:#22c55e; border-radius:50%; margin-left:5px;" title="מחובר כעת"></span>' : '';
         const subText = (u.subscription && u.subscription.level > 0) ? `<span style="color:#d97706; font-weight:bold;">${u.subscription.name}</span>` : '-';
         const isBanned = u.is_banned;
+        const userBadges = (u.badges || []).map(b => {
+            let badgeColor = '#64748b';
+            if (b.toLowerCase() === 'מנהל') badgeColor = '#ef4444';
+            if (b.toLowerCase() === 'רב האתר') badgeColor = '#3b82f6';
+            return `<span class="admin-badge" style="background-color:${badgeColor};">${b}</span>`;
+        }).join(' ');
 
         const tr = document.createElement('tr');
         if (isBanned) tr.style.background = 'rgba(239, 68, 68, 0.1)';
 
         tr.innerHTML = `
-            <td>${onlineIndicator}${u.name} ${isBanned ? '<span style="color:red; font-weight:bold;">(חסום)</span>' : ''}</td>
+            <td>
+                ${onlineIndicator}${u.name}
+                <div style="display: inline-block; vertical-align: middle;">${userBadges}</div>
+                ${isBanned ? '<span style="color:red; font-weight:bold;">(חסום)</span>' : ''}
+            </td>
             <td>${u.email}</td>
             <td>${u.city}</td>
             <td>${subText}</td>
@@ -296,6 +318,7 @@ function renderAdminUsersTable() {
                 <button class="admin-btn" style="background:#3b82f6; color:white;" onclick="adminViewChats('${u.email}')" title="צפה בצ'אטים"><i class="fas fa-comments"></i></button>
                 <button class="admin-btn" style="background:#f59e0b; color:black;" onclick="adminViewSecurity('${u.email}')" title="צפה בפרטי אבטחה"><i class="fas fa-key"></i></button>
                 <button class="admin-btn" style="background:#14b8a6; color:white;" onclick="adminViewNotes('${u.email}')" title="צפה בהערות"><i class="fas fa-sticky-note"></i></button>
+                <button class="admin-btn" style="background:#d97706; color:white;" onclick="adminEditSubscription('${u.email}')" title="ערוך מנוי/תרומה"><i class="fas fa-hand-holding-usd"></i></button>
                 <button class="admin-btn" style="background:#10b981; color:white;" onclick="adminEditUser('${u.email}')" title="ערוך"><i class="fas fa-edit"></i></button>
                 ${isBanned ?
                 `<button class="admin-btn" style="background:#22c55e; color:white;" onclick="adminUnbanUser('${u.email}')" title="בטל חסימה"><i class="fas fa-unlock"></i></button>` :
@@ -407,11 +430,8 @@ async function renderAdminInbox() {
     list.innerHTML = '<div style="text-align:center; color:#94a3b8;">טוען הודעות...</div>';
 
     // שליפת הודעות שנשלחו ל-admin@system או למייל של המנהל הנוכחי
-    const { data, error } = await supabaseClient
-        .from('chat_messages')
-        .select('*')
-        .eq('receiver_email', 'admin@system') // רק הודעות למערכת
-        .order('created_at', { ascending: false });
+    // Using RPC to bypass RLS for admin inbox
+    const { data, error } = await supabaseClient.rpc('admin_get_inbox');
 
     if (error || !data) {
         list.innerHTML = '<div style="text-align:center; color:#ef4444;">שגיאה בטעינת הודעות</div>';
@@ -454,7 +474,7 @@ async function renderAdminInbox() {
             <div style="color:#cbd5e1; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${conv.lastMsg.message}
             </div>
-            ${conv.unread > 0 ? `<div style="margin-top:5px;"><span style="background:#f59e0b; color:#000; font-size:0.7rem; padding:2px 6px; border-radius:4px;">${conv.unread} חדשות</span></div>` : ''}
+            ${conv.unread > 0 ? `<div style="margin-top:5px;"><span style="background:#f59e0b; color:#000; font-size:0.7rem; padding:2px 6px; border-radius:4px;">${conv.unread} ��דשות</span></div>` : ''}
         `;
         div.onclick = () => {
             // פתיחת צ'אט רגיל עם המשתמש
@@ -466,9 +486,18 @@ async function renderAdminInbox() {
 }
 
 function renderAdminDonations() {
-    const currentProgress = localStorage.getItem('torahApp_campaign_progress') || 60;
-    const container = document.getElementById('adminDonationsList');
+    const section = document.getElementById('admin-sec-donations');
+    if (!section) return;
 
+    const currentProgress = localStorage.getItem('torahApp_campaign_progress') || 60;
+
+    // סינון תורמים בצורה בטוחה
+    const donors = globalUsersData.filter(u => {
+        const sub = u.subscription || {};
+        return (parseInt(sub.level) || 0) > 0 || (parseInt(sub.amount) || 0) > 0;
+    });
+
+    // בניית ה-HTML של כל הלשונית
     let html = `
         <div style="background:#0f172a; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #334155;">
             <h4 style="color:#fff; margin-top:0;">ניהול קמפיין תרומות</h4>
@@ -483,15 +512,21 @@ function renderAdminDonations() {
             <textarea id="adminDonorsMsg" class="admin-input" placeholder="הקלד הודעה..." style="height: 80px;"></textarea>
             <button class="admin-btn" style="background: #8b5cf6; color: #fff; font-size: 1rem; padding: 8px 15px; margin-top: 10px;" onclick="adminSendToDonors()">שלח לכולם</button>
         </div>
-        <h3 style="color:#fff; border:none; margin-bottom:15px;">רשימת תורמים ומנויים</h3>
+        <div style="background:#0f172a; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #334155;">
+            <h4 style="color:#fff; margin-top:0;">הוספת מנוי/תרומה למשתמש</h4>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="manualSubEmail" class="admin-input" placeholder="חפש או הקלד אימייל..." list="users-datalist-admin" style="flex:1;">
+                <datalist id="users-datalist-admin">${globalUsersData.map(u => `<option value="${u.email}">${u.name}</option>`).join('')}</datalist>
+                <button class="admin-btn" style="background:#22c55e; color:#fff; font-size:1rem;" onclick="adminAddManualSubscription()">הוסף</button>
+            </div>
+        </div>
+        <h3 style="color:#fff; border:none; margin-bottom:15px;">רשימת תורמים ומנויים (${donors.length})</h3>
     `;
 
-    // Table
-    const donors = globalUsersData.filter(u => u.subscription && u.subscription.level > 0);
     // Sort by subscription date, newest first
     donors.sort((a, b) => {
-        const dateA = a.subscription.subscription_date ? new Date(a.subscription.subscription_date) : new Date(0);
-        const dateB = b.subscription.subscription_date ? new Date(b.subscription.subscription_date) : new Date(0);
+        const dateA = a.subscription && a.subscription.subscription_date ? new Date(a.subscription.subscription_date) : new Date(0);
+        const dateB = b.subscription && b.subscription.subscription_date ? new Date(b.subscription.subscription_date) : new Date(0);
         return dateB - dateA;
     });
 
@@ -499,22 +534,26 @@ function renderAdminDonations() {
         html += '<div style="color:#94a3b8; text-align:center; padding:20px;">אין מנויים פעילים כרגע.</div>';
     } else {
         html += `<div style="overflow-x:auto;"><table class="admin-table">
-            <thead><tr style="background:#0f172a;"><th>שם</th><th>אימייל</th><th>מסלול</th><th>סכום חודשי</th><th>תאריך הצטרפות</th></tr></thead>
+            <thead><tr style="background:#0f172a;"><th>שם</th><th>אימייל</th><th>מסלול</th><th>סכום חודשי</th><th>תאריך הצטרפות</th><th>פעולות</th></tr></thead>
             <tbody>`;
         donors.forEach(u => {
-            const joinDate = u.subscription.subscription_date ? new Date(u.subscription.subscription_date).toLocaleDateString('he-IL') : 'לא ידוע';
+            const sub = u.subscription || {};
+            const joinDate = sub.subscription_date ? new Date(sub.subscription_date).toLocaleDateString('he-IL') : '-';
             html += `<tr>
                 <td>${u.name}</td>
                 <td>${u.email}</td>
-                <td>${u.subscription.name}</td>
-                <td>₪${u.subscription.amount}</td>
+                <td>${sub.name || '-'}</td>
+                <td>₪${sub.amount || 0}</td>
                 <td>${joinDate}</td>
+                <td>
+                    <button class="admin-btn" style="background:#d97706; color:white; padding:4px 8px;" onclick="adminEditSubscription('${u.email}')" title="ערוך מנוי"><i class="fas fa-edit"></i></button>
+                </td>
             </tr>`;
         });
         html += `</tbody></table></div>`;
     }
 
-    container.innerHTML = html;
+    section.innerHTML = html;
 }
 
 function updateAdminChart() {
@@ -588,14 +627,30 @@ async function adminSendToDonors() {
     }));
 
     try {
-        const { error } = await supabaseClient.from('chat_messages').insert(messages);
-        if (error) throw error;
+        // Using a loop of RPC calls to bypass RLS, as batch insert isn't straightforward with RPC.
+        for (const message of messages) {
+            const { error } = await supabaseClient.rpc('send_message', {
+                p_sender_email: message.sender_email,
+                p_receiver_email: message.receiver_email,
+                p_message: message.message,
+                p_is_html: message.is_html || false
+            });
+            if (error) throw error;
+        }
         showToast(`הודעה נשלחה ל-${donors.length} תורמים.`, 'success');
         document.getElementById('adminDonorsMsg').value = '';
     } catch (e) {
         console.error(e);
         await customAlert('שגיאה בשליחת ההודעות.');
     }
+}
+
+async function adminAddManualSubscription() {
+    const email = document.getElementById('manualSubEmail').value.trim();
+    if (!email) return customAlert("נא להזין אימייל.");
+    const user = globalUsersData.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!user) return customAlert("משתמש לא נמצא.");
+    await adminEditSubscription(email);
 }
 
 async function adminViewChats(email) {
@@ -606,11 +661,10 @@ async function adminViewChats(email) {
     content.innerHTML = '<div style="text-align:center;">טוען רשימת צ\'אטים...</div>';
 
     // שליפת כל ההודעות של המשתמש כדי לקבץ לפי שיחות
-    const { data, error } = await supabaseClient
-        .from('chat_messages')
-        .select('sender_email, receiver_email, message, created_at')
-        .or(`sender_email.eq.${email},receiver_email.eq.${email}`)
-        .order('created_at', { ascending: false });
+    // Using RPC to bypass RLS for admin view
+    const { data, error } = await supabaseClient.rpc('admin_get_user_chats', {
+        p_user_email: email
+    });
 
     if (error) {
         content.innerHTML = '<div style="color:red; text-align:center;">שגיאה בטעינת הודעות</div>';
@@ -697,19 +751,149 @@ async function adminDeleteUser(email) {
 async function adminEditUser(email) {
     const u = globalUsersData.find(user => user.email === email);
     if (!u) return;
-    const newName = await customPrompt('שם חדש:', u.name);
+    const newName = await customPrompt('שם חדש:', u.original_name || u.name);
     if (newName === null) return;
+
     const newCity = await customPrompt('עיר חדשה:', u.city);
     if (newCity === null) return;
 
-    if (newName !== null && newCity !== null) {
+    const currentPoints = u.reward_points || 0;
+    const newPointsStr = await customPrompt(`ערוך נקודות זכות (לא כולל דפים, כרגע: ${currentPoints}):`, currentPoints);
+    if (newPointsStr === null) return;
+
+    const newPoints = parseInt(newPointsStr);
+    if (isNaN(newPoints)) {
+        return customAlert('ערך לא תקין לנקודות.');
+    }
+
+    const currentBadges = (u.badges || []).join(',');
+    const newBadgesStr = await customPrompt(`ערוך תגיות (מופרד בפסיק, למשל: מנהל,רב האתר):`, currentBadges);
+    if (newBadgesStr === null) return;
+
+    const newBadges = newBadgesStr.split(',').map(b => b.trim()).filter(b => b);
+
+    // עריכת מנוי ותרומה
+    const currentSub = u.subscription || { level: 0, amount: 0, name: '' };
+    const newSubLevelStr = await customPrompt(`רמת מנוי (0-7, כרגע: ${currentSub.level || 0}):`, currentSub.level || 0);
+    if (newSubLevelStr === null) return;
+    const newSubLevel = parseInt(newSubLevelStr);
+
+    const newSubAmountStr = await customPrompt(`סכום תרומה/מנוי (כרגע: ${currentSub.amount || 0}):`, currentSub.amount || 0);
+    if (newSubAmountStr === null) return;
+    const newSubAmount = parseInt(newSubAmountStr);
+
+    let newSubName = currentSub.name || '';
+    if (newSubLevel > 0) {
+        newSubName = await customPrompt(`שם המנוי (למשל: תומך כשר, כרגע: ${newSubName || ''}):`, newSubName);
+        if (newSubName === null) return;
+    }
+
+    if (newName !== null && newCity !== null && newPointsStr !== null && newBadgesStr !== null && newSubLevelStr !== null && newSubAmountStr !== null) {
         try {
-            const { error } = await supabaseClient.from('users').update({ display_name: newName, city: newCity }).eq('email', email);
+            const subscriptionData = {
+                level: newSubLevel,
+                amount: newSubAmount,
+                name: newSubName,
+                subscription_date: (currentSub.subscription_date && newSubLevel === currentSub.level) ? currentSub.subscription_date : new Date().toISOString()
+            };
+
+            const { error } = await supabaseClient.from('users').update({
+                display_name: newName,
+                city: newCity,
+                reward_points: newPoints,
+                badges: newBadges,
+                subscription: subscriptionData
+            }).eq('email', email);
             if (error) throw error;
             showToast('עודכן בהצלחה', "success");
+
+            // הפעלת סייד-אפקטס של תרומה (הודעות וכו') אם המנהל מאשר
+            if (newSubAmount > 0 || newSubLevel > 0) {
+            await triggerDonationSideEffects(email, newName, newSubLevel, newSubAmount, newSubName);
+            }
+
             await syncGlobalData();
             renderAdminPanel();
         } catch (e) { await customAlert('שגיאה בעדכון: ' + e.message); }
+    }
+}
+
+async function triggerDonationSideEffects(userEmail, userName, level, amount, subName) {
+    try {
+        // 1. שליפת חברותות (שותפים)
+        const { data: requests, error: reqError } = await supabaseClient
+            .from('chavruta_requests')
+            .select('*')
+            .eq('status', 'approved')
+            .or(`sender_email.eq.${userEmail},receiver_email.eq.${userEmail}`);
+
+        if (reqError) throw reqError;
+
+        const partners = new Set();
+        if (requests) {
+            requests.forEach(r => {
+                const p = r.sender_email === userEmail ? r.receiver_email : r.sender_email;
+                partners.add(p);
+            });
+        }
+
+        let msgToPartners = '';
+        if (level > 0) {
+            const buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectTier(${level}, ${amount})'>לרכישת אותו מסלול</button>`;
+            msgToPartners = `היי! בדיוק הצטרפתי למנוי "${subName}" בבית המדרש כדי להחזיק תורה. לא תרצה לעשות זאת גם אתה?${buttonHtml}`;
+        } else if (amount > 0) {
+            const buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectOneTime(${amount})'>גם אני רוצה לתרום</button>`;
+            msgToPartners = `היי! הרגע תרמתי ₪${amount} לחיזוק בית המדרש. זכות גדולה! ממליץ גם לך :)${buttonHtml}`;
+        }
+
+        if (msgToPartners && partners.size > 0) {
+            for (const partnerEmail of partners) {
+                await supabaseClient.rpc('send_message', {
+                    p_sender_email: userEmail,
+                    p_receiver_email: partnerEmail,
+                    p_message: msgToPartners,
+                    p_is_html: true
+                });
+            }
+        }
+
+        // 2. שליפת עוקבים
+        const { data: followers, error: followError } = await supabaseClient
+            .from('user_followers')
+            .select('follower_email')
+            .eq('following_email', userEmail);
+
+        if (followError) throw followError;
+
+        if (followers && followers.length > 0) {
+            let msgToFollowers = '';
+            let buttonHtml = '';
+
+            if (level > 0) {
+                buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectTier(${level}, ${amount})'>לרכישת אותו מסלול</button>`;
+                msgToFollowers = `המשתמש ${userName} הצטרף למנוי ${subName} בבית המדרש!`;
+            } else if (amount > 0) {
+                buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectOneTime(${amount})'>גם אני רוצה לתרום</button>`;
+                msgToFollowers = `המשתמש ${userName} תרם לחיזוק בית המדרש!`;
+            }
+
+            if (msgToFollowers) {
+                for (const f of followers) {
+                    await supabaseClient.rpc('send_message', {
+                        p_sender_email: 'updates@system',
+                        p_receiver_email: f.follower_email,
+                        p_message: msgToFollowers + buttonHtml,
+                        p_is_html: true
+                    });
+                }
+            }
+        }
+
+        showToast("התראות נשלחו בהצלחה", "success");
+
+    } catch (e) {
+        console.error("Error triggering donation side effects:", e);
+        await customAlert("שגיאה בשליחת התראות: " + e.message);
     }
 }
 
@@ -747,7 +931,7 @@ async function renderAdminReports() {
 
 async function renderAdminShop() {
     // This function will render the forms and lists for shop and lotteries.
-    
+
     // Render Item Form
     // טופס הוספה/עריכה משופר
     document.getElementById('adminShopItemForm').innerHTML = `
@@ -813,10 +997,10 @@ async function renderAdminShop() {
 async function renderAdminShopItems() {
     const list = document.getElementById('adminShopItemsList');
     list.innerHTML = '<div style="text-align:center; color:#94a3b8;">טוען פריטים...</div>';
-    
+
     const { data, error } = await supabaseClient.from('shop_items').select('*').order('created_at', { ascending: false });
     if (error) { list.innerHTML = 'שגיאה בטעינת פריטים'; return; }
-    
+
     let html = '<table class="admin-table"><thead><tr><th>תמונה</th><th>שם</th><th>סוג</th><th>מחיר</th><th>פעיל</th><th>פעולות</th></tr></thead><tbody>';
     data.forEach(item => {
         html += `<tr>
@@ -843,7 +1027,7 @@ function editShopItem(item) {
     document.getElementById('shopItemImage').value = item.image_url || '';
     document.getElementById('shopItemDesc').value = item.description || '';
     document.getElementById('adminImgPreview').src = item.image_url || '';
-    
+
     // גלילה לטופס
     document.getElementById('adminShopItemForm').scrollIntoView({ behavior: 'smooth' });
 }
@@ -877,11 +1061,11 @@ async function saveShopItem() {
     const item_type = document.getElementById('shopItemType').value;
     const price = parseInt(document.getElementById('shopItemPrice').value);
     const image_url = document.getElementById('shopItemImage').value;
-    
+
     if (!name || !price || !item_type) return customAlert("נא למלא שדות חובה (שם, מחיר, סוג)");
 
     const record = { name, description, item_type, price, image_url };
-    
+
     try {
         let query;
         if (id) {
@@ -891,7 +1075,7 @@ async function saveShopItem() {
         }
         const { error } = await query;
         if (error) throw error;
-        
+
         showToast('פריט נשמר בהצלחה', 'success');
         // איפוס טופס
         document.getElementById('shopItemId').value = '';
@@ -900,9 +1084,9 @@ async function saveShopItem() {
         document.getElementById('shopItemImage').value = '';
         document.getElementById('shopItemDesc').value = '';
         document.getElementById('adminImgPreview').src = '';
-        
+
         renderAdminShopItems();
-    } catch(e) {
+    } catch (e) {
         await customAlert('שגיאה בשמירת פריט: ' + e.message);
     }
 }
@@ -913,7 +1097,7 @@ async function deleteShopItem(id) {
     try {
         await supabaseClient.from('shop_items').delete().eq('id', id);
         renderAdminShopItems();
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
 }
 async function deleteLotteryItem(id) { /* ... */ }
 
@@ -925,7 +1109,7 @@ async function drawLotteryWinner(lotteryId) {
             .from('lottery_entries')
             .select('user_email')
             .eq('lottery_id', lotteryId);
-        
+
         if (entriesError) throw entriesError;
         if (entries.length === 0) return customAlert('אף אחד לא נרשם להגרלה זו.');
 
@@ -936,13 +1120,13 @@ async function drawLotteryWinner(lotteryId) {
             .from('lottery_items')
             .update({ winner_email: winnerEmail, is_active: false })
             .eq('id', lotteryId);
-        
+
         if (updateError) throw updateError;
 
         await customAlert(`הזוכה הוא: ${winnerEmail}`);
         renderAdminLotteries();
 
-    } catch(e) {
+    } catch (e) {
         await customAlert('שגיאה בביצוע ההגרלה: ' + e.message);
     }
 }
@@ -961,12 +1145,10 @@ async function adminBanUser(email) {
 async function checkAdminMessagesForUser() {
     if (!currentUser) return;
 
-    const { data, error } = await supabaseClient
-        .from('chat_messages')
-        .select('*')
-        .eq('receiver_email', currentUser.email)
-        .eq('sender_email', 'admin@system')
-        .eq('is_read', false);
+    // Using RPC to bypass RLS
+    const { data, error } = await supabaseClient.rpc('get_unread_admin_messages', {
+        p_my_email: currentUser.email
+    });
 
     const badge = document.getElementById('profileAdminBadge');
     if (!badge) return; // הגנה מפני קריסה אם האלמנט לא קיים
@@ -1012,5 +1194,55 @@ async function renderAdminTools() {
         });
     } else {
         list.innerHTML = '<div style="color:#94a3b8;">אין בוטים מוגדרים.</div>';
+    }
+}
+
+async function adminEditSubscription(email) {
+    const u = globalUsersData.find(user => user.email === email);
+    if (!u) return;
+
+    const currentSub = u.subscription || { level: 0, amount: 0, name: '' };
+
+    const newSubAmountStr = await customPrompt(`סכום תרומה/מנוי (כרגע: ${currentSub.amount || 0}):`, currentSub.amount || 0);
+    if (newSubAmountStr === null) return;
+    const newSubAmount = parseInt(newSubAmountStr);
+
+    if (isNaN(newSubAmount)) return customAlert("סכום לא תקין.");
+
+    // חישוב אוטומטי של רמה ושם לפי הסכום
+    let newSubLevel = 0;
+    let newSubName = '';
+    if (newSubAmount > 0) {
+        // מציאת הדרגה המתאימה (הגבוהה ביותר שהסכום מכסה)
+        const tier = SUBSCRIPTION_TIERS.slice().reverse().find(t => t.price <= newSubAmount);
+        if (tier) {
+            newSubLevel = tier.level;
+            newSubName = tier.name;
+        }
+    }
+
+    try {
+        const subscriptionData = {
+            level: newSubLevel,
+            amount: newSubAmount,
+            name: newSubName,
+            subscription_date: (currentSub.subscription_date && newSubLevel === currentSub.level) ? currentSub.subscription_date : new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient.from('users').update({ subscription: subscriptionData }).eq('email', email);
+        if (error) throw error;
+        
+        showToast(`מנוי עודכן: ${newSubName || 'ללא'} (רמה ${newSubLevel}, סכום ${newSubAmount})`, "success");
+
+        if (newSubAmount > 0 || newSubLevel > 0) {
+            await triggerDonationSideEffects(email, u.name, newSubLevel, newSubAmount, newSubName);
+        }
+        
+        await syncGlobalData();
+        if (document.getElementById('admin-sec-users').classList.contains('active')) renderAdminUsersTable();
+        if (document.getElementById('admin-sec-donations') && document.getElementById('admin-sec-donations').classList.contains('active')) renderAdminDonations();
+
+    } catch(e) {
+        await customAlert('שגיאה בעדכון: ' + e.message);
     }
 }

@@ -1,11 +1,10 @@
 async function searchChats(query) {
     if (!currentUser) return [];
-    const { data, error } = await supabaseClient
-        .from('chat_messages')
-        .select('*')
-        // כאן הוספנו בדיקה אם ההודעה היא "כללית" (is_public) או "מזל טוב"
-        .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email},receiver_email.is.null,receiver_email.eq.global`)
-        .ilike('message', `%${query}%`);
+    // Using RPC to bypass RLS for chat search
+    const { data, error } = await supabaseClient.rpc('search_my_chats', {
+        p_my_email: currentUser.email,
+        p_query: query
+    });
 
     if (error) {
         console.error("Chat search error:", error);
@@ -48,18 +47,13 @@ async function checkNewMessagesFor(partnerEmail) {
     }
 
     try {
-        let query = supabaseClient.from('chat_messages').select('*');
-
-        if (partnerEmail.startsWith('book:')) {
-            query = query.eq('receiver_email', partnerEmail);
-        } else {
-            query = query.or(`and(sender_email.eq.${partnerEmail},receiver_email.eq.${currentUser.email}),and(sender_email.eq.${currentUser.email},receiver_email.eq.${partnerEmail})`);
-        }
-
-        const { data } = await query
-            .gt('created_at', lastTime)
-            .order('created_at', { ascending: true });
-
+        // Using RPC to bypass RLS for polling new messages
+        const { data, error } = await supabaseClient.rpc('get_new_messages', {
+            p_my_email: currentUser.email,
+            p_partner_email: partnerEmail,
+            p_last_time: lastTime
+        });
+        if (error) throw error;
         if (data && data.length > 0) {
             data.forEach(msg => {
                 const type = msg.sender_email.toLowerCase() === currentUser.email.toLowerCase() ? 'me' : 'other';
@@ -98,11 +92,28 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     if (partnerEmail === 'updates@system') {
         partnerName = 'עדכונים מהנעקבים';
     }
+    if (partnerEmail === 'mentions@system') {
+        partnerName = 'אזכורים ותיוגים';
+    }
+    const isUpdates = partnerEmail === 'updates@system';
+    const isMentions = partnerEmail === 'mentions@system';
 
     // If we are in the Chats screen, open it there instead of floating
     if (!forceFloating && document.getElementById('screen-chats').classList.contains('active')) {
         loadChatIntoMainArea(partnerEmail, partnerName);
         return;
+    }
+
+    let bookOnlineCount = 0;
+    if (isBook) {
+        const bookName = partnerEmail.replace('book:', '');
+        const now = new Date();
+        bookOnlineCount = globalUsersData.filter(u =>
+            u.books &&
+            u.books.includes(bookName) &&
+            u.lastSeen &&
+            (now - new Date(u.lastSeen) < 5 * 60 * 1000)
+        ).length;
     }
 
     // בדיקה אם החלון כבר קיים
@@ -125,14 +136,17 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     const blockIconColor = isBlocked ? '#ef4444' : '#ef4444';
     const banIconClass = isBlocked ? 'text-red-500' : 'text-red-400'; // Red by default for visibility
     const isSystem = partnerEmail === 'admin@system';
-    const banStyle = (isSystem || isBook) ? 'display:none;' : `color:${blockIconColor}; cursor:pointer;`;
+    const banStyle = (isSystem || isBook || isUpdates) ? 'display:none;' : `color:${blockIconColor}; cursor:pointer;`;
 
     const chatHtml = `
         <div class="chat-window ${blockClass} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl overflow-hidden flex flex-col" id="chat-window-${partnerEmail}">
             <div class="chat-header bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 flex justify-between items-center cursor-pointer" onclick="toggleChatWindow('${partnerEmail}')">
                 <div class="flex items-center gap-3">
-                    ${isBook ? '<i class="fas fa-book"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`}
-                    <span class="font-bold text-slate-800 dark:text-white">${partnerName}</span>
+                    ${isBook ? '<i class="fas fa-book"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`))}
+                    <div class="flex flex-col">
+                        <span class="font-bold text-slate-800 dark:text-white leading-tight">${partnerName}</span>
+                        ${isBook ? `<span class="text-[10px] text-slate-500 dark:text-slate-400 font-normal">${bookOnlineCount} לומדים מחוברים</span>` : ''}
+                    </div>
                 </div>
                 <div class="flex items-center gap-3 text-slate-400">
                     <i class="fas fa-ban ${banIconClass} hover:text-red-600 transition-colors" onclick="event.stopPropagation(); openReportModal('${partnerEmail}')" title="דיווח וחסימה" style="${banStyle}" id="block-btn-${partnerEmail}"></i>
@@ -146,17 +160,21 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
                     <div class="chat-loading-indicator" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fas fa-circle-notch fa-spin"></i> טוען צ'אט...</div>
                 </div>
                 <div class="typing-indicator-box" id="typing-${partnerEmail}"></div>
-                <footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                ${isUpdates || isMentions ?
+            `<footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-center text-sm text-slate-500">ערוץ לקריאה בלבד</footer>` :
+            `<footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
                     <div class="max-w-5xl mx-auto relative flex items-center gap-3">
+                        <div id="mentions-popup-${partnerEmail}" class="mentions-popup"></div>
                         <input type="text" id="input-${partnerEmail}" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..." 
-                        oninput="handleTyping('${partnerEmail}')" 
+                        oninput="handleTyping('${partnerEmail}'); handleMentionInput(event, '${partnerEmail}')" 
                         onkeyup="saveChatDraft('${partnerEmail}', this.value)"
-                        onkeypress="if(event.key === 'Enter') sendMessage('${partnerEmail}')">
+                        onkeypress="if(event.key === 'Enter' && !isMentionPopupActive()) sendMessage('${partnerEmail}')"
+                        onkeydown="return handleMentionKeyDown(event, '${partnerEmail}')">
                         <button class="w-12 h-12 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-slate-800 transition-transform active:scale-95 shadow-md shrink-0" onclick="sendMessage('${partnerEmail}')">
                             <span class="material-icons-round transform -scale-x-100">send</span>
                         </button>
                     </div>
-                </footer>
+                </footer>`}
             </div>
         </div>
     `;
@@ -166,9 +184,9 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     rearrangeMinimizedWindows();
 
     // בדיקת סטטוס מחובר
-    if (!isBook) {
+    if (!isBook && !isUpdates) {
         const partner = globalUsersData.find(u => u.email === partnerEmail);
-        if (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000)) {
+        if (partnerEmail === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000))) {
             document.getElementById(`online-${partnerEmail}`).classList.add('active');
         }
     }
@@ -192,11 +210,17 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
 }
 
 function expandChatToScreen(email, name) {
-    // Close the popup
     closeChatWindow(email);
-    // Switch to chats screen
-    switchScreen('chats');
-    // Load the specific chat
+
+    let category = 'personal';
+    if (email.startsWith('book:')) category = 'public';
+    else if (email.includes('@system')) category = 'other';
+    else if (typeof approvedPartners !== 'undefined' && !approvedPartners.has(email)) category = 'archive';
+
+    // מעבר למסך הצ'אטים עם הקטגוריה המתאימה
+    const navItem = document.querySelector('.floating-nav-item[onclick*="chats"]');
+    switchScreen('chats', navItem, category);
+
     loadChatIntoMainArea(email, name);
 }
 
@@ -210,6 +234,11 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     document.querySelectorAll('.chat-tab').forEach(t => t.classList.remove('active'));
     if (tabEl && tabEl.classList.contains('chat-tab')) {
         tabEl.classList.add('active');
+    } else {
+        const tabs = document.querySelectorAll('.chat-tabs-inner .chat-tab');
+        if (filter === 'personal' && tabs[0]) tabs[0].classList.add('active');
+        else if (filter === 'public' && tabs[1]) tabs[1].classList.add('active');
+        else if (filter === 'other' && tabs[2]) tabs[2].classList.add('active');
     }
     // If it's archive, no tab is active, and we can show a title
     if (filter === 'archive') {
@@ -228,50 +257,82 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     }
 
     // Fetch all messages involving me to find unique partners
-    const { data } = await supabaseClient.from('chat_messages')
-        .select('sender_email, receiver_email, message, created_at, is_read')
-        .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
-        .order('created_at', { ascending: false });
-
-    if (!data) {
-        const emptyHtml = '<div class="text-center p-5 text-slate-500">אין צ\'אטים.</div>';
-        container.innerHTML = emptyHtml;
-        localStorage.setItem(cacheKey, emptyHtml);
-        return;
-    }
+    const { data, error } = await supabaseClient.rpc('get_my_conversations', {
+        p_my_email: currentUser.email
+    });
+    if (error) console.error("Error fetching conversations:", error);
 
     const partners = new Set();
     const chats = [];
 
-    data.forEach(msg => {
-        const isMe = msg.sender_email === currentUser.email;
-        const partner = isMe ? msg.receiver_email : msg.sender_email;
+    if (data) {
+        data.forEach(msg => {
+            const isMe = msg.sender_email === currentUser.email;
+            const partner = isMe ? msg.receiver_email : msg.sender_email;
 
-        if (!partners.has(partner)) {
-            partners.add(partner);
+            if (!partners.has(partner)) {
+                partners.add(partner);
 
-            let category;
-            if (partner.startsWith('book:')) {
-                category = 'public';
-            } else if (partner === 'admin@system' || partner === 'updates@system') {
-                category = 'other';
-            } else if (approvedPartners.has(partner)) {
-                category = 'personal';
-            } else {
-                // This is a chat with a user who is not a book, not system, and not an approved partner.
-                category = 'archive';
+                let category;
+                if (partner.startsWith('book:')) {
+                    category = 'public';
+                } else if (partner.includes('@system')) {
+                    category = 'other';
+                } else if (approvedPartners.has(partner)) {
+                    category = 'personal';
+                } else {
+                    // This is a chat with a user who is not a book, not system, and not an approved partner.
+                    category = 'archive';
+                }
+
+                if (category === filter) {
+                    chats.push({
+                        email: partner,
+                        lastMsg: msg.message,
+                        time: msg.created_at,
+                        unread: (!isMe && !msg.is_read)
+                    });
+                }
             }
+        });
+    }
 
-            if (category === filter) {
+    // הוספת צ'אטים של ספרים פעילים לרשימה הציבורית (גם אם לא נשלחה הודעה)
+    if (filter === 'public' && typeof userGoals !== 'undefined') {
+        userGoals.forEach(goal => {
+            if (goal.status === 'active') {
+                const bookEmail = 'book:' + goal.bookName;
+                if (!partners.has(bookEmail)) {
+                    partners.add(bookEmail);
+                    chats.push({
+                        email: bookEmail,
+                        lastMsg: 'הצטרף לשיח הלומדים',
+                        time: goal.startDate || new Date().toISOString(),
+                        unread: false
+                    });
+                }
+            }
+        });
+    }
+
+    // If viewing 'personal' chats, ensure all approved partners are listed, even without messages.
+    if (filter === 'personal') {
+        approvedPartners.forEach(partnerEmail => {
+            // Check if this partner is already in the chat list (from the message query)
+            if (!partners.has(partnerEmail)) {
+                partners.add(partnerEmail); // Add to the set to avoid duplicates
                 chats.push({
-                    email: partner,
-                    lastMsg: msg.message,
-                    time: msg.created_at,
-                    unread: (!isMe && !msg.is_read)
+                    email: partnerEmail,
+                    lastMsg: 'קבעתם חברותא! התחילו את השיחה.',
+                    time: new Date().toISOString(), // Use current time to appear at the top
+                    unread: false
                 });
             }
-        }
-    });
+        });
+    }
+
+    // Sort all chats by time, newest first
+    chats.sort((a, b) => new Date(b.time) - new Date(a.time));
 
     let newHTML = '';
 
@@ -292,12 +353,16 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
 
     // Ensure system chats are always present in 'other'
     if (filter === 'other') {
-        const systemChats = ['admin@system', 'updates@system'];
+        const systemChats = ['admin@system', 'updates@system', 'mentions@system'];
         systemChats.forEach(sysEmail => {
             if (!chats.some(c => c.email === sysEmail)) {
+                let desc = '';
+                if (sysEmail === 'admin@system') desc = 'הודעות מערכת והנהלה';
+                else if (sysEmail === 'updates@system') desc = 'עדכונים מהנעקבים';
+                else if (sysEmail === 'mentions@system') desc = 'אזכורים ותיוגים אישיים';
                 chats.push({
                     email: sysEmail,
-                    lastMsg: sysEmail === 'admin@system' ? 'הודעות מערכת והנהלה' : 'עדכונים שוטפים',
+                    lastMsg: desc,
                     time: new Date().toISOString(),
                     unread: false
                 });
@@ -308,12 +373,11 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     if (chats.length === 0) {
         newHTML = '<div class="text-center p-5 text-slate-400">אין צ\'אטים בקטגוריה זו.</div>';
     } else {
-
         chats.forEach(chat => {
             const user = globalUsersData.find(u => u.email && chat.email && u.email.toLowerCase() === chat.email.toLowerCase());
-            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'הנהלה' : (chat.email === 'updates@system' ? 'עדכונים מהנעקבים' : chat.email.split('@')[0])));
+            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'מנהל' : (chat.email === 'updates@system' ? 'עדכונים מהנעקבים' : (chat.email === 'mentions@system' ? 'אזכורים' : chat.email.split('@')[0]))));
 
-            const isOnline = user && user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000);
+            const isOnline = chat.email === 'admin@system' || (user && user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000));
             const onlineHtml = isOnline ? `<span class="w-2 h-2 rounded-full bg-emerald-500 inline-block ml-1"></span>` : '';
 
             const msgDate = new Date(chat.time);
@@ -322,7 +386,7 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
             const timeDisplay = isToday ? msgDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : msgDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
 
             newHTML += `
-            <div class="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors cursor-pointer border border-transparent ${chat.unread ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100' : ''}" onclick="loadChatIntoMainArea('${chat.email}', '${name.replace(/'/g, "\\'")}', this)">
+            <div class="chat-list-item p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors cursor-pointer border border-transparent ${chat.unread ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : ''}" onclick="loadChatIntoMainArea('${chat.email}', '${name.replace(/'/g, "\\'")}', this)">
                 <div class="flex justify-between items-start mb-1">
                     <span class="font-bold text-slate-900 dark:text-white flex items-center gap-1">
                         ${name}
@@ -347,23 +411,39 @@ function loadChatIntoMainArea(email, name, el) {
     main.innerHTML = ''; // Clear current
 
     // Highlight active chat in sidebar
-    document.querySelectorAll('.p-3').forEach(item => item.classList.remove('bg-slate-100', 'dark:bg-slate-800'));
+    document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('bg-slate-100', 'dark:bg-slate-800'));
     if (el) {
         el.classList.add('bg-slate-100', 'dark:bg-slate-800');
         el.classList.remove('bg-blue-50', 'dark:bg-blue-900/20'); // Remove unread style
         const dot = el.querySelector('.chat-list-unread-dot');
-        if(dot) dot.remove();
+        if (dot) dot.remove();
     }
 
     const isBlocked = blockedUsers.includes(email);
     const blockIconColor = isBlocked ? '#ef4444' : '#94a3b8';
     const isBook = email.startsWith('book:');
+    const isUpdates = email === 'updates@system';
+    const isMentions = email === 'mentions@system';
     const isArchived = !isBook && !email.includes('@system') && !approvedPartners.has(email);
-    const isSystem = email === 'admin@system' || email === 'updates@system';
-    
+    const isSystem = email.includes('@system');
+
+    let bookOnlineCount = 0;
+    if (isBook) {
+        const bookName = email.replace('book:', '');
+        const now = new Date();
+        bookOnlineCount = globalUsersData.filter(u =>
+            u.books &&
+            u.books.includes(bookName) &&
+            u.lastSeen &&
+            (now - new Date(u.lastSeen) < 5 * 60 * 1000)
+        ).length;
+    }
+
     const partner = globalUsersData.find(u => u.email === email);
-    const isOnline = partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000);
+    const isOnline = email === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000));
     const statusText = isOnline ? 'מחובר כעת' : 'לא מחובר';
+    // עדכון טקסט סטטוס לצ'אט עדכונים
+    const finalStatusText = isBook ? `${bookOnlineCount} לומדים מחוברים` : (isUpdates ? 'ערוץ עדכונים' : (isMentions ? 'מערכת התראות' : statusText));
     const statusColorClass = isOnline ? 'text-emerald-500' : 'text-red-500';
     const statusDotBgClass = isOnline ? 'bg-emerald-400' : 'bg-red-500';
     const avatarInitial = name.charAt(0);
@@ -373,12 +453,12 @@ function loadChatIntoMainArea(email, name, el) {
         <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center px-6 justify-between shadow-sm z-20">
             <div class="flex items-center gap-3">
                 <div class="relative">
-                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white">${isBook ? '<i class="fas fa-book"></i>' : avatarInitial}</div>
-                    ${!isBook ? `<span class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusDotBgClass} border-2 border-white dark:border-slate-900"></span>` : ''}
+                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white">${isBook ? '<i class="fas fa-book"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : avatarInitial))}</div>
+                    ${!isBook && !isUpdates && !isMentions ? `<span class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusDotBgClass} border-2 border-white dark:border-slate-900"></span>` : ''}
                 </div>
                 <div class="flex flex-col">
                     <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white">${name}</span>
-                    <span class="text-[10px] ${statusColorClass} font-medium">${isBook ? 'צ\'אט ציבורי' : statusText}</span>
+                    <span class="text-[10px] ${isUpdates || isMentions ? 'text-amber-500' : statusColorClass} font-medium">${finalStatusText}</span>
                 </div>
             </div>
             <div class="flex items-center gap-4">
@@ -390,16 +470,19 @@ function loadChatIntoMainArea(email, name, el) {
         <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 dark:bg-slate-900/95 flex flex-col" id="msgs-${email}">
             <div class="chat-loading-indicator" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fas fa-circle-notch fa-spin"></i> טוען צ'אט...</div>
         </div>
-        ${isArchived ? `
+        ${isArchived || isUpdates || isMentions ? `
             <footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-                <div class="text-center text-slate-500 p-2">צ'אט זה בארכיון (לקריאה בלבד).</div>
+                <div class="text-center text-slate-500 p-2">${isUpdates || isMentions ? 'ערוץ לקריאה בלבד.' : 'צ\'אט זה בארכיון (לקריאה בלבד).'}</div>
             </footer>
         ` : `
             <footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                <div id="reply-preview-${email}" class="reply-preview"></div>
                 <div class="max-w-5xl mx-auto relative flex items-center gap-3">
+                    <div id="mentions-popup-${email}" class="mentions-popup"></div>
                     <input type="text" id="input-${email}" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..." 
-                        oninput="handleTyping('${email}')" 
-                        onkeypress="if(event.key === 'Enter') sendMessage('${email}')">
+                        oninput="handleTyping('${email}'); handleMentionInput(event, '${email}')" 
+                        onkeypress="if(event.key === 'Enter' && !isMentionPopupActive()) sendMessage('${email}')"
+                        onkeydown="return handleMentionKeyDown(event, '${email}')">
                     <button class="w-12 h-12 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-slate-800 transition-transform active:scale-95 shadow-md shrink-0" onclick="sendMessage('${email}')">
                         <span class="material-icons-round transform -scale-x-100">send</span>
                     </button>
@@ -460,32 +543,14 @@ function toggleChatWindow(email) {
 
 async function loadChatHistory(partnerEmail) {
     const myEmail = getCurrentChatEmail();
-    const isBook = partnerEmail.startsWith('book:');
 
-    let query = supabaseClient.from('chat_messages').select('*');
-
-    // איפוס צ'אט יומי (דף היומי וכו') ב-2:00 בלילה
-    const dailyBooks = ['book:דף היומי', 'book:משנה יומית', 'book:רמב"ם יומי', 'book:הלכה יומית'];
-    if (dailyBooks.includes(partnerEmail)) {
-        const now = new Date();
-        let cutoff = new Date();
-        cutoff.setHours(2, 0, 0, 0);
-        if (now < cutoff) {
-            cutoff.setDate(cutoff.getDate() - 1);
-        }
-        query = query.gt('created_at', cutoff.toISOString());
-    }
-
-    if (isBook) {
-        query = query.eq('receiver_email', partnerEmail); // For books, receiver is the book ID
-    } else {
-        query = query.or(
-            `and(sender_email.eq.${myEmail},receiver_email.eq.${partnerEmail})`,
-            `and(sender_email.eq.${partnerEmail},receiver_email.eq.${myEmail})`
-        );
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: true });
+    // The logic for fetching chat history, including daily chat resets,
+    // has been moved to a SECURITY DEFINER RPC function `get_chat_history`
+    // to bypass RLS policies which were preventing data from being loaded.
+    const { data, error } = await supabaseClient.rpc('get_chat_history', {
+        p_my_email: myEmail,
+        p_partner_email: partnerEmail
+    });
 
     if (error) console.error("שגיאה בטעינת צ'אט:", error);
 
@@ -497,6 +562,7 @@ async function loadChatHistory(partnerEmail) {
     if (loader) loader.remove();
 
     if (data) {
+        const isBook = partnerEmail.startsWith('book:');
         container.innerHTML = '';
         data.forEach(msg => {
             // בדיקה אם להודעה זו יש תגובות (שרשור)
@@ -554,18 +620,23 @@ async function loadChatRating() {
     if (!currentUser) return;
 
     // חישוב פשוט: שליפת כל ההודעות שלי וספירת לייקים
-    const { data: messages } = await supabaseClient.from('chat_messages').select('id').eq('sender_email', currentUser.email);
+    // Using RPC to bypass RLS
+    const { data: messages, error } = await supabaseClient.rpc('get_my_message_ids', {
+        p_my_email: currentUser.email
+    });
+    if (error) { console.error("Error getting message IDs for rating:", error); return; }
+
     if (messages && messages.length > 0) {
         const ids = messages.map(m => m.id);
         const { count } = await supabaseClient.from('message_reactions').select('*', { count: 'exact', head: true }).in('message_id', ids).eq('reaction_type', 'like');
-        
+
         const rating = count || 0;
         if (display) display.innerText = rating;
 
         // Update Dashboard Rating
         const dashStat = document.getElementById('stat-rating');
         if (dashStat) dashStat.innerText = rating;
-        
+
         // Cache rating for immediate load next time
         localStorage.setItem('torahApp_rating', rating);
     } else {
@@ -584,13 +655,26 @@ async function sendMessage(partnerEmail) {
     const input = document.getElementById(`input-${partnerEmail}`);
     const msg = input.value.trim();
     if (!msg) return;
-    if (msg.includes('ref:')) return; // Prevent manual ref injection
 
     let finalMsg = msg;
     let isHtml = false;
 
+    // New mention parsing logic
+    if (input.mentions) {
+        finalMsg = msg;
+        for (const name in input.mentions) {
+            const email = input.mentions[name];
+            // Use negative lookahead to not match parts of words, and be global
+            const mentionRegex = new RegExp(`@${name}(?!\\w)`, 'g');
+            const mentionHtml = `<span class="mention" data-user-email="${email}">@${name}</span>`;
+            finalMsg = finalMsg.replace(mentionRegex, mentionHtml);
+        }
+        isHtml = true;
+        delete input.mentions; // Clear after use
+    }
+
     if (activeReply && activeReply.chatId === partnerEmail) {
-        finalMsg = `<div class="chat-quote"><strong>${activeReply.sender}:</strong> ${activeReply.text}</div>${msg}`;
+        finalMsg = `<div class="chat-quote"><strong>${activeReply.sender}:</strong> ${activeReply.text}</div>${finalMsg}`;
         isHtml = true;
         // אם אנחנו בתוך שרשור, הציטוט צריך להיות בתוך השרשור
         if (activeThreadId) {
@@ -615,32 +699,50 @@ async function sendMessage(partnerEmail) {
     const sender = getCurrentChatEmail();
     // שמירה ב-Supabase
     try {
-        // --- תיקון: שימוש ב-partnerEmail במקום currentChatPartner ---
-        const { data, error } = await supabaseClient.from('chat_messages').insert([{
-            sender_email: sender,
-            receiver_email: partnerEmail, // For books, this is 'book:Name'
-            message: finalMsg,
-            is_html: isHtml
-        }]).select();
-
+        // We use an RPC call to a SECURITY DEFINER function to bypass RLS policies,
+        // because the application uses a custom authentication mechanism that Supabase is not aware of.
+        const { data, error } = await supabaseClient.rpc('send_message', {
+            p_sender_email: sender,
+            p_receiver_email: partnerEmail,
+            p_message: finalMsg,
+            p_is_html: isHtml
+        });
 
         if (error) {
-            console.error("Supabase Error:", error);
+            console.error("Supabase RPC Error:", error);
             if (error.code === "401") {
                 await customAlert("שגיאת שליחה: אין הרשאה (401).<br>בדוק את מפתח ה-API בקובץ api.js.", true);
             } else {
                 await customAlert("שגיאה בשליחה: " + error.message);
             }
         } else if (data && data[0]) {
+            const newMsg = data[0];
             // שדר את ההודעה לכל הלקוחות המאזינים
             if (chatChannel) {
                 chatChannel.send({
                     type: 'broadcast',
                     event: 'private_message',
-                    payload: { message: data[0] }
+                    payload: { message: newMsg }
                 });
             }
-            appendMessageToWindow(partnerEmail, finalMsg, 'me', data[0].id, data[0].created_at, false, sender);
+
+            // Handle mention notifications
+            const mentionMatches = finalMsg.matchAll(/<span class="mention" data-user-email="([^"]+)">@([^<]+)<\/span>/g);
+            for (const match of mentionMatches) {
+                sendMentionNotification(match[1], partnerEmail);
+            }
+
+            appendMessageToWindow(partnerEmail, newMsg.message, 'me', newMsg.id, newMsg.created_at, false, newMsg.sender_email);
+        } else if (data && data[0]) {
+            const newMsg = data[0];
+            // שדר את ההודעה לכל הלקוחות המאזינים
+            if (chatChannel) {
+                chatChannel.send({
+                    type: 'broadcast',
+                    event: 'private_message',
+                    payload: { message: newMsg }
+                });
+            }
         }
     } catch (e) {
         console.error("שגיאה בשליחת הודעה:", e);
@@ -658,7 +760,7 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     if (text.includes('ref:')) return null;
 
     const container = document.getElementById(`msgs-${partnerEmail}`);
-    if (!container) return;
+    if (!container) return null;
 
     // מניעת כפילויות (חשוב למנגנון ה-Polling)
     if (id && document.getElementById(`msg-${id}`)) return;
@@ -667,6 +769,7 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     // div.className = `message-bubble msg-${type}`; // Old class
     if (id) div.id = `msg-${id}`;
     if (timestamp) div.dataset.timestamp = timestamp;
+    if (senderEmail) div.dataset.sender = senderEmail;
     div.style.cursor = 'pointer';
 
     let contentDiv = div;
@@ -680,13 +783,18 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         wrapper.style.gap = '8px';
         wrapper.style.marginBottom = '8px';
         wrapper.style.maxWidth = '70%';
-        
+
         // RTL Logic:
         // Me (Right side): justify-content: flex-start (Right in RTL), flex-direction: row (Avatar -> Message)
         // Other (Left side): justify-content: flex-end (Left in RTL), flex-direction: row-reverse (Avatar -> Message)
-        
+        // Me (Left side): justify-content: flex-end (Left in RTL), flex-direction: row-reverse (Avatar -> Message)
+        // Other (Right side): justify-content: flex-start (Right in RTL), flex-direction: row (Avatar -> Message)
+
+        if (senderEmail) wrapper.dataset.sender = senderEmail;
         wrapper.style.alignSelf = type === 'me' ? 'flex-start' : 'flex-end';
         wrapper.style.flexDirection = type === 'me' ? 'row' : 'row-reverse';
+        wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
+        wrapper.style.flexDirection = type === 'me' ? 'row-reverse' : 'row';
 
         const senderUser = globalUsersData.find(u => u.email === senderEmail);
         const isSubscribed = senderUser && senderUser.subscription && senderUser.subscription.level > 0;
@@ -707,16 +815,20 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         const senderName = senderUser ? senderUser.name : senderEmail.split('@')[0];
         const nameSpan = document.createElement('span');
         nameSpan.className = 'msg-sender-name';
-        nameSpan.innerText = senderName;
+        const badgesHtml = senderUser ? getFullUserBadges(senderUser) : '';
+        nameSpan.innerHTML = `${senderName} ${badgesHtml}`;
         div.appendChild(nameSpan);
     } else {
         // For personal chats, we also use a wrapper for robust alignment.
+        // The container is a flex-column, so we use align-self on the wrapper to position it left/right.
         const wrapper = document.createElement('div');
         wrapper.className = 'new-message-animation';
         wrapper.style.display = 'flex';
-        wrapper.style.width = '100%';
+        wrapper.style.maxWidth = '80%'; // Don't take full width
         wrapper.style.marginBottom = '8px';
-        wrapper.style.justifyContent = type === 'me' ? 'flex-start' : 'flex-end';
+        wrapper.style.alignSelf = type === 'me' ? 'flex-start' : 'flex-end';
+        wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
+        if (senderEmail) wrapper.dataset.sender = senderEmail;
         wrapper.appendChild(div);
         container.appendChild(wrapper);
     }
@@ -725,12 +837,14 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     const animClass = ''; // Animation is now on the wrapper element for both personal and book chats.
     if (type === 'me') {
         div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tr-sm shadow-lg relative`;
+        div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tl-sm shadow-lg relative`;
     } else {
         div.className = `message-bubble max-w-md bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 dark:border-slate-700 relative`;
+        div.className = `message-bubble max-w-md bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tr-sm shadow-sm border border-slate-100 dark:border-slate-700 relative`;
     }
 
     // Check if the message is HTML
-    if (text.includes('<button') || text.includes('chat-quote')) {
+    if (text.includes('<button') || text.includes('chat-quote') || text.includes('<strong>') || text.includes('<b>') || text.includes('<br>') || text.includes('<span')) {
         div.innerHTML = text;
     } else {
         const p = document.createElement('p');
@@ -738,6 +852,14 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         p.textContent = text;
         div.appendChild(p);
     }
+
+    // Highlight mentions for me
+    const mentions = div.querySelectorAll('.mention');
+    mentions.forEach(mention => {
+        if (mention.dataset.userEmail === currentUser.email) {
+            mention.classList.add('mention-highlight');
+        }
+    });
 
     if (type === 'me') {
         if ((partnerEmail !== 'admin@system' && !partnerEmail.startsWith('book:')) || isAdminMode) {
@@ -752,12 +874,20 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
 
     const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
     const timeDiv = document.createElement('div');
-    timeDiv.className = 'flex justify-between items-center mt-auto pt-1 text-[10px] opacity-70';
+    timeDiv.className = 'msg-time-container flex justify-between items-center mt-auto pt-1 text-[10px] opacity-70';
     timeDiv.innerHTML = `<span>${timeStr}</span>`;
     div.appendChild(timeDiv);
 
     div.onclick = function (e) {
         if (e.target.closest('.msg-delete-btn')) return;
+
+        const mention = e.target.closest('.mention');
+        if (mention) {
+            const email = mention.getAttribute('data-user-email');
+            if (email) showUserDetails(email);
+            return;
+        }
+
         const ts = this.querySelector('.msg-timestamp');
         if (ts) ts.style.display = ts.style.display === 'block' ? 'none' : 'block';
     };
@@ -773,13 +903,20 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     // Add Reactions/Menu for ALL chats (Personal + Book)
     if (id) {
         // Extract plain text for quoting - CLEANER VERSION
-        const clone = div.cloneNode(true);
-        // הסרת אלמנטים מיותרים לפני לקיחת הטקסט
-        const toRemove = clone.querySelectorAll('.msg-timestamp, .msg-sender-name, .msg-delete-btn, .msg-check, .msg-reactions');
-        toRemove.forEach(el => el.remove());
+        let plainText = "";
+        const pTag = div.querySelector('p');
+        if (pTag) {
+            plainText = pTag.innerText;
+        } else {
+            const clone = div.cloneNode(true);
+            // הסרת אלמנטים מיותרים לפני לקיחת הטקסט
+            const toRemove = clone.querySelectorAll('.msg-timestamp, .msg-time-container, .msg-sender-name, .msg-delete-btn, .msg-check, .msg-reactions, .msg-actions-menu');
+            toRemove.forEach(el => el.remove());
+            plainText = clone.innerText;
+        }
 
         const isBook = partnerEmail.startsWith('book:');
-        const plainText = clone.innerText.replace('הצג טלפון ליצירת קשר', '').trim();
+        plainText = plainText.replace('הצג טלפון ליצירת קשר', '').trim();
         const senderName = senderEmail ? (globalUsersData.find(u => u.email === senderEmail)?.name || senderEmail.split('@')[0]) : 'משתמש';
         const fullTextSafe = plainText.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeSenderName = senderName.replace(/'/g, "\\'");
@@ -812,9 +949,9 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         }
 
         innerHTML += `
-            <div class="relative inline-block">
-                <button class="text-slate-400 hover:text-white transition-colors" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle('hidden')"><span class="material-icons-round text-sm">more_vert</span></button>
-                <div class="hidden absolute bottom-full right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10 min-w-[120px] overflow-hidden">
+            <div class="relative inline-block chat-action-menu-container">
+                <button class="text-slate-400 hover:text-white transition-colors" onclick="event.stopPropagation(); const el = this.nextElementSibling; document.querySelectorAll('.chat-action-dropdown:not(.hidden)').forEach(d => { if (d !== el) d.classList.add('hidden'); }); el.classList.toggle('hidden')"><span class="material-icons-round text-sm">more_vert</span></button>
+                <div class="chat-action-dropdown hidden absolute bottom-full right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10 min-w-[120px] overflow-hidden text-slate-800 dark:text-slate-200">
                     <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); replyToMessage('${partnerEmail}', '${safeSenderName}', '${fullTextSafe}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">reply</span> ציטוט</div>
                     ${isBook ? `<div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); openThread('${id}', '${fullTextSafe}', '${partnerEmail}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">forum</span> שרשור</div>` : ''}
                     ${!isMe ? `<div class="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); openReportModal('${senderEmail}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">flag</span> דיווח</div>` : ''}
@@ -906,7 +1043,7 @@ async function toggleReaction(msgId, type, btn) {
                         await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: 5, user_email: msg.sender_email });
                         // Optional: notify the user who got points
                     }
-                } catch(e) {
+                } catch (e) {
                     console.error("Error awarding points for like", e);
                 }
             }
@@ -936,6 +1073,205 @@ function showTyping(partnerEmail, text) {
         if (typingTimers[partnerEmail]) clearTimeout(typingTimers[partnerEmail]);
         typingTimers[partnerEmail] = setTimeout(() => { el.classList.remove('active'); }, 3000);
     }
+}
+
+async function markAsRead(senderEmail) {
+    try {
+        await supabaseClient.from('chat_messages')
+            .update({ is_read: true })
+            .eq('sender_email', senderEmail)
+            .eq('receiver_email', getCurrentChatEmail())
+            .eq('is_read', false);
+    } catch (e) { console.error("Error marking as read:", e); }
+}
+
+// --- MENTION LOGIC ---
+let mentionQuery = null;
+let mentionTriggerIndex = -1;
+let activeMentionPopup = null;
+let mentionUserList = [];
+let selectedMentionIndex = -1;
+
+function isMentionPopupActive() {
+    return activeMentionPopup && activeMentionPopup.style.display === 'block';
+}
+
+function handleMentionKeyDown(event, chatId) {
+    if (!isMentionPopupActive()) return true;
+
+    const items = activeMentionPopup.querySelectorAll('.mention-item');
+    if (items.length === 0) return true;
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectedMentionIndex = (selectedMentionIndex + 1) % items.length;
+        updateMentionSelection(items);
+        return false;
+    }
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectedMentionIndex = (selectedMentionIndex - 1 + items.length) % items.length;
+        updateMentionSelection(items);
+        return false;
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        if (selectedMentionIndex > -1) {
+            items[selectedMentionIndex].click();
+        }
+        return false;
+    }
+    if (event.key === 'Escape') {
+        hideMentions();
+        return false;
+    }
+
+    return true;
+}
+
+function updateMentionSelection(items) {
+    items.forEach((item, index) => {
+        if (index === selectedMentionIndex) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+async function handleMentionInput(event, chatId) {
+    const input = event.target;
+    const text = input.value;
+    const cursorPos = input.selectionStart;
+
+    const atIndex = text.lastIndexOf('@', cursorPos - 1);
+
+    if (atIndex !== -1 && (atIndex === 0 || /\s/.test(text[atIndex - 1]))) {
+        const query = text.substring(atIndex + 1, cursorPos);
+        if (!query.includes(' ')) {
+            mentionTriggerIndex = atIndex;
+            mentionQuery = query;
+            activeMentionPopup = document.getElementById(`mentions-popup-${chatId}`);
+
+            if (activeMentionPopup) {
+                activeMentionPopup.style.display = 'block';
+            }
+
+            await populateMentions(chatId, query);
+            return;
+        }
+    }
+
+    hideMentions();
+}
+
+function hideMentions() {
+    if (activeMentionPopup) {
+        activeMentionPopup.style.display = 'none';
+    }
+    mentionQuery = null;
+    mentionTriggerIndex = -1;
+    activeMentionPopup = null;
+    mentionUserList = [];
+    selectedMentionIndex = -1;
+}
+
+async function populateMentions(chatId, query) {
+    if (!activeMentionPopup) return;
+
+    if (!chatId.startsWith('book:')) {
+        activeMentionPopup.innerHTML = '<div class="p-2 text-sm text-slate-500">תיוג זמין רק בצ\'אט ספר.</div>';
+        setTimeout(hideMentions, 2000);
+        return;
+    }
+
+    activeMentionPopup.innerHTML = '<div class="p-2 text-sm text-slate-500">טוען משתמשים...</div>';
+    const bookName = chatId.replace('book:', '');
+
+    // Get users who are learning this book
+    const potentialUsers = globalUsersData.filter(u => u.books && u.books.includes(bookName) && u.email !== currentUser.email);
+
+    // Get users who have posted in this chat from the DOM
+    const chatContainer = document.getElementById(`msgs-${chatId}`);
+    const postedUserEmails = new Set();
+    if (chatContainer) {
+        chatContainer.querySelectorAll('[data-sender]').forEach(el => {
+            if (el.dataset.sender !== currentUser.email) {
+                postedUserEmails.add(el.dataset.sender);
+            }
+        });
+    }
+
+    const lowerQuery = query.toLowerCase();
+    let filteredUsers = potentialUsers.filter(u =>
+        u.name.toLowerCase().includes(lowerQuery) ||
+        u.email.toLowerCase().includes(lowerQuery)
+    );
+
+    // Prioritize users who have posted
+    filteredUsers.sort((a, b) => {
+        const aPosted = postedUserEmails.has(a.email);
+        const bPosted = postedUserEmails.has(b.email);
+        if (aPosted && !bPosted) return -1;
+        if (!aPosted && bPosted) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    mentionUserList = filteredUsers;
+    selectedMentionIndex = -1;
+
+    if (mentionUserList.length === 0) {
+        activeMentionPopup.innerHTML = '<div class="p-4 text-sm text-slate-500 text-center italic">לא נמצאו משתמשים להתאמה</div>';
+    } else {
+        activeMentionPopup.innerHTML = mentionUserList.map((user, index) => {
+            const initial = user.name ? user.name.charAt(0) : '?';
+            return `
+            <div class="mention-item" onclick="selectMention('${chatId}', '${user.name.replace(/'/g, "\\'")}', '${user.email}')">
+                <div class="mention-avatar">${initial}</div>
+                <div class="flex flex-col overflow-hidden">
+                    <span class="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">${user.name}</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${user.email}</span>
+                </div>
+            </div>
+        `}).join('');
+    }
+}
+
+function selectMention(chatId, name, email) {
+    const input = document.getElementById(`input-${chatId}`);
+    const text = input.value;
+
+    const before = text.substring(0, mentionTriggerIndex);
+    const after = text.substring(mentionTriggerIndex + 1 + mentionQuery.length);
+
+    const mentionText = `@${name} `;
+
+    input.value = before + mentionText + after;
+
+    if (!input.mentions) {
+        input.mentions = {};
+    }
+    input.mentions[name] = email;
+
+    hideMentions();
+    input.focus();
+    const newCursorPos = before.length + mentionText.length;
+    input.setSelectionRange(newCursorPos, newCursorPos);
+}
+
+function sendMentionNotification(mentionedEmail, chatId) {
+    const bookName = chatId.replace('book:', '');
+    const notificationMessage = `${currentUser.displayName} תייג אותך בצ'אט של הספר <strong>${bookName}</strong>.`;
+
+    supabaseClient.rpc('send_message', {
+        p_sender_email: 'mentions@system',
+        p_receiver_email: mentionedEmail,
+        p_message: notificationMessage,
+        p_is_html: true
+    }).then(({ error }) => {
+        if (error) console.error("Error sending mention notification:", error);
+    });
 }
 
 async function markAsRead(senderEmail) {
