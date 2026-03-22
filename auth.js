@@ -66,6 +66,7 @@ async function handleSignup(e) {
             email: email,
             password: pass,
             options: {
+                emailRedirectTo: window.location.href.split('#')[0], // מפנה חזרה לכתובת הנוכחית של האפליקציה
                 data: {
                     display_name: name,
                     phone: phone || null,
