@@ -30,6 +30,9 @@ async function handleSignup(e) {
     if (!validateInput(name, 'name')) return customAlert("השם אינו תקין.");
     if (phone && !validateInput(phone, 'phone')) return customAlert("מספר הטלפון אינו תקין.");
 
+    // הצגת חיווי טעינה
+    showToast("ההרשמה בעיצומה...", "info");
+
     // בדיקה אם שם המשתמש תפוס
     if (globalUsersData.some(u => u.original_name && u.original_name.trim().toLowerCase() === name.trim().toLowerCase())) {
         // אם השם תפוס, נציג הודעה ונמנע הרשמה
@@ -51,6 +54,12 @@ async function handleSignup(e) {
 
         const securityQuestions = [{ q: q1, a: a1 }];
 
+        // הוספת תצוגת שגיאות בצד המסך
+        const handleAuthError = async (errorMessage) => {
+            console.error("Signup Error:", errorMessage);
+            showToast("שגיאה בהרשמה: " + errorMessage, "error");
+        };
+
         // Use Supabase's built-in signup to handle email verification
         const { data, error } = await supabaseClient.auth.signUp({
             email: email,
@@ -71,45 +80,48 @@ async function handleSignup(e) {
 
         if (error) {
             if (error.message.includes("User already registered")) {
-                await customAlert("כתובת האימייל כבר רשומה במערכת.");
+                await handleAuthError("כתובת האימייל כבר רשומה במערכת.");
             } else if (error.message.includes("Database error finding user") || error.message.includes("Database error saving new user") || (error.code && error.code === "unexpected_failure") || error.status === 500) {
                 let sqlFix = `DELETE FROM public.users WHERE email = '${email}'`;
                 if (phone) sqlFix += ` OR phone = '${phone}'`;
                 console.error(`Supabase Signup Trigger Error (500).\nLikely orphan record.\nTry running SQL: ${sqlFix};`, error);
 
-                let msg = "שגיאת שרת בעת ההרשמה (500). המערכת זיהתה התנגשות נתונים או שגיאה בשרת.<br><b>פתרונות מומלצים:</b><ul>";
+                let msg = "שגיאת שרת בעת ההרשמה (500). המערכת זיהתה התנגשות נתונים או שגיאה בשרת.<br><br><b>פתרונות מומלצים:</b><ul>";
                 if (phone) msg += "<li>ייתכן שמספר הטלפון תפוס ע\"י משתמש אחר. <b>נסה להירשם ללא טלפון</b> (השאר ריק).</li>";
                 msg += "<li>ייתכן ששם המשתמש שבחרת כבר קיים במערכת (ברמת ה-DB). נסה שם מעט שונה.</li>";
                 msg += "<li>אם מחקת את המשתמש בעבר, ודא שהוא נמחק גם מטבלת האימות (auth.users).</li></ul>";
 
-                await customAlert(msg, true);
+                await handleAuthError(msg);
             } else if (error.status === 429 || error.code === 429 || (error.message && error.message.toLowerCase().includes("rate limit"))) {
-                await customAlert("יותר מדי ניסיונות הרשמה בזמן קצר.<br>מערכת האבטחה חסמה את הפעולה זמנית.<br><b>אנא המתן מספר דקות ונסה שוב.</b>", true);
+                await handleAuthError("יותר מדי ניסיונות הרשמה בזמן קצר.<br>מערכת האבטחה חסמה את הפעולה זמנית.<br><br><b>אנא המתן מספר דקות ונסה שוב.</b>");
             } else {
                 throw error;
             }
             return;
         }
 
+        // הסתרת חיווי טעינה
+        showToast("ההרשמה כמעט הושלמה...", "info");
+
         // בדיקה אם נוצר סשן באופן מיידי (אם אימות מייל כבוי ב-Supabase)
         if (data.session) {
             document.getElementById('auth-overlay').style.display = 'none';
             document.body.style.overflow = '';
             showToast("הרשמה הושלמה בהצלחה! התחברת.", "success");
+
             return; // הטיפול בהתחברות יתבצע ב-script.js
         }
 
         // After successful signup, show a message to check email for verification
-        document.getElementById('auth-overlay').style.display = 'none';
-        document.body.style.overflow = ''; // שחרור גלילה
-        await customAlert(
-            "ההרשמה כמעט הושלמה!\n\nנשלח אליך אימייל עם קישור לאימות החשבון.\nיש ללחוץ על הקישור כדי להפעיל את החשבון ולהתחבר.",
-            false
+        await showToast(
+            "נשלח אליך אימייל עם קישור לאימות החשבון. יש ללחוץ על הקישור כדי להפעיל את החשבון ולהתחבר.",
+            "success"
         );
         // Do not log the user in automatically. They must verify first.
 
     } catch (e) {
         console.error(e);
+
         await customAlert("שגיאה ביצירת חשבון: " + e.message);
     }
 }
