@@ -13,25 +13,25 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<script>
-  // פונקציה למשיכת ה-IP ושליחתו ל-Make
-  fetch('https://api.ipify.org?format=json')
-    .then(response => response.json())
-    .then(data => {
-      fetch('https://hook.eu1.make.com/ruf8a5mbaxubp8n9ycqjorr3vc7elp74', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ip_address: data.ip,
-          site: "בית המדרש",
-          timestamp: new Date().toLocaleString()
-        })
+    <script>
+      window.addEventListener('load', function() {
+          fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => {
+              fetch('https://hook.eu1.make.com/ruf8a5mbaxubp8n9ycqjorr3vc7elp74', {
+                method: 'POST',
+                mode: 'no-cors', // מוסיף הגנה למקרה של בעיות אבטחה בדפדפן
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ip_address: data.ip,
+                  site: "בית המדרש",
+                  timestamp: new Date().toLocaleString()
+                })
+              });
+            })
+            .catch(error => console.log('Network monitor notice:', error));
       });
-    })
-    .catch(error => console.error('Error:', error));
-</script>
+    </script>
 
     <script>
         tailwind.config = {
