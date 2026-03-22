@@ -550,7 +550,7 @@ function validateInput(value, type) {
             return /^0\d{8,9}$/.test(value.replace(/-/g, ''));
         case 'password':
             // At least 6 chars, one letter, one number
-            return value.length >= 3; // הקלה לצורך בדיקות: מינימום 3 תווים
+            return value.length >= 6;
         case 'name':
             // At least two letters, allows Hebrew, English and spaces, not just numbers
             return /^[a-zA-Z\u0590-\u05FF\s]{2,}[a-zA-Z\u0590-\u05FF\s]*$/.test(value) && !/^\d+$/.test(value);
