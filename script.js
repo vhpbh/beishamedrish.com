@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 let currentUser = null;
+
 let currentLeaderboardSort = 'learned';
 let lastLeaderboardHTML = '';
 
@@ -15,6 +16,10 @@ let realtimeSubscription = null;
 
 async function init() {
     checkBanStatus(); // בדיקת חסימת מכשיר
+
+    // טיפול בשגיאות אחרי הפנייה אוטומטית
+    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+    handleAuthErrorFromURL(urlParams);
 
     // האזנה לאירועי אימות (כניסה דרך קישור מייל)
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
@@ -151,6 +156,44 @@ async function init() {
         if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true);
     }
 }
+
+function handleAuthErrorFromURL(urlParams) {
+    const error = urlParams.get('error');
+    const errorCode = urlParams.get('error_code');
+    const errorDescription = urlParams.get('error_description');
+
+    if (error) {
+        let message = `אירעה שגיאת אימות: ${error}`;
+        if (errorCode) {
+            message += ` (קוד שגיאה: ${errorCode})`;
+        }
+        if (errorDescription) {
+            message += `. תיאור: ${errorDescription}`;
+        }
+
+        // הוספת כפתור לשליחה חוזרת של מייל האימות
+        if (errorCode === 'otp_expired') { // אנא המתן מספר דקות ונסה שוב.
+            message += `<br><br><button class="btn" onclick="resendVerificationEmail()">שלח שוב את האימייל לאימות</button>`;
+        }
+        if (type === 'signup') message = 'כתובת האימייל שלך ממתינה לאימות';
+
+        customAlert(message, true);
+
+        // ניקוי ה-URL משגיאה
+        window.history.replaceState(null, null, window.location.pathname);
+    }
+}
+
+async function resendVerificationEmail() {
+    if (!currentUser || !currentUser.email) return;
+    customAlert('הודעה נשלחה לכתובת האימייל שלך');
+    const { error } = await supabaseClient.auth.resend({
+        type: 'email',
+        email: currentUser.email,
+    })
+    if (error) console.error("אימות שגיאה", error);
+}
+
 
 async function checkSystemPopup() {
     try {
