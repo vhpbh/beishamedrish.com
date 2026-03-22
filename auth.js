@@ -12,6 +12,7 @@ async function handleSignup(e) {
     const q1 = document.getElementById('regSecQ1').value;
     const a1 = document.getElementById('regSecA1').value;
     const marketing = document.getElementById('regMarketing').checked;
+    const loginButton = document.getElementById('loginButton'); // Get login button
     const AUTH_JOKES = [
         "רגע, רגע... המלאכים בודקים אם שמך רשום בספר החיים (של האתר). אנא התחבר.",
         "כדי לשמור את הלימוד שלך, צריך קודם לשמור אותך במערכת. בוא נרשם!",
@@ -132,6 +133,7 @@ async function handleLogin(e) {
     const email = document.getElementById('emailInput').value.trim().toLowerCase();
     const pass = document.getElementById('passInput').value;
 
+    const loginButton = document.getElementById('loginButton');
     if (!email || !pass) {
         await customAlert("נא להזין אימייל וסיסמה");
         return;
@@ -139,6 +141,7 @@ async function handleLogin(e) {
 
     try {
         console.log(`Login attempt: Email='${email}', PassLength=${pass.length}`);
+        showToast("מנסה להתחבר...", "info");
         // Secure login via RPC function. This avoids exposing the users table and sending passwords to the client.
         // We don't use .single() here because an RPC function returning 0 rows throws a 406 error with .single().
         // Instead, we fetch the array of results and check its length.
@@ -148,6 +151,8 @@ async function handleLogin(e) {
                 p_password: pass
             });
 
+        loginButton.disabled = false;
+
         console.log("Login RPC result:", { users, error });
 
         const user = (users && users.length > 0) ? users[0] : null;
@@ -155,6 +160,7 @@ async function handleLogin(e) {
         if (error && !user) {
             console.error("Supabase RPC Error:", error);
             if (error.code === '42703') {
+                showToast("שגיאה בהתחברות: עמודת 'password' חסרה, פנה למנהל.", "error");
                 await customAlert("שגיאת מערכת: עמודת 'password' חסרה בטבלת המשתמשים. יש להריץ את פקודת ה-SQL המתאימה.");
                 return;
             }
@@ -164,6 +170,7 @@ async function handleLogin(e) {
 
         if (user) {
             // בדיקת חסימה
+            showToast("התחברות הצליחה", "success");
             if (user.is_banned) {
                 document.getElementById('auth-overlay').style.display = 'none';
                 document.getElementById('banned-overlay').style.display = 'flex';
@@ -186,8 +193,10 @@ async function handleLogin(e) {
             } else {
                 console.warn("User with this email does not exist.");
             }
+            console.warn("Login failed: User not found during login attempt.");
 
             // User not found or password incorrect. The RPC returns no rows in both cases.
+            showToast("שגיאה: פרטי התחברות שגויים", "error");
             const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
             await customAlert(randomJoke);
             return;
@@ -226,6 +235,7 @@ async function handleLogin(e) {
         startBackgroundServices(); // הפעלת סנכרון רקע לאחר התחברות
         logVisit();
         if (typeof updateDailyStreak === 'function') await updateDailyStreak();
+
         if (typeof applyUserCustomizations === 'function') await applyUserCustomizations();
 
         switchScreen('dashboard', document.querySelector('.nav-item'));
@@ -234,7 +244,9 @@ async function handleLogin(e) {
 
     } catch (e) {
         console.error("Login Error:", e);
+        showToast("אירעה שגיאה בהתחברות", "error");
         await customAlert("אירעה שגיאה בהתחברות.");
+        loginButton.disabled = false;
     }
 }
 
@@ -469,9 +481,6 @@ function showAuthOverlay() {
     const overlay = document.getElementById('auth-overlay');
     if (overlay) {
         overlay.style.display = 'flex';
-        overlay.style.overflowY = 'auto'; // מונע גלילה של כל הדף כשהטופס ארוך
-        document.body.style.overflow = 'hidden'; // ביטול גלילה ראשית
-        toggleAuthMode('login'); // Default to login view
     }
 }
 

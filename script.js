@@ -28,7 +28,9 @@ async function init() {
                     // תיקון: אם המשתמש חסר בטבלה הציבורית (בגלל איחור בטריגר או שגיאה), ננסה ליצור אותו או לשלוף שוב
                     if (!userRecord && session.user) {
                         console.log("User record missing in public table. Retrying...");
-                        await new Promise(r => setTimeout(r, 2000)); // המתנה לטריגר
+                        // Increase delay and add retry logic
+                        await new Promise(r => setTimeout(r, 3000));
+
                         const retry = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
                         userRecord = retry.data;
                     }
@@ -2638,6 +2640,7 @@ function formatBroadcast(tag) {
     textarea.selectionStart = start + newText.length;
     textarea.selectionEnd = start + newText.length;
 }
+
 
 
 // === ניהול אדמין ===

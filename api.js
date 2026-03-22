@@ -33,6 +33,7 @@ let lastChatListHash = ''; // משתנה למניעת הבהוב בצ'אט
 
 async function syncGlobalData() {
     try {
+        let hasChanges = false; // הוספת משתנה למעקב אחר שינויים
         // console.log("מתחיל סנכרון נתונים מהענן...");
 
         // --- בדיקת מצב תחזוקה (חדש) ---
@@ -273,6 +274,7 @@ async function syncGlobalData() {
                     is_banned: user.is_banned || false
                 };
             });
+            hasChanges = true;
 
             // עדכון סטטוס מחובר בחלונות צ'אט פתוחים
             document.querySelectorAll('.chat-window').forEach(win => {
@@ -313,6 +315,14 @@ async function syncGlobalData() {
             }
         }
     } catch (e) {
+        // טיפול בשגיאות סנכרון
+        console.error("שגיאה בסנכרון נתונים:", e.message);
+    } finally {
+        // Always clear local data if sync fails to prevent stale data
+        if (hasChanges) {
+            localStorage.removeItem('torahApp_goals');
+            localStorage.removeItem('torahApp_chavrutas');
+        }
         console.error("שגיאה בסנכרון נתונים:", e.message);
     }
     checkIncomingRequests()
