@@ -188,7 +188,7 @@ function handleAuthErrorFromURL(urlParams) {
 
 async function resendVerificationEmail() {
     if (!currentUser || !currentUser.email) return;
-    
+
     customAlert('הודעה נשלחה לכתובת האימייל שלך');
     const { error } = await supabaseClient.auth.resend({
         type: 'email',
@@ -261,6 +261,16 @@ async function updateDailyStreak() {
             if (needsUpdate) {
                 if (pointsToAdd > 0) {
                     await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
+                    const { error: rpcError } = await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
+                    
+                    if (!rpcError) {
+                        // עדכון מקומי של המשתמש כדי שהנקודות יופיעו מיד
+                        currentUser.reward_points = (currentUser.reward_points || 0) + pointsToAdd;
+                        localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+                        
+                        // רענון התצוגה בדשבורד
+                        if (typeof renderGoals === 'function') renderGoals();
+                    }
                 }
                 await supabaseClient.from('users').update(updatePayload).eq('email', currentUser.email);
             }
@@ -384,7 +394,9 @@ function renderLeaderboard() {
     all = all.filter(u => {
         const cityMatch = !cityFilter || (u.city && u.city.toLowerCase().includes(cityFilter));
         const bookMatch = !bookFilter || (u.books && u.books.some(b => b.toLowerCase().includes(bookFilter)));
-        return cityMatch && bookMatch;
+        const score = currentLeaderboardSort === 'rating' ? (u.chat_rating || 0) : (u.learned || 0);
+        // הצגת רק משתמשים עם ניקוד חיובי
+        return cityMatch && bookMatch && score > 0;
     });
 
     let newHTML = '';
@@ -396,7 +408,13 @@ function renderLeaderboard() {
             return (b.chat_rating || 0) - (a.chat_rating || 0);
         }
         return b.learned - a.learned;
-    }).slice(0, 15).forEach((u, i) => { // הגבלה ל-15 המובילים
+    });
+
+    if (all.length === 0) {
+        newHTML = '<div class="text-center p-10 text-slate-500">אין מובילים להצגה כרגע.</div>';
+    }
+
+    all.slice(0, 15).forEach((u, i) => { // הגבלה ל-15 המובילים
         const rank = i + 1;
         // אם זה 'אני', שולחים מזהה מיוחד, אחרת את האימייל
         const idToSend = u.id === 'me' ? 'me' : u.email;
