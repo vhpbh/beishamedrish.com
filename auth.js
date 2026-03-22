@@ -164,7 +164,7 @@ async function handleLogin(e) {
         }
 
         // שליפת פרטי המשתמש מהטבלה הציבורית לאחר אימות מוצלח
-        const { data: user, error: userError } = await supabaseClient
+        let { data: user, error: userError } = await supabaseClient
             .from('users')
             .select('*')
             .eq('email', email)
@@ -178,8 +178,26 @@ async function handleLogin(e) {
 
         if (!user) {
             console.warn("User record missing in public table for:", email);
-            await customAlert("ההתחברות הצליחה, אך כרטיס המשתמש שלך חסר במערכת. אנא פנה לתמיכה.");
-            return;
+            // ניסיון לשחזור או יצירה אוטומטית של המשתמש בטבלה הציבורית
+            try {
+                const { data: newUser, error: createError } = await supabaseClient
+                    .from('users')
+                    .insert([{ 
+                        email: email, 
+                        display_name: (authData.user && authData.user.user_metadata && authData.user.user_metadata.display_name) ? authData.user.user_metadata.display_name : email.split('@')[0],
+                        last_seen: new Date()
+                    }])
+                    .select()
+                    .single();
+                
+                if (createError) throw createError;
+                user = newUser;
+                console.log("Recovered missing user record:", user);
+            } catch (e) {
+                console.error("Failed to recover user:", e);
+                await customAlert("ההתחברות הצליחה, אך כרטיס המשתמש שלך חסר במערכת (שגיאה ביצירה). אנא פנה לתמיכה.");
+                return;
+            }
         }
 
         // בדיקת חסימה

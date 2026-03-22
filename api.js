@@ -317,13 +317,6 @@ async function syncGlobalData() {
     } catch (e) {
         // טיפול בשגיאות סנכרון
         console.error("שגיאה בסנכרון נתונים:", e.message);
-    } finally {
-        // Always clear local data if sync fails to prevent stale data
-        if (hasChanges) {
-            localStorage.removeItem('torahApp_goals');
-            localStorage.removeItem('torahApp_chavrutas');
-        }
-        console.error("שגיאה בסנכרון נתונים:", e.message);
     }
     checkIncomingRequests()
 }
