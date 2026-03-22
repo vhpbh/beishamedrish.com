@@ -4141,3 +4141,11 @@
         .maintenance-input::placeholder {
             color: #94a3b8;
         }
+
+        /* אימות שדות טופס ויזואלי */
+        .auth-input.valid {
+            border: 2px solid #22c55e !important;
+        }
+        .auth-input.invalid {
+            border: 2px solid #ef4444 !important;
+        }

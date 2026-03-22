@@ -144,7 +144,7 @@ async function handleLogin(e) {
         console.log(`Login attempt: Email='${email}', PassLength=${pass.length}`);
         showToast("מנסה להתחבר...", "info");
         if (loginButton) loginButton.disabled = true; // מניעת לחיצות כפולות
-        
+
         // שימוש בפונקציית ההתחברות הסטנדרטית של Supabase
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
             email: email,
@@ -158,7 +158,8 @@ async function handleLogin(e) {
         if (authError) {
             console.error("Login Error:", authError);
             showToast("שגיאה: האימייל או הסיסמה שגויים", "error");
-            const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
+            const jokesList = (typeof JOKES !== 'undefined' && Array.isArray(JOKES)) ? JOKES : ["הסיסמה שגויה."];
+            const randomJoke = jokesList[Math.floor(Math.random() * jokesList.length)];
             await customAlert(randomJoke);
             return;
         }
@@ -182,14 +183,14 @@ async function handleLogin(e) {
             try {
                 const { data: newUser, error: createError } = await supabaseClient
                     .from('users')
-                    .insert([{ 
-                        email: email, 
+                    .insert([{
+                        email: email,
                         display_name: (authData.user && authData.user.user_metadata && authData.user.user_metadata.display_name) ? authData.user.user_metadata.display_name : email.split('@')[0],
                         last_seen: new Date()
                     }])
                     .select()
                     .single();
-                
+
                 if (createError) throw createError;
                 user = newUser;
                 console.log("Recovered missing user record:", user);
@@ -278,6 +279,7 @@ async function handleForgotPassword() {
     if (!email) return; // User cancelled
 
     try {
+        showToast("בודק שאלות אבטחה...", "info");
         // Step 1: Securely get the security question via RPC
         const { data: questionData, error: qError } = await supabaseClient.rpc('get_user_security_question', { p_email: email.toLowerCase() });
 
@@ -290,7 +292,7 @@ async function handleForgotPassword() {
 
         // Step 2: Ask the user the question
         const userAnswer = await customPrompt(`שאלת אבטחה: ${questionData.q}`);
-        if (userAnswer === null) return; // User cancelled
+        if (!userAnswer) return; // User cancelled or empty answer
 
         // Step 3: Ask for a new password
         const newPassword = await customPrompt("הזן סיסמה חדשה:");
@@ -299,6 +301,7 @@ async function handleForgotPassword() {
             return customAlert("הסיסמה חייבת להכיל לפחות 6 תווים, כולל אותיות ומספרים.");
         }
 
+        showToast("מעדכן סיסמה...", "info");
         // Step 4: Attempt to reset the password via RPC, which validates the answer on the server
         const { data: success, error: resetError } = await supabaseClient.rpc('reset_user_password', {
             p_email: email.toLowerCase(),
@@ -309,7 +312,8 @@ async function handleForgotPassword() {
         if (resetError) throw resetError;
 
         if (success) {
-            await customAlert("הסיסמה שונתה בהצלחה!");
+            await customAlert("הסיסמה שונתה בהצלחה! כעת ניתן להתחבר.");
+            toggleAuthMode('login');
         } else {
             await customAlert("תשובה שגויה.");
         }
@@ -449,10 +453,10 @@ function restoreAuthenticatedHeader() {
     }
 }
 
-function logout() { 
+function logout() {
     clearLocalUserData();
-    localStorage.removeItem('torahApp_user'); 
-    location.reload(); 
+    localStorage.removeItem('torahApp_user');
+    location.reload();
 }
 
 function clearLocalUserData() {
@@ -544,7 +548,7 @@ function validateInput(value, type) {
 
     switch (type) {
         case 'email':
-            return /\S+@\S+\.\S+/.test(value);
+            return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
         case 'phone':
             // Allows 05x-xxxxxxx, 0x-xxxxxxx, 0xx-xxxxxxx after stripping hyphens
             return /^0\d{8,9}$/.test(value.replace(/-/g, ''));
@@ -554,6 +558,8 @@ function validateInput(value, type) {
         case 'name':
             // At least two letters, allows Hebrew, English and spaces, not just numbers
             return /^[a-zA-Z\u0590-\u05FF\s]{2,}[a-zA-Z\u0590-\u05FF\s]*$/.test(value) && !/^\d+$/.test(value);
+        case 'age':
+            return /^\d+$/.test(value) && parseInt(value) >= 5 && parseInt(value) <= 120;
         default:
             return true;
     }
@@ -564,8 +570,20 @@ let usernameCheckTimeout;
 
 function checkUsernameAvailability() {
     const nameInput = document.getElementById('regName');
-    const indicator = document.getElementById('usernameAvailabilityIndicator');
-    if (!nameInput || !indicator) return;
+    if (!nameInput) return;
+
+    // יצירת אלמנט חיווי אם לא קיים (מוזרק דינמית)
+    let indicator = document.getElementById('usernameAvailabilityIndicator');
+    if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.id = 'usernameAvailabilityIndicator';
+        indicator.style.position = 'absolute';
+        indicator.style.left = '15px'; // מיקום בצד שמאל של השדה (מתאים ל-RTL)
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+        if (nameInput.parentElement) nameInput.parentElement.style.position = 'relative';
+        nameInput.parentElement.appendChild(indicator);
+    }
 
     const name = nameInput.value.trim();
 
@@ -584,12 +602,12 @@ function checkUsernameAvailability() {
         const isTaken = globalUsersData.some(u => u.original_name && u.original_name.trim().toLowerCase() === name.toLowerCase());
 
         if (isTaken) {
-            indicator.innerHTML = '&#x2718;'; // X mark
-            indicator.style.color = 'red';
+            indicator.innerHTML = '<i class="fas fa-times"></i>'; // X mark
+            indicator.style.color = '#ef4444';
             indicator.title = 'שם משתמש תפוס';
         } else {
-            indicator.innerHTML = '&#x2714;'; // Check mark
-            indicator.style.color = 'green';
+            indicator.innerHTML = '<i class="fas fa-check"></i>'; // V mark
+            indicator.style.color = '#22c55e';
             indicator.title = 'שם משתמש פנוי';
         }
     }, 300); // השהיה של 300 מילישניות
@@ -626,6 +644,57 @@ function checkEmailAvailability() {
     }, 500);
 }
 
+
+// פונקציה להוספת אימות ויזואלי בזמן אמת לשדות
+function setupRealtimeValidation() {
+    const validationRules = [
+        { id: 'regEmail', type: 'email', required: true },
+        { id: 'regPass', type: 'password', required: true },
+        { id: 'regName', type: 'name', required: true },
+        { id: 'regPhone', type: 'phone', required: false },
+        { id: 'regAge', type: 'age', required: false },
+        { id: 'regAddress', type: 'text', required: false },
+        { id: 'regCity', type: 'text', required: false },
+        { id: 'regSecQ1', type: 'text', required: true },
+        { id: 'regSecA1', type: 'text', required: true },
+        { id: 'emailInput', type: 'email', required: true },
+        { id: 'passInput', type: 'password', required: true }
+    ];
+
+    validationRules.forEach(rule => {
+        const input = document.getElementById(rule.id);
+        if (input) {
+            const handler = () => {
+                const val = input.value.trim();
+                let isValid = true;
+
+                // בדיקת שדה ריק
+                if (rule.required && val === '') {
+                    isValid = false;
+                } else if (val !== '') {
+                    if (rule.type === 'text') isValid = val.length > 0;
+                    else isValid = validateInput(val, rule.type);
+                } else if (!rule.required && val === '') {
+                    input.classList.remove('valid', 'invalid');
+                    return;
+                }
+
+                if (isValid) {
+                    input.classList.add('valid');
+                    input.classList.remove('invalid');
+                } else {
+                    input.classList.add('invalid');
+                    input.classList.remove('valid');
+                }
+            };
+
+            input.addEventListener('input', handler);
+            input.addEventListener('blur', handler);
+        }
+    });
+}
+
+
 // הוספת מאזין אירועים לשדה השם לאחר טעינת ה-DOM
 document.addEventListener('DOMContentLoaded', () => {
     const regNameInput = document.getElementById('regName');
@@ -636,4 +705,5 @@ document.addEventListener('DOMContentLoaded', () => {
     if (regEmailInput) {
         regEmailInput.addEventListener('input', checkEmailAvailability);
     }
+    setupRealtimeValidation();
 });
