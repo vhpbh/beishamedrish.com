@@ -143,67 +143,59 @@ async function handleLogin(e) {
     try {
         console.log(`Login attempt: Email='${email}', PassLength=${pass.length}`);
         showToast("מנסה להתחבר...", "info");
-        // Secure login via RPC function. This avoids exposing the users table and sending passwords to the client.
-        // We don't use .single() here because an RPC function returning 0 rows throws a 406 error with .single().
-        // Instead, we fetch the array of results and check its length.
-        const { data: users, error } = await supabaseClient
-            .rpc('check_user_credentials', {
-                p_email: email.trim().toLowerCase(), // וידוא ניקוי רווחים
-                p_password: pass
-            });
+        if (loginButton) loginButton.disabled = true; // מניעת לחיצות כפולות
+        
+        // שימוש בפונקציית ההתחברות הסטנדרטית של Supabase
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: pass
+        });
 
-        loginButton.disabled = false;
-
-        console.log("Login RPC result:", { users, error });
-
-        const user = (users && users.length > 0) ? users[0] : null;
-
-        if (error && !user) {
-            console.error("Supabase RPC Error:", error);
-            if (error.code === '42703') {
-                showToast("שגיאה בהתחברות: עמודת 'password' חסרה, פנה למנהל.", "error");
-                await customAlert("שגיאת מערכת: עמודת 'password' חסרה בטבלת המשתמשים. יש להריץ את פקודת ה-SQL המתאימה.");
-                return;
-            }
-            await customAlert("שגיאת תקשורת: " + error.message);
-            return;
+        if (loginButton) {
+            loginButton.disabled = false;
         }
 
-        if (user) {
-            // בדיקת חסימה
-            showToast("התחברות הצליחה", "success");
-            if (user.is_banned) {
-                document.getElementById('auth-overlay').style.display = 'none';
-                document.getElementById('banned-overlay').style.display = 'flex';
-                localStorage.setItem('device_banned', 'true'); // חסימת מכשיר
-                sessionStorage.setItem('banned_email', email); // שמירת אימייל לערעור
-                return;
-            }
-
-            // הגדרת המשתמש הנוכחי
-            currentUser = mapUserFromDB(user);
-
-        } else {
-            // בדיקה האם המשתמש קיים בכלל (אך הסיסמה שגויה) לצורך דיבוג
-            console.log("Login failed: Invalid credentials or user not found.");
-            const { data: exists } = await supabaseClient.rpc('check_email_exists', { p_email: email.trim().toLowerCase() });
-            if (exists) {
-                console.warn("DEBUG: User exists in DB. This means the password hash check failed.");
-                await customAlert("האימייל קיים במערכת אך הסיסמה אינה תואמת.<br>אם יצרת את המשתמש ידנית, ייתכן שהסיסמה אינה מוצפנת.<br>מומלץ לנסות 'שחזור סיסמה'.");
-                return;
-            } else {
-                console.warn("User with this email does not exist.");
-            }
-            console.warn("Login failed: User not found during login attempt.");
-
-            // User not found or password incorrect. The RPC returns no rows in both cases.
+        if (authError) {
+            console.error("Login Error:", authError);
             showToast("שגיאה: האימייל או הסיסמה שגויים", "error");
             const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
             await customAlert(randomJoke);
             return;
         }
 
-                // המשך תהליך ההתחברות הרגיל
+        // שליפת פרטי המשתמש מהטבלה הציבורית לאחר אימות מוצלח
+        const { data: user, error: userError } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+
+        if (userError) {
+            console.error("User fetch error:", userError);
+            await customAlert("שגיאה בטעינת נתוני משתמש.");
+            return;
+        }
+
+        if (!user) {
+            console.warn("User record missing in public table for:", email);
+            await customAlert("ההתחברות הצליחה, אך כרטיס המשתמש שלך חסר במערכת. אנא פנה לתמיכה.");
+            return;
+        }
+
+        // בדיקת חסימה
+        showToast("התחברות הצליחה", "success");
+        if (user.is_banned) {
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.getElementById('banned-overlay').style.display = 'flex';
+            localStorage.setItem('device_banned', 'true'); // חסימת מכשיר
+            sessionStorage.setItem('banned_email', email); // שמירת אימייל לערעור
+            return;
+        }
+
+        // הגדרת המשתמש הנוכחי
+        currentUser = mapUserFromDB(user);
+
+        // המשך תהליך ההתחברות הרגיל
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
         // Hide overlay and update header immediately
@@ -247,7 +239,9 @@ async function handleLogin(e) {
         console.error("Login Error:", e);
         showToast("שגיאה: האימייל או הסיסמה שגויים", "error");
         await customAlert("אירעה שגיאה בהתחברות.");
-        loginButton.disabled = false;
+        if (loginButton) {
+            loginButton.disabled = false;
+        }
     }
 }
 
