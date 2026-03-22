@@ -171,6 +171,8 @@ function handleAuthErrorFromURL(urlParams) {
             message += `. תיאור: ${errorDescription}`;
         }
 
+        if (type === 'signup') message = 'כתובת האימייל שלך ממתינה לאימות';
+
         // הוספת כפתור לשליחה חוזרת של מייל האימות
         if (errorCode === 'otp_expired') { // אנא המתן מספר דקות ונסה שוב.
             message += `<br><br><button class="btn" onclick="resendVerificationEmail()">שלח שוב את האימייל לאימות</button>`;
@@ -186,6 +188,7 @@ function handleAuthErrorFromURL(urlParams) {
 
 async function resendVerificationEmail() {
     if (!currentUser || !currentUser.email) return;
+    
     customAlert('הודעה נשלחה לכתובת האימייל שלך');
     const { error } = await supabaseClient.auth.resend({
         type: 'email',
