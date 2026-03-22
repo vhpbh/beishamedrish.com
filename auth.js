@@ -210,8 +210,18 @@ async function handleLogin(e) {
             return;
         }
 
+        // שמירת המשתמש הקודם לבדיקת שינוי חשבון
+        const prevUserStr = localStorage.getItem('torahApp_user');
+        const prevUser = prevUserStr ? JSON.parse(prevUserStr) : null;
+
         // הגדרת המשתמש הנוכחי
         currentUser = mapUserFromDB(user);
+
+        // בדיקה אם זה חשבון אחר (אימייל שונה או מזהה שונה - למקרה של איפוס DB)
+        if (prevUser && (prevUser.email !== currentUser.email || (currentUser.id && prevUser.id !== currentUser.id))) {
+            console.log("User switch detected (ID mismatch). Clearing local data.");
+            clearLocalUserData();
+        }
 
         // המשך תהליך ההתחברות הרגיל
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
@@ -373,6 +383,7 @@ function toggleAuthMode(mode) {
 
 function mapUserFromDB(user) {
     return {
+        id: user.id,
         email: user.email,
         displayName: user.display_name || user.email.split('@')[0],
         isAnonymous: user.is_anonymous,
@@ -438,7 +449,22 @@ function restoreAuthenticatedHeader() {
     }
 }
 
-function logout() { localStorage.removeItem('torahApp_user'); location.reload(); }
+function logout() { 
+    clearLocalUserData();
+    localStorage.removeItem('torahApp_user'); 
+    location.reload(); 
+}
+
+function clearLocalUserData() {
+    localStorage.removeItem('torahApp_goals');
+    localStorage.removeItem('torahApp_chavrutas');
+    localStorage.removeItem('chavruta_schedules');
+    localStorage.removeItem('torahApp_unread');
+    localStorage.removeItem('torahApp_lastReadTimes');
+    localStorage.removeItem('torahApp_rating');
+    localStorage.removeItem('torahApp_stats');
+    localStorage.removeItem('torahApp_followersCount');
+}
 
 function checkBanStatus() {
     if (localStorage.getItem('device_banned') === 'true') {
