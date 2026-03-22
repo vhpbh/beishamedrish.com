@@ -457,7 +457,7 @@
         }
 
         .auth-scroll-area {
-            max-height: 55vh;
+            max-height: 35vh;
             overflow-y: auto;
             padding: 5px;
             text-align: right;

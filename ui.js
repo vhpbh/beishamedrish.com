@@ -250,6 +250,15 @@ function setupInterfaceChanges() {
                 display: block;
                 animation: floatIn 0.3s ease-out forwards;
             }
+
+            /* הסתרת פסי גלילה במודאל כניסה והרשמה */
+            #auth-overlay {
+                scrollbar-width: none; /* Firefox */
+                -ms-overflow-style: none; /* IE 10+ */
+            }
+            #auth-overlay::-webkit-scrollbar {
+                display: none; /* Chrome/Safari */
+            }
         `;
         document.head.appendChild(uiStyle);
     }
@@ -333,11 +342,11 @@ async function subscribeToMaintenanceUpdates() {
     const email = document.getElementById('maintenanceEmail').value.trim();
     // שימוש ב-validateInput מ-auth.js אם זמין, אחרת בדיקה בסיסית
     const isValid = (typeof validateInput === 'function') ? validateInput(email, 'email') : /\S+@\S+\.\S+/.test(email);
-    
+
     if (!email || !isValid) {
         return customAlert('נא להזין כתובת אימייל תקינה.');
     }
-    
+
     try {
         // ניסיון לשמור בטבלה ייעודית (אם קיימת)
         await supabaseClient.from('maintenance_subscribers').insert([{ email: email }]);

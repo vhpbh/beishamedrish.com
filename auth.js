@@ -5,7 +5,7 @@ async function handleSignup(e) {
     const email = document.getElementById('regEmail').value.trim().toLowerCase();
     const pass = document.getElementById('regPass').value;
     const name = document.getElementById('regName').value;
-    const phone = document.getElementById('regPhone').value;
+    const phone = document.getElementById('regPhone').value.trim();
     const city = document.getElementById('regCity').value;
     const age = document.getElementById('regAge').value;
     const address = document.getElementById('regAddress').value;
@@ -36,6 +36,16 @@ async function handleSignup(e) {
         return customAlert("שם המשתמש שבחרת כבר קיים במערכת. אנא בחר שם אחר."); // Keep this as a final check
     }
 
+    // בדיקות כפילות מקדימות למניעת שגיאת 500
+    if (phone && globalUsersData.some(u => u.phone === phone)) {
+        return customAlert("מספר הטלפון הזה כבר רשום במערכת למשתמש אחר.");
+    }
+
+    if (globalUsersData.some(u => u.email === email)) {
+        console.warn("Orphan record detected for:", email);
+        return customAlert("כתובת האימייל הזו כבר קיימת במאגר הנתונים הציבורי.<br>אם אינך מצליח להתחבר, יש לפנות למנהל לניקוי הנתונים.");
+    }
+
     try {
         console.log("Checking if email exists:", email);
 
@@ -48,10 +58,10 @@ async function handleSignup(e) {
             options: {
                 data: {
                     display_name: name,
-                    phone: phone,
-                    city: city,
+                    phone: phone || null,
+                    city: city || null,
                     age: age ? parseInt(age) : null,
-                    address: address,
+                    address: address || null,
                     security_questions: securityQuestions,
                     marketing_consent: marketing,
                     // The trigger will copy these to the public.users table
@@ -62,14 +72,36 @@ async function handleSignup(e) {
         if (error) {
             if (error.message.includes("User already registered")) {
                 await customAlert("כתובת האימייל כבר רשומה במערכת.");
+            } else if (error.message.includes("Database error finding user") || error.message.includes("Database error saving new user") || (error.code && error.code === "unexpected_failure") || error.status === 500) {
+                let sqlFix = `DELETE FROM public.users WHERE email = '${email}'`;
+                if (phone) sqlFix += ` OR phone = '${phone}'`;
+                console.error(`Supabase Signup Trigger Error (500).\nLikely orphan record.\nTry running SQL: ${sqlFix};`, error);
+
+                let msg = "שגיאת שרת בעת ההרשמה (500). המערכת זיהתה התנגשות נתונים או שגיאה בשרת.<br><b>פתרונות מומלצים:</b><ul>";
+                if (phone) msg += "<li>ייתכן שמספר הטלפון תפוס ע\"י משתמש אחר. <b>נסה להירשם ללא טלפון</b> (השאר ריק).</li>";
+                msg += "<li>ייתכן ששם המשתמש שבחרת כבר קיים במערכת (ברמת ה-DB). נסה שם מעט שונה.</li>";
+                msg += "<li>אם מחקת את המשתמש בעבר, ודא שהוא נמחק גם מטבלת האימות (auth.users).</li></ul>";
+
+                await customAlert(msg, true);
+            } else if (error.status === 429 || error.code === 429 || (error.message && error.message.toLowerCase().includes("rate limit"))) {
+                await customAlert("יותר מדי ניסיונות הרשמה בזמן קצר.<br>מערכת האבטחה חסמה את הפעולה זמנית.<br><b>אנא המתן מספר דקות ונסה שוב.</b>", true);
             } else {
                 throw error;
             }
             return;
         }
 
+        // בדיקה אם נוצר סשן באופן מיידי (אם אימות מייל כבוי ב-Supabase)
+        if (data.session) {
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.body.style.overflow = '';
+            showToast("הרשמה הושלמה בהצלחה! התחברת.", "success");
+            return; // הטיפול בהתחברות יתבצע ב-script.js
+        }
+
         // After successful signup, show a message to check email for verification
         document.getElementById('auth-overlay').style.display = 'none';
+        document.body.style.overflow = ''; // שחרור גלילה
         await customAlert(
             "ההרשמה כמעט הושלמה!\n\nנשלח אליך אימייל עם קישור לאימות החשבון.\nיש ללחוץ על הקישור כדי להפעיל את החשבון ולהתחבר.",
             false
@@ -154,6 +186,7 @@ async function handleLogin(e) {
 
         // Hide overlay and update header immediately
         document.getElementById('auth-overlay').style.display = 'none';
+        document.body.style.overflow = ''; // שחרור גלילה
         updateHeader();
         restoreAuthenticatedHeader();
 
@@ -382,8 +415,7 @@ function requireAuth() {
         return true;
     }
 
-    const randomJoke = AUTH_JOKES[Math.floor(Math.random() * AUTH_JOKES.length)];
-    customAlert(randomJoke).then(() => {
+    customAlert("פעולה זו מצריכה חיבור לאתר. נא להתחבר כדי להמשיך.").then(() => {
         showAuthOverlay();
     });
 
@@ -426,6 +458,7 @@ function showAuthOverlay() {
     if (overlay) {
         overlay.style.display = 'flex';
         overlay.style.overflowY = 'auto'; // מונע גלילה של כל הדף כשהטופס ארוך
+        document.body.style.overflow = 'hidden'; // ביטול גלילה ראשית
         toggleAuthMode('login'); // Default to login view
     }
 }

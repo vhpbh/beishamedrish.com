@@ -15,6 +15,58 @@ let realtimeSubscription = null;
 
 async function init() {
     checkBanStatus(); // בדיקת חסימת מכשיר
+
+    // האזנה לאירועי אימות (כניסה דרך קישור מייל)
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+            // אם המשתמש לא מחובר מקומית, נבצע התחברות אוטומטית
+            if (!currentUser && !localStorage.getItem('torahApp_user')) {
+                try {
+                    // שליפת פרטי המשתמש מהדאטה-בייס
+                    let { data: userRecord } = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
+
+                    // תיקון: אם המשתמש חסר בטבלה הציבורית (בגלל איחור בטריגר או שגיאה), ננסה ליצור אותו או לשלוף שוב
+                    if (!userRecord && session.user) {
+                        console.log("User record missing in public table. Retrying...");
+                        await new Promise(r => setTimeout(r, 2000)); // המתנה לטריגר
+                        const retry = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
+                        userRecord = retry.data;
+                    }
+
+                    // אם עדיין חסר, כנראה הטריגר נכשל - נתחבר עם המידע שיש בסשן כדי לא לתקוע את המשתמש
+                    if (!userRecord && session.user) {
+                        console.warn("User record missing after retry. Using session metadata.");
+                        userRecord = { email: session.user.email, display_name: session.user.user_metadata.display_name, is_anonymous: false };
+                    }
+
+                    if (userRecord) {
+                        currentUser = mapUserFromDB(userRecord);
+                        localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+
+                        document.getElementById('auth-overlay').style.display = 'none';
+                        document.body.style.overflow = ''; // שחרור גלילה
+                        updateHeader();
+                        restoreAuthenticatedHeader();
+
+                        // אתחול נתונים
+                        await syncGlobalData();
+                        await loadGoals();
+                        await loadUserProfile();
+                        getDafYomi();
+
+                        showToast("האימייל אומת בהצלחה! התחברת.", "success");
+                        switchScreen('dashboard', document.querySelector('.nav-item'));
+
+                        // ניקוי ה-URL מהטוקן הארוך
+                        window.history.replaceState(null, null, window.location.pathname);
+                    }
+                } catch (e) {
+                    console.error("Auto login failed:", e);
+                }
+            }
+        }
+    });
+
     const storedUser = localStorage.getItem('torahApp_user');
     if (storedUser) {
         currentUser = JSON.parse(storedUser);
@@ -100,7 +152,7 @@ async function init() {
 
 async function checkSystemPopup() {
     try {
-        const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'popup_message').single();
+        const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'popup_message').maybeSingle();
         if (!error && data && data.value && data.value.trim() !== '') {
             if (typeof showSystemPopup === 'function') {
                 showSystemPopup(data.value);
@@ -2908,9 +2960,6 @@ function toggleGuestProfileMenu() {
                 <span class="slider"></span>
             </label>
         </div>
-        <div class="profile-menu-item" onclick="toggleProfileMenu(); document.getElementById('policyModal').style.display='flex';">
-            <i class="fas fa-file-contract"></i> תקנון ופרטיות
-        </div>
         <div class="profile-menu-item" onclick="showAuthOverlay(); toggleProfileMenu();">
             <i class="fas fa-sign-in-alt"></i> התחבר או הירשם
         </div>
@@ -3055,7 +3104,7 @@ async function loadAds() {
     const container = document.getElementById('ads-container');
     // In a real app, you'd load from Supabase
     try {
-        const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').single();
+        const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').maybeSingle();
         if (error || !data) throw error || new Error("No data");
         container.innerHTML = data.value || '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
         logAdView(); // Log view when ads are loaded
