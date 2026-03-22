@@ -196,13 +196,13 @@ async function handleLogin(e) {
             console.warn("Login failed: User not found during login attempt.");
 
             // User not found or password incorrect. The RPC returns no rows in both cases.
-            showToast("שגיאה: פרטי התחברות שגויים", "error");
+            showToast("שגיאה: האימייל או הסיסמה שגויים", "error");
             const randomJoke = JOKES[Math.floor(Math.random() * JOKES.length)];
             await customAlert(randomJoke);
             return;
         }
 
-        // המשך תהליך ההתחברות הרגיל
+                // המשך תהליך ההתחברות הרגיל
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
         // Hide overlay and update header immediately
@@ -244,7 +244,7 @@ async function handleLogin(e) {
 
     } catch (e) {
         console.error("Login Error:", e);
-        showToast("אירעה שגיאה בהתחברות", "error");
+        showToast("שגיאה: האימייל או הסיסמה שגויים", "error");
         await customAlert("אירעה שגיאה בהתחברות.");
         loginButton.disabled = false;
     }
