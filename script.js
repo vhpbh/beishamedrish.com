@@ -2307,9 +2307,6 @@ function setupRealtime() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'user_goals' }, () => {
             syncGlobalData();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-            syncGlobalData();
-        })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_goals' }, (payload) => {
 
             if (currentNotesData.goalId && payload.new.book_name === document.getElementById('notesBookTitle').innerText) {
@@ -2376,12 +2373,17 @@ function setupRealtime() {
                 }
             }
         })
-        .subscribe((status) => {
+        .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
-                console.log('מחובר לעדכונים בזמן אמת');
+                // console.log('מחובר לעדכונים בזמן אמת'); // הושתק למניעת עומס בלוג
                 chatChannel = realtimeSubscription;
             }
-            if (status === 'CHANNEL_ERROR') console.error('שגיאה בחיבור לזמן אמת');
+            if (status === 'CHANNEL_ERROR') {
+                console.warn('החיבור לשרת התנתק, מנסה להתחבר מחדש...', err);
+            }
+            if (status === 'TIMED_OUT') {
+                console.warn('החיבור לזמן אמת התנתק עקב timeout');
+            }
         });
 
     realtimeSubscription.on('broadcast', { event: 'private_message' }, (payload) => {

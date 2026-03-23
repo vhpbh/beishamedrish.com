@@ -220,6 +220,9 @@ async function syncGlobalData() {
         }
     } catch (e) {
         console.error("שגיאה בסנכרון נתונים:", e.message);
+        if (e.message && (e.message.includes("Failed to fetch") || e.message.includes("NetworkError"))) {
+            console.warn("⚠️ תקלה בתקשורת עם השרת (502/CORS). ייתכן שהפרויקט ב-Supabase במצב Paused או שיש חסימת רשת.");
+        }
     }
     checkIncomingRequests()
 }
