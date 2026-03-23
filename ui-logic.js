@@ -221,7 +221,7 @@ function renderGeneralSearchResults(results, query) {
             const displayName = partnerName.startsWith('book:') ? partnerName.replace('book:', '') : partnerName;
 
             groupHtml += `
-                <div class="result-item" onclick="closeSearchDropdown(); openChat('${partnerEmail}', '${displayName.replace(/'/g, "\\'")}');">
+                <div class="result-item" onclick="closeSearchDropdown(); if(typeof openChat === 'function') openChat('${partnerEmail}', '${displayName.replace(/'/g, "\\'")}')">
                     <div class="result-item-title">שיחה עם ${displayName}</div>
                     <div class="result-item-context">${isMe ? 'אני' : partnerName}: ${highlight(msg.message, query)}</div>
                 </div>
@@ -399,7 +399,7 @@ function showAddSection(sectionId) {
             if (sectionId === 'cycles') renderCyclesSection(target);
             if (sectionId === 'quick') renderQuickSection(target);
         }
-        if (sectionId === 'new') populateAllBooks(); 
+        if (sectionId === 'new') populateAllBooks();
     }
 }
 

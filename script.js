@@ -1,10 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof showMaintenanceOverlay === 'function') {
-        document.body.innerHTML = ''; // מחיקת כל האלמנטים (כולל טופס התחברות)
-        showMaintenanceOverlay(); // הצגת הודעת התחזוקה
-        return; // עצירת שאר הסקריפטים
-    }
-
     setupInterfaceChanges();
 });
 
@@ -21,11 +15,6 @@ let realtimeSubscription = null;
 
 
 async function init() {
-    if (typeof showMaintenanceOverlay === 'function') {
-        showMaintenanceOverlay();
-        return;
-    }
-
     checkBanStatus();
 
 
@@ -916,7 +905,9 @@ async function loadSchedules() {
             });
             localStorage.setItem('chavruta_schedules', JSON.stringify(schedules));
         }
-    } catch (e) { console.error("Error loading schedules", e); }
+    } catch (e) {
+        console.warn("Could not load schedules (Table might be missing or RLS blocking):", e.message);
+    }
 }
 
 async function saveProfile() {
@@ -1079,8 +1070,8 @@ function switchScreen(name, el, chatFilter) {
     if (name === 'chavrutas') renderChavrutas();
     if (name === 'calendar') renderCalendar();
     if (name === 'community') renderCommunity();
-    if (name === 'chats') renderChatList(chatFilter || 'personal');
-    if (name === 'archive') loadChatRating();
+    if (name === 'chats' && typeof renderChatList === 'function') renderChatList(chatFilter || 'personal');
+    if (name === 'archive' && typeof loadChatRating === 'function') loadChatRating();
     if (name === 'shop') renderShop();
     if (name === 'ads') loadAds();
 }
@@ -1600,27 +1591,10 @@ function setDonationType(type) {
     }
 
     const chipsContainer = document.getElementById('quickAmountChips');
-    chipsContainer.innerHTML = '';
-    let amounts = [];
-    if (type === 'sub') {
-        amounts = SUBSCRIPTION_TIERS.map(t => t.price);
-    } else {
-        amounts = ONE_TIME_TIERS.map(t => t.price);
-    }
+    if (chipsContainer) chipsContainer.innerHTML = '';
 
-    amounts.forEach(amt => {
-        const chip = document.createElement('div');
-        chip.className = 'amount-chip';
-        let label = `₪${amt}`;
-        if (type === 'sub') {
-            const t = SUBSCRIPTION_TIERS.find(x => x.price === amt);
-            if (t) label += `<div style="font-size:0.75rem; font-weight:normal; margin-top:2px; opacity:0.9;">${t.name}</div>`;
-        }
-        chip.innerHTML = label;
-
-        chip.onclick = () => { document.getElementById('customDonationAmount').value = amt; document.getElementById('customDonationAmount').dispatchEvent(new Event('input')); };
-        chipsContainer.appendChild(chip);
-    });
+    // רענון כרטיסי התרומה (Tiers) בהתאם לסוג שנבחר
+    renderTiers();
 }
 
 function renderTiers() {
@@ -1630,7 +1604,7 @@ function renderTiers() {
     const tiers = currentDonationType === 'sub' ? SUBSCRIPTION_TIERS : ONE_TIME_TIERS;
     tiers.forEach(tier => {
         const div = document.createElement('div');
-        div.id = `goal-card-${goal.id}`;
+        div.id = `tier-card-${tier.price}`;
         div.className = 'tier-card';
         div.onclick = () => selectTier(tier.price, div);
         div.innerHTML = `
@@ -2745,7 +2719,7 @@ function renderUserSelectionList() {
 
 function toggleSelectAllUsers(el) {
     const cb = el.querySelector('input');
-    const checked = !cb.checked; 
+    const checked = !cb.checked;
     cb.checked = checked;
     document.querySelectorAll('.user-select-cb').forEach(c => c.checked = checked);
 }
@@ -2872,11 +2846,11 @@ document.addEventListener('click', function (event) {
     const notifContainer = document.querySelector('#notif-container');
     const notifMenu = document.getElementById('notif-dropdown');
     if (notifContainer && !notifContainer.contains(event.target) && notifMenu.style.display === 'block') {
-        toggleNotifications(); 
-        }
+        toggleNotifications();
+    }
 
 
-        
+
 
     const searchContainer = document.querySelector('.header-search-container');
     if (searchContainer && !searchContainer.contains(event.target)) {
@@ -2995,7 +2969,7 @@ async function loadAds() {
         const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').maybeSingle();
         if (error || !data) throw error || new Error("No data");
         container.innerHTML = data.value || '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
-        logAdView(); 
+        logAdView();
     } catch (e) {
         container.innerHTML = '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
     }
@@ -3006,7 +2980,7 @@ async function addSiyumReaction(siyumId, btn) {
     try {
         const { error } = await supabaseClient.from('siyum_reactions').insert({ siyum_id: siyumId, reactor_email: currentUser.email });
 
-        if (error && error.code === '23505') { 
+        if (error && error.code === '23505') {
             return showToast("כבר אמרת מזל טוב!", "info");
         }
         if (error) throw error;
@@ -3035,8 +3009,8 @@ function toggleDataWar() {
     if (window.isNetworkMonitorActive) {
         populateNetworkUsers();
     } else {
-        document.getElementById('networkLog').innerHTML = ''; 
-        document.getElementById('user-icons-container').innerHTML = ''; 
+        document.getElementById('networkLog').innerHTML = '';
+        document.getElementById('user-icons-container').innerHTML = '';
     }
 }
 
@@ -3045,7 +3019,7 @@ function populateNetworkUsers() {
     const visualizer = document.getElementById('network-visualizer');
     if (!container || !visualizer) return;
 
-    container.innerHTML = ''; 
+    container.innerHTML = '';
     const onlineUsers = globalUsersData.filter(u => u.lastSeen && (new Date() - new Date(u.lastSeen) < 5 * 60 * 1000));
 
     const width = visualizer.clientWidth;
@@ -3057,7 +3031,7 @@ function populateNetworkUsers() {
     const userCount = onlineUsers.length;
 
     onlineUsers.forEach((user, i) => {
-        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2); 
+        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2);
         const x = centerX + radiusX * Math.cos(angle);
         const y = centerY + radiusY * Math.sin(angle);
 
@@ -3067,7 +3041,7 @@ function populateNetworkUsers() {
         userDiv.className = 'net-user';
         userDiv.dataset.id = user.email;
         userDiv.style.left = `${x - 30}px`;
-        userDiv.style.top = `${y - 30}px`; 
+        userDiv.style.top = `${y - 30}px`;
 
         userDiv.innerHTML = `
             <div class="user-icon-emoji">💻</div>
@@ -3174,8 +3148,8 @@ async function populateAllBooks() {
 
     if (select && select.parentNode) {
         select.parentNode.insertBefore(searchContainer, select);
-        select.style.display = 'none'; 
-        select.id = 'bookSelect_hidden'; 
+        select.style.display = 'none';
+        select.id = 'bookSelect_hidden';
     }
 }
 
@@ -3194,7 +3168,7 @@ async function openThread(msgId, text, chatId) {
     container.innerHTML = `<div style="background:#e2e8f0; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;"><strong>הודעת מקור:</strong><br>${text}</div>`;
     container.innerHTML += `<div style="text-align:center; color:#94a3b8;">טוען תגובות...</div>`;
 
- 
+
     setTimeout(() => {
         const input = document.getElementById('thread-input');
         if (input) input.focus();
@@ -3203,7 +3177,7 @@ async function openThread(msgId, text, chatId) {
     const { data: replies } = await supabaseClient
         .from('chat_messages')
         .select('*')
-        .ilike('message', `%ref:${msgId}%`) 
+        .ilike('message', `%ref:${msgId}%`)
         .order('created_at');
 
     const loadingMsg = container.querySelector('div:last-child');
@@ -3419,13 +3393,13 @@ function visualizeNetworkActivity(type, details) {
     const { action, from, to, isBoring, status } = details;
 
     if (isBoring && !isVerboseNetworkLog) {
-        return; 
+        return;
     }
 
     if (action === 'sendMessage') {
-        drawNetworkLine(from, 'cloud', '#60a5fa'); 
+        drawNetworkLine(from, 'cloud', '#60a5fa');
         setTimeout(() => {
-            drawNetworkLine('cloud', to, '#4ade80'); 
+            drawNetworkLine('cloud', to, '#4ade80');
         }, 400);
     } else {
 
@@ -3498,7 +3472,7 @@ document.addEventListener('click', (e) => {
 
 window.onload = async function () {
     try {
-        await init(); 
+        await init();
     } catch (e) {
         console.log("האתר עלה ללא סנכרון ענן");
     }
@@ -3654,7 +3628,7 @@ async function openRoadmapModal() {
 
         currentRoadmapFeatures = features;
 
-        setRoadmapFilter('done'); 
+        setRoadmapFilter('done');
 
     } catch (e) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;

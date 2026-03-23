@@ -40,16 +40,10 @@ async function syncGlobalData() {
             .eq('key', 'site_maintenance_mode')
             .maybeSingle();
 
-        if (maintSettings && maintSettings.value === 'true') {
-            if (typeof showMaintenanceOverlay === 'function') showMaintenanceOverlay();
-            return;
-        } else {
-
-            const overlay = document.getElementById('maintenance-overlay');
-            if (overlay) overlay.remove();
-            const banner = document.getElementById('admin-maint-banner');
-            if (banner) banner.remove();
-        }
+        const overlay = document.getElementById('maintenance-overlay');
+        if (overlay) overlay.remove();
+        const banner = document.getElementById('admin-maint-banner');
+        if (banner) banner.remove();
 
         const { data: users, error: usersError } = await supabaseClient.rpc('get_public_users_data');
 
@@ -202,7 +196,9 @@ async function syncGlobalData() {
 
             renderLeaderboard();
             if (document.getElementById('screen-chavrutas').classList.contains('active')) renderChavrutas();
-            if (document.getElementById('screen-chats').classList.contains('active')) renderChatList(currentChatFilter, null, true);
+            if (document.getElementById('screen-chats').classList.contains('active') && typeof renderChatList === 'function') {
+                renderChatList(currentChatFilter, null, true);
+            }
             renderGoals();
         }
 
@@ -210,7 +206,8 @@ async function syncGlobalData() {
         if (typeof renderAdminReports === 'function' && document.getElementById('admin-sec-reports') && document.getElementById('admin-sec-reports').classList.contains('active')) renderAdminReports();
         if (typeof renderAdminDonations === 'function' && document.getElementById('admin-sec-donations') && document.getElementById('admin-sec-donations').classList.contains('active')) renderAdminDonations();
 
-        loadChatRating();
+        if (typeof loadChatRating === 'function') loadChatRating();
+
         if (document.getElementById('notesModal').style.display === 'flex' && currentNotesData.goalId) {
             const activeTag = document.activeElement.tagName;
             if (activeTag !== 'TEXTAREA' && activeTag !== 'INPUT') {

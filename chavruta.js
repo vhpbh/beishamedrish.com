@@ -70,7 +70,9 @@ async function respondToRequest(reqId, action) {
                 const partnerName = partnerUser ? partnerUser.name : partnerEmail.split('@')[0];
 
                 switchScreen('chats', document.querySelector('.floating-nav-item[onclick*="chats"]'));
-                openChat(partnerEmail, partnerName);
+                if (typeof openChat === 'function') {
+                    openChat(partnerEmail, partnerName);
+                }
             }
         }
 

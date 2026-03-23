@@ -195,6 +195,7 @@ async function handleLogin(e) {
                 const { data: newUser, error: createError } = await supabaseClient
                     .from('users')
                     .insert([{
+                        id: authData.user.id,
                         email: email,
                         display_name: (authData.user && authData.user.user_metadata && authData.user.user_metadata.display_name) ? authData.user.user_metadata.display_name : email.split('@')[0],
                         last_seen: new Date()
