@@ -168,6 +168,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
                 </div>
             </div>
             <div class="chat-body">
+                ${isSystem ? `<div class="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-xs p-2 text-center border-b border-yellow-100 dark:border-yellow-800 font-medium">עקב תקלות טעינה, מומלץ לעבור לצ'אט זה במצב מסך מלא <button class="underline font-bold mr-1 hover:text-yellow-900 dark:hover:text-yellow-100" onclick="expandChatToScreen('${partnerEmail}', '${partnerName.replace(/'/g, "\\'")}')">מעבר למסך מלא</button></div>` : ''}
                 <div class="chat-messages-area flex flex-col" id="msgs-${partnerEmail}">
                     <div class="chat-loading-indicator" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fas fa-circle-notch fa-spin"></i> טוען צ'אט...</div>
                 </div>
@@ -383,7 +384,13 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     }
 
     if (chats.length === 0) {
-        newHTML = '<div class="text-center p-5 text-slate-400">אין צ\'אטים בקטגוריה זו.</div>';
+        let emptyMsg = 'אין צ\'אטים בקטגוריה זו.';
+        if (filter === 'personal') {
+            emptyMsg += '<br><span style="font-size:0.9em; display:block; margin-top:8px;">יש למצוא חברותא כדי להתחיל לשוחח.</span>';
+        } else if (filter === 'public') {
+            emptyMsg += '<br><span style="font-size:0.9em; display:block; margin-top:8px;">יש להתחיל ללמוד ספר כדי להצטרף לשיח.</span>';
+        }
+        newHTML = `<div class="text-center p-5 text-slate-400">${emptyMsg}</div>`;
     } else {
         chats.forEach(chat => {
             const user = globalUsersData.find(u => u.email && chat.email && u.email.toLowerCase() === chat.email.toLowerCase());

@@ -262,12 +262,12 @@ async function updateDailyStreak() {
                 if (pointsToAdd > 0) {
                     await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
                     const { error: rpcError } = await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
-                    
+
                     if (!rpcError) {
                         // עדכון מקומי של המשתמש כדי שהנקודות יופיעו מיד
                         currentUser.reward_points = (currentUser.reward_points || 0) + pointsToAdd;
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
-                        
+
                         // רענון התצוגה בדשבורד
                         if (typeof renderGoals === 'function') renderGoals();
                     }
@@ -1670,7 +1670,10 @@ function openDonationModal() {
 
     // עדכון טקסט האחוזים
     const progress = localStorage.getItem('torahApp_campaign_progress') || 60;
-    document.getElementById('campaignProgressText').innerText = progress + '%';
+    const percentage = parseFloat(progress) || 0;
+    const goalAmount = 6500;
+    const currentAmount = Math.round((percentage / 100) * goalAmount);
+    document.getElementById('campaignProgressText').innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
     // עדכון מד התקדמות לפי הגדרות ניהול
     document.getElementById('campaignProgressBar').style.width = progress + '%';
 
@@ -3804,6 +3807,9 @@ function showAchievements() {
     bringToFront(modal);
 }
 
+let currentRoadmapFeatures = [];
+let currentRoadmapFilter = 'done';
+
 async function openRoadmapModal() {
     const modal = document.getElementById('roadmapModal');
     if (!modal) return;
@@ -3829,6 +3835,11 @@ async function openRoadmapModal() {
                 <header class="pt-8 pb-4 px-8 flex flex-col items-center text-center border-b border-slate-100 dark:border-slate-800">
                     <h1 class="text-xl font-bold text-slate-800 dark:text-white mb-2">מפת הדרכים שלנו</h1>
                     <p class="text-sm text-slate-500 dark:text-slate-400">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
+                    <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mt-4 w-full max-w-xs">
+                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('done', this)">בוצע</button>
+                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('in_progress', this)">בטיפול</button>
+                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('planned', this)">בתכנון</button>
+                    </div>
                 </header>
                 <main id="roadmap-list-area" class="p-6 flex-1 overflow-y-auto space-y-4">
                     <div class="text-center p-5 text-slate-400">טוען...</div>
@@ -3839,26 +3850,64 @@ async function openRoadmapModal() {
         modal.innerHTML = templateHtml;
 
         // Now fetch data and render
-        const listArea = document.getElementById('roadmap-list-area');
         const { data: features, error } = await supabaseClient
             .from('roadmap_features')
             .select('*')
             .order('sort_order', { ascending: true });
 
         if (error) {
-            listArea.innerHTML = `<div class="text-center p-10 text-red-500">שגיאה בטעינת מפת הדרכים.</div>`;
             return;
         }
 
         if (!features || features.length === 0) {
-            listArea.innerHTML = `<div class="text-center p-10 text-slate-500">מפת הדרכים תתפרסם בקרוב.</div>`;
+            document.getElementById('roadmap-list-area').innerHTML = `<div class="text-center p-10 text-slate-500">מפת הדרכים תתפרסם בקרוב.</div>`;
             return;
         }
 
-        renderRoadmapFeatures(features, listArea);
+
+        currentRoadmapFeatures = features;
+
+        setRoadmapFilter('done'); // Default view
 
     } catch (e) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
+    }
+}
+
+function setRoadmapFilter(filter, btn) {
+    currentRoadmapFilter = filter;
+    const modal = document.getElementById('roadmapModal');
+    if (!modal) return;
+
+    // UI Update
+    const tabs = modal.querySelectorAll('.roadmap-tab');
+    const inactiveClass = 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50';
+    const activeClass = 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm';
+
+    // If auto-called without button element, find the correct button
+    if (!btn) {
+        tabs.forEach(t => {
+            if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(`'${filter}'`)) btn = t;
+        });
+    }
+
+    tabs.forEach(t => {
+        t.className = `roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${inactiveClass}`;
+    });
+
+    if (btn) {
+        btn.className = `roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeClass}`;
+    }
+
+    // Filter and Render
+    const listArea = document.getElementById('roadmap-list-area');
+    if (listArea && currentRoadmapFeatures) {
+        const filtered = currentRoadmapFeatures.filter(f => f.status === filter);
+        if (filtered.length === 0) {
+            listArea.innerHTML = `<div class="text-center p-10 text-slate-500">אין פריטים להצגה בסטטוס זה.</div>`;
+        } else {
+            renderRoadmapFeatures(filtered, listArea);
+        }
     }
 }
 

@@ -101,7 +101,10 @@ async function syncGlobalData() {
             const progressText = document.getElementById('campaignProgressText');
             const progressBar = document.getElementById('campaignProgressBar');
             if (progressText && progressBar) {
-                progressText.innerText = campaignSettings.value + '%';
+                const percentage = parseFloat(campaignSettings.value) || 0;
+                const goalAmount = 6500;
+                const currentAmount = Math.round((percentage / 100) * goalAmount);
+                progressText.innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
                 progressBar.style.width = campaignSettings.value + '%';
             }
         }
