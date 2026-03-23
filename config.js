@@ -2,11 +2,11 @@ const SEARCH_TAGS = [
     { id: 'users', name: 'משתמשים', screens: ['screen-leaderboard', 'screen-chavrutas'] },
     { id: 'my-goals', name: 'המסכתות שלי', screens: ['screen-dashboard', 'screen-archive'] },
     { id: 'my-chavrutas', name: 'החברותות שלי', screens: ['screen-chavrutas'] },
-    { id: 'chats', name: 'צ\'אטים', screens: [] }, // Special handling for open chat windows
-    { id: 'books', name: 'ספרים', screens: ['screen-add'] } // Search the library
+    { id: 'chats', name: 'צ\'אטים', screens: [] },
+    { id: 'books', name: 'ספרים', screens: ['screen-add'] }
 ];
 
-// הגדרת מסלולי מנוי
+
 const SUBSCRIPTION_TIERS = [
     { price: 10, name: "תומך כשר", level: 1, color: "#d97706" },
     { price: 25, name: "תומך כשר מהדרין", level: 2, color: "#d97706" },
@@ -17,7 +17,7 @@ const SUBSCRIPTION_TIERS = [
     { price: 250, name: "זבולון אינטנסיבי", level: 7, color: "#d97706" }
 ];
 
-// מסלולי תרומה חד פעמית
+
 const ONE_TIME_TIERS = [
     { price: 18, name: "חי שקלים", level: 0, color: "#e5e7eb" },
     { price: 36, name: "פעמיים חי", level: 0, color: "#d1d5db" },

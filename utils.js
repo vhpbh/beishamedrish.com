@@ -5,7 +5,6 @@ const JOKES = [
     "טעות לעולם חוזרת, וגם סיסמה שגויה. נסה שוב!"
 ];
 
-// זיהוי מצב אופליין
 window.addEventListener('offline', () => {
     if (document.getElementById('offline-overlay')) return;
 
@@ -51,7 +50,6 @@ window.addEventListener('online', () => {
 function customConfirm(msg) {
     const modal = document.getElementById('customConfirmModal');
     if (!modal || !document.getElementById('cConfirmMsg') || !document.getElementById('cConfirmOk') || !document.getElementById('cConfirmCancel')) {
-        // Fallback to native confirm if modal elements are not found
         return Promise.resolve(window.confirm(msg));
     }
     return new Promise(resolve => {
@@ -75,14 +73,12 @@ function customAlert(msg, isHtml = false) {
     const btn = document.getElementById('cAlertBtn');
 
     if (!modal || !msgEl || !btn) {
-        // Fallback to native alert if modal elements are not found
         const tempDiv = document.createElement('div');
         if (isHtml) {
             tempDiv.innerHTML = msg;
         } else {
             tempDiv.innerText = msg;
         }
-        // Use the original window.alert, not the overridden one
         (window.alert.original || window.alert)(tempDiv.textContent || tempDiv.innerText || "");
         return Promise.resolve();
     }
@@ -105,7 +101,6 @@ function customAlert(msg, isHtml = false) {
 function customPrompt(msg, defaultVal = '') {
     const modal = document.getElementById('customPromptModal');
     if (!modal || !document.getElementById('cPromptMsg') || !document.getElementById('cPromptInput') || !document.getElementById('cPromptOk') || !document.getElementById('cPromptCancel')) {
-        // Fallback to native prompt if modal elements are not found
         return Promise.resolve(window.prompt(msg, defaultVal));
     }
     return new Promise(resolve => {
@@ -127,8 +122,7 @@ function customPrompt(msg, defaultVal = '') {
     });
 }
 
-// Override native alerts (Item 5)
-window.alert.original = window.alert; // Keep a reference to the original
+window.alert.original = window.alert;
 window.alert = customAlert;
 window.confirm = customConfirm;
 window.prompt = customPrompt;
@@ -147,7 +141,6 @@ function animateValue(obj, start, end, duration) {
     const step = (timestamp) => {
         if (!startTimestamp) startTimestamp = timestamp;
         const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-        // שימוש ב-toLocaleString להוספת פסיקים
         const currentValue = Math.floor(progress * (end - start) + start);
         obj.innerHTML = currentValue.toLocaleString('en-US');
         if (progress < 1) {
@@ -194,14 +187,14 @@ function getRankName(score) {
 function getRankColor(rankName) {
     switch (rankName) {
         case "תלמיד חכם":
-            return '#8b5cf6'; // purple-600
+            return '#8b5cf6';
         case "צורבא מרבנן":
-            return '#3b82f6'; // blue-600
+            return '#3b82f6';
         case "מתמיד":
-            return '#10b981'; // emerald-600
+            return '#10b981';
         case "צורב צעיר":
         default:
-            return '#64748b'; // slate-500
+            return '#64748b';
     }
 }
 
@@ -211,10 +204,10 @@ function getFullUserBadges(user) {
     const rankName = getRankName(user.learned || 0);
     const rankColor = getRankColor(rankName);
 
-    // Learning Rank Badge
+
     badgesHtml += `<span class="chat-badge" style="background-color: ${rankColor}; border: 1px solid ${rankColor}; color: white;">${rankName}</span>`;
 
-    // Special Badges (from DB)
+
     if (user.badges && Array.isArray(user.badges)) {
         user.badges.forEach(badge => {
             let badgeColor = badge.toLowerCase() === 'מנהל' ? '#ef4444' : (badge.toLowerCase() === 'רב האתר' ? '#3b82f6' : '#f59e0b');
@@ -231,7 +224,6 @@ function bringToFront(element) {
 
 function downloadAsTxt(filename, text) {
     const element = document.createElement('a');
-    // BOM for UTF-8 to support Hebrew in notepad
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -248,7 +240,6 @@ function downloadAsTxt(filename, text) {
 }
 
 function closeModal() {
-    // סוגר את כל סוגי החלונות הקופצים שיש במערכת
     const userModal = document.getElementById('userModal');
     const chavrutaModal = document.getElementById('chavrutaModal');
     const scheduleModal = document.getElementById('scheduleModal');
@@ -264,8 +255,8 @@ function closeModal() {
     if (bookReaderModal) {
         bookReaderModal.style.display = 'none';
         const frame = document.getElementById('bookReaderFrame');
-        if (frame) frame.src = 'about:blank'; // Stop loading
-        if (document.body.classList.contains('focus-mode')) toggleFocusMode(); // יציאה ממצב מרוכז בסגירה
+        if (frame) frame.src = 'about:blank';
+        if (document.body.classList.contains('focus-mode')) toggleFocusMode();
     }
     if (document.getElementById('donationModal')) document.getElementById('donationModal').style.display = 'none';
     if (suggestionModal) suggestionModal.style.display = 'none';
@@ -277,7 +268,6 @@ function closeModal() {
     if (document.getElementById('notesModal')) document.getElementById('notesModal').style.display = 'none';
 }
 
-// פונקציה לקיצור טקסט מתוך HTML
 function truncateHtmlText(htmlString, maxLength) {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlString;

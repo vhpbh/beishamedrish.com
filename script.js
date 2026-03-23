@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof showMaintenanceOverlay === 'function') {
+        document.body.innerHTML = ''; // מחיקת כל האלמנטים (כולל טופס התחברות)
+        showMaintenanceOverlay(); // הצגת הודעת התחזוקה
+        return; // עצירת שאר הסקריפטים
+    }
+
     setupInterfaceChanges();
 });
 
@@ -15,32 +21,32 @@ let realtimeSubscription = null;
 
 
 async function init() {
-    checkBanStatus(); // בדיקת חסימת מכשיר
+    if (typeof showMaintenanceOverlay === 'function') {
+        showMaintenanceOverlay();
+        return;
+    }
 
-    // טיפול בשגיאות אחרי הפנייה אוטומטית
+    checkBanStatus();
+
+
     const urlParams = new URLSearchParams(window.location.hash.substring(1));
     handleAuthErrorFromURL(urlParams);
 
-    // האזנה לאירועי אימות (כניסה דרך קישור מייל)
+
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
-            // אם המשתמש לא מחובר מקומית, נבצע התחברות אוטומטית
             if (!currentUser && !localStorage.getItem('torahApp_user')) {
                 try {
-                    // שליפת פרטי המשתמש מהדאטה-בייס
                     let { data: userRecord } = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
 
-                    // תיקון: אם המשתמש חסר בטבלה הציבורית (בגלל איחור בטריגר או שגיאה), ננסה ליצור אותו או לשלוף שוב
                     if (!userRecord && session.user) {
                         console.log("User record missing in public table. Retrying...");
-                        // Increase delay and add retry logic
                         await new Promise(r => setTimeout(r, 3000));
 
                         const retry = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
                         userRecord = retry.data;
                     }
 
-                    // אם עדיין חסר, כנראה הטריגר נכשל - נתחבר עם המידע שיש בסשן כדי לא לתקוע את המשתמש
                     if (!userRecord && session.user) {
                         console.warn("User record missing after retry. Using session metadata.");
                         userRecord = { email: session.user.email, display_name: session.user.user_metadata.display_name, is_anonymous: false };
@@ -51,11 +57,10 @@ async function init() {
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
                         document.getElementById('auth-overlay').style.display = 'none';
-                        document.body.style.overflow = ''; // שחרור גלילה
+                        document.body.style.overflow = '';
                         updateHeader();
                         restoreAuthenticatedHeader();
 
-                        // אתחול נתונים
                         await syncGlobalData();
                         await loadGoals();
                         await loadUserProfile();
@@ -64,7 +69,6 @@ async function init() {
                         showToast("האימייל אומת בהצלחה! התחברת.", "success");
                         switchScreen('dashboard', document.querySelector('.nav-item'));
 
-                        // ניקוי ה-URL מהטוקן הארוך
                         window.history.replaceState(null, null, window.location.pathname);
                     }
                 } catch (e) {
@@ -80,21 +84,17 @@ async function init() {
         document.getElementById('auth-overlay').style.display = 'none';
         updateHeader();
 
-        // סנכרון נתונים גלובליים תחילה, כדי שיהיו זמינים לפונקציות הבאות
         await syncGlobalData();
 
-        // טעינת לימודים
         await loadGoals();
-        await loadUserProfile(); // טעינת פרופיל מהענן לאחר שהנתונים הגלובליים סונכרנו
+        await loadUserProfile();
 
-        // טעינת רייטינג מהזכרון (להצגה מיידית)
         const cachedRating = localStorage.getItem('torahApp_rating');
         if (cachedRating) {
             const dashStat = document.getElementById('stat-rating');
             if (dashStat) dashStat.innerText = cachedRating;
         }
 
-        // טעינת סטטיסטיקה כללית מהזכרון (להצגה מיידית)
         const cachedStats = JSON.parse(localStorage.getItem('torahApp_stats') || '{}');
         if (cachedStats) {
             if (document.getElementById('stat-books')) document.getElementById('stat-books').innerText = cachedStats.books || 0;
@@ -102,56 +102,50 @@ async function init() {
             if (document.getElementById('stat-completed')) document.getElementById('stat-completed').innerText = cachedStats.completed || 0;
         }
 
-        await loadSchedules(); // טעינת לוח זמנים
+        await loadSchedules();
 
-        getDafYomi(); // טעינת הדף היומי
-        // סנכרון נתונים גלובליים
+        getDafYomi();
         checkCookieConsent();
-        // טעינת מצב לילה
         if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true); // null event
         notificationsEnabled = true;
 
-        // הוספת onclick לכפתור הסיומים לאחר שהכל נטען
         const completedStatCard = document.getElementById('stat-completed')?.closest('.stat-card');
         if (completedStatCard) {
             completedStatCard.style.cursor = 'pointer';
             completedStatCard.onclick = () => showCompletions();
         }
-        updateFollowersCount(); // עדכון מונה עוקבים בטעינה
+        updateFollowersCount();
         sendHeartbeat();
         setupRealtime();
-        startBackgroundServices(); // הפעלת סנכרון רקע
-        logVisit(); // Log visitor
-        checkSystemPopup(); // בדיקת הודעה קופצת ממנהל
+        startBackgroundServices();
+        logVisit();
+        checkSystemPopup();
 
-        // בקשת הרשאות להתראות והפעלת תזכורות
+
         if ("Notification" in window && Notification.permission !== "granted") {
             Notification.requestPermission();
         }
         setTimeout(checkDailyReminders, 5000);
         setInterval(checkChavrutaReminders, 60000);
 
-        // === הוספה: החלת התאמות אישיות (רקעים/אייקונים) ===
         if (typeof applyUserCustomizations === 'function') {
             await applyUserCustomizations();
         }
 
         updateChatBadge();
-        // === הוספה: עדכון רצף יומי ומתן נקודות ===
         if (typeof updateDailyStreak === 'function') {
             await updateDailyStreak();
         }
     } else {
         document.getElementById('auth-overlay').style.display = 'none';
-        // New Guest Mode
         setupGuestHeader();
-        await syncGlobalData(); // To get public data like users for leaderboard
-        startBackgroundServices(); // הפעלת סנכרון רקע גם לאורחים (עבור טבלת מובילים)
-        checkSystemPopup(); // בדיקת הודעה קופצת ממנהל (גם לאורחים)
+        await syncGlobalData();
+        startBackgroundServices();
+        checkSystemPopup();
         renderLeaderboard();
         loadAds();
         getDafYomi();
-        renderGoals(); // To show empty state
+        renderGoals();
         checkCookieConsent();
         if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true);
     }
@@ -173,15 +167,13 @@ function handleAuthErrorFromURL(urlParams) {
 
         if (type === 'signup') message = 'כתובת האימייל שלך ממתינה לאימות';
 
-        // הוספת כפתור לשליחה חוזרת של מייל האימות
-        if (errorCode === 'otp_expired') { // אנא המתן מספר דקות ונסה שוב.
+        if (errorCode === 'otp_expired') {
             message += `<br><br><button class="btn" onclick="resendVerificationEmail()">שלח שוב את האימייל לאימות</button>`;
         }
         if (type === 'signup') message = 'כתובת האימייל שלך ממתינה לאימות';
 
         customAlert(message, true);
 
-        // ניקוי ה-URL משגיאה
         window.history.replaceState(null, null, window.location.pathname);
     }
 }
@@ -220,13 +212,11 @@ async function updateDailyStreak() {
             .single();
 
         if (error) {
-            // It might fail if columns don't exist yet. Don't throw, just log.
             console.warn("Could not get streak data, columns might be missing.", error.message);
             return;
         }
 
         const today = new Date();
-        // Use UTC dates to avoid timezone issues
         const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())).toISOString().split('T')[0];
 
         const lastStreakDateStr = user.last_streak_date;
@@ -237,22 +227,19 @@ async function updateDailyStreak() {
         let needsUpdate = false;
 
         if (lastStreakDateStr !== todayDate) {
-            // Not updated today yet
             const yesterday = new Date();
             yesterday.setUTCDate(today.getUTCDate() - 1);
             const yesterdayDate = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate())).toISOString().split('T')[0];
 
             if (lastStreakDateStr === yesterdayDate) {
-                // Streak continues
                 newStreak++;
-                pointsToAdd = 10 * newStreak; // Example: 10 points per day in streak, increasing
+                pointsToAdd = 10 * newStreak;
                 updatePayload = { current_streak: newStreak, last_streak_date: todayDate };
                 showToast(`רצף של ${newStreak} ימים! קיבלת ${pointsToAdd} נקודות זכות.`, 'success');
                 needsUpdate = true;
             } else {
-                // Streak broken or first day
                 newStreak = 1;
-                pointsToAdd = 10; // Points for starting
+                pointsToAdd = 10;
                 updatePayload = { current_streak: 1, last_streak_date: todayDate };
                 showToast(`התחלת רצף לימוד יומי! קיבלת ${pointsToAdd} נקודות זכות.`, 'success');
                 needsUpdate = true;
@@ -264,11 +251,9 @@ async function updateDailyStreak() {
                     const { error: rpcError } = await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
 
                     if (!rpcError) {
-                        // עדכון מקומי של המשתמש כדי שהנקודות יופיעו מיד
                         currentUser.reward_points = (currentUser.reward_points || 0) + pointsToAdd;
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
-                        // רענון התצוגה בדשבורד
                         if (typeof renderGoals === 'function') renderGoals();
                     }
                 }
@@ -289,10 +274,9 @@ function checkCookieConsent() {
 async function acceptCookies() {
     localStorage.setItem('torahApp_cookie_consent', 'true');
     document.getElementById('cookieModal').style.display = 'none';
-    // שמירה ב-DB כבקשת המשתמש
     try {
         await supabaseClient.from('user_consents').insert([{
-            user_ip: 'client-side', // IP usually handled by server, here just a placeholder or fetch via API if needed
+            user_ip: 'client-side',
             user_agent: navigator.userAgent
         }]);
     } catch (e) {
@@ -314,7 +298,6 @@ function checkDailyReminders() {
     }
 }
 
-// בדיקת תזכורות חברותא
 function checkChavrutaReminders() {
     if (!currentUser) return;
     const now = new Date();
@@ -344,7 +327,6 @@ function getUserBadgeHtml(user) {
     return '';
 }
 
-// === ניהול לימוד חדש (חיפוש ספרים) ===
 let bookSearchDebounce;
 let selectedBookStructure = null;
 
@@ -352,7 +334,6 @@ function updateCalculatedUnits() {
     if (!requireAuth()) return;
     const scope = document.getElementById('bookScopeSelect').value;
     if (scope === 'chapter') {
-        // הערכה לפרק בודד
         document.getElementById('calculatedUnits').value = 20; // ממוצע משניות/פסוקים לפרק
     }
 }
@@ -366,10 +347,8 @@ function renderLeaderboard() {
     const cityFilter = document.getElementById('leaderboardCityFilter') ? document.getElementById('leaderboardCityFilter').value.toLowerCase() : '';
     const bookFilter = document.getElementById('leaderboardBookFilter') ? document.getElementById('leaderboardBookFilter').value.toLowerCase() : '';
 
-    // 1. קח את כל המשתמשים מהענן, אבל הסר את עצמך משם (לפי אימייל) כדי למנוע כפילות
     let all = globalUsersData.filter(u => u.email && (!currentUser || u.email.toLowerCase() !== currentUser.email.toLowerCase()));
 
-    // 2. הוסף את עצמך ידנית עם הנתונים המקומיים המעודכנים ביותר
     const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
     const myRewardPoints = currentUser ? (currentUser.reward_points || 0) : 0;
     const myTotalScore = myScore + myRewardPoints;
@@ -390,19 +369,16 @@ function renderLeaderboard() {
         });
     }
 
-    // סינון
     all = all.filter(u => {
         const cityMatch = !cityFilter || (u.city && u.city.toLowerCase().includes(cityFilter));
         const bookMatch = !bookFilter || (u.books && u.books.some(b => b.toLowerCase().includes(bookFilter)));
         const score = currentLeaderboardSort === 'rating' ? (u.chat_rating || 0) : (u.learned || 0);
-        // הצגת רק משתמשים עם ניקוד חיובי
         return cityMatch && bookMatch && score > 0;
     });
 
     let newHTML = '';
     let myCardHTML = '';
 
-    // 3. מיון והצגה
     all.sort((a, b) => {
         if (currentLeaderboardSort === 'rating') {
             return (b.chat_rating || 0) - (a.chat_rating || 0);
@@ -414,15 +390,13 @@ function renderLeaderboard() {
         newHTML = '<div class="text-center p-10 text-slate-500">אין מובילים להצגה כרגע.</div>';
     }
 
-    all.slice(0, 15).forEach((u, i) => { // הגבלה ל-15 המובילים
+    all.slice(0, 15).forEach((u, i) => {
         const rank = i + 1;
-        // אם זה 'אני', שולחים מזהה מיוחד, אחרת את האימייל
         const idToSend = u.id === 'me' ? 'me' : u.email;
         const score = currentLeaderboardSort === 'rating' ? (u.chat_rating || 0) : u.learned;
         const scoreLabel = currentLeaderboardSort === 'rating' ? 'רייטינג' : 'נקודות';
         const badge = getUserBadgeHtml(u);
 
-        // Render Me Card separately if it's me
         if (u.id === 'me' && meContainer) {
             myCardHTML = `
                 <div class="lb-me-card">
@@ -444,7 +418,6 @@ function renderLeaderboard() {
             `;
         }
 
-        // Render List Item
         let rankColorClass = 'color:var(--text-main); opacity:0.6;';
         let rankIcon = '';
         if (rank === 1) {
@@ -476,7 +449,6 @@ function renderLeaderboard() {
         </div>`;
     });
 
-    // עדכון ה-DOM רק אם יש שינוי, למניעת הבהוב
     if (newHTML !== lastLeaderboardHTML) {
         listContainer.innerHTML = newHTML;
         meContainer.innerHTML = myCardHTML;
@@ -486,14 +458,12 @@ function renderLeaderboard() {
 
 async function findChavruta(bookName) {
     const modal = document.getElementById('chavrutaModal');
-    // הזרקת ה-HTML החדש למודאל
     const modalContent = modal.querySelector('.modal-content');
     modalContent.innerHTML = getSearchHTML(bookName);
 
     modal.style.display = 'flex';
     bringToFront(modal);
 
-    // הגדרת השלבים
     const steps = [
         { id: 'age', text: 'בודק התאמת גיל' },
         { id: 'city', text: 'מחפש שותפים קרובים בעיר שלך' },
@@ -503,7 +473,6 @@ async function findChavruta(bookName) {
 
     const stepsContainer = document.getElementById('searchSteps');
 
-    // רינדור ראשוני של השלבים
     stepsContainer.innerHTML = steps.map((step, index) => `
         <div id="step-${step.id}" class="search-step ${index === 0 ? 'active' : ''}">
             <div class="step-icon ${index === 0 ? 'active' : 'pending'}">
@@ -514,7 +483,6 @@ async function findChavruta(bookName) {
     `).join('');
 
     try {
-        // משיכת נתונים מהענן
         const { data: remoteUsers, error } = await supabaseClient.from('users').select('*');
         if (error) throw error;
 
@@ -522,10 +490,9 @@ async function findChavruta(bookName) {
 
         const matches = remoteUsers.filter(u => u.email !== currentUser.email);
 
-        // סימולציה של שלבי החיפוש (אנימציה)
         for (let i = 0; i < steps.length; i++) {
             if (modal.style.display === 'none') return;
-            await new Promise(r => setTimeout(r, 1200)); // השהיה לאפקט
+            await new Promise(r => setTimeout(r, 1200));
             if (modal.style.display === 'none') return;
             markStepComplete(steps[i].id);
             if (i < steps.length - 1) {
@@ -534,7 +501,6 @@ async function findChavruta(bookName) {
         }
         if (modal.style.display === 'none') return;
 
-        // לוגיקת חישוב התאמה (כפי שהייתה במקור)
         const myCity = currentUser.city ? currentUser.city.trim().toLowerCase() : "";
         const myRank = getRankName(userGoals.reduce((sum, g) => sum + g.currentUnit, 0));
 
@@ -548,7 +514,7 @@ async function findChavruta(bookName) {
                 if (getRankName(uScore) === myRank) u.matchScore += 50;
                 u.books = uLocal.books || [];
                 if (u.books.includes(bookName)) {
-                    u.matchScore += 30; // 10% of 300 for match score
+                    u.matchScore += 30;
                 }
             } else {
                 u.books = [];
@@ -558,7 +524,6 @@ async function findChavruta(bookName) {
 
         matches.sort((a, b) => b.matchScore - a.matchScore);
 
-        // הצגת התוצאות בעיצוב החדש
         renderChavrutaResults(matches, bookName);
 
     } catch (e) {
@@ -589,15 +554,12 @@ function activateStep(stepId) {
 }
 
 function renderChavrutaResults(matches, bookName) {
-    // שמירת התוצאות למשתנה גלובלי לשימוש בדף התוצאות
     currentChavrutaSearchResults = matches;
     currentSearchBook = bookName;
 
-    // סגירת המודאל ומעבר לדף התוצאות
     closeModal();
     switchScreen('chavruta-results');
 
-    // אתחול המסננים ורינדור הדף
     resetChavrutaFilters();
 }
 
@@ -615,7 +577,6 @@ async function findNewChavruta() {
     }
 }
 
-// וודא שגם לחיצה מחוץ למודאל תסגור אותו (אופציונלי אך מומלץ)
 window.onclick = function (event) {
     const modal = document.getElementById('chavrutaModal');
     if (event.target == modal) {
@@ -627,12 +588,10 @@ async function showUserDetails(uid) {
     if (!uid) return;
 
     let user;
-    // בדיקה אם זה הפרופיל שלי
     if (uid === 'me') {
         const myActiveBooks = userGoals.filter(g => g.status === 'active').map(g => g.bookName);
         const myCompletedBooks = userGoals.filter(g => g.status === 'completed').map(g => g.bookName);
         const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
-        // בפרופיל שלי אני רואה הכל
         user = {
             name: currentUser.displayName,
             learned: myScore,
@@ -645,13 +604,12 @@ async function showUserDetails(uid) {
             address: currentUser.address,
             age: currentUser.age,
             subscription: currentUser.subscription,
-            lastSeen: new Date().toISOString() // For 'me', last seen is now
+            lastSeen: new Date().toISOString()
         };
     } else {
         user = globalUsersData.find(u => u.email && u.email.toLowerCase() === uid.toLowerCase());
     }
 
-    // תיקון: אם המשתמש לא נמצא (בגלל בעיית סנכרון), ניצור פרופיל זמני כדי שהחלונית תיפתח
     if (!user) {
         user = {
             id: uid,
@@ -670,18 +628,14 @@ async function showUserDetails(uid) {
         };
     }
 
-    // בדיקת מעקב
     let isFollowing = false;
     if (currentUser && user.email !== currentUser.email) {
         const { data } = await supabaseClient.from('user_followers').select('*').eq('follower_email', currentUser.email).eq('following_email', user.email).single();
         if (data) isFollowing = true;
     }
 
-    // --- Populate Header ---
-    // For admin, show original name even if anonymous
     const displayName = (isAdminMode && user.original_name) ? user.original_name : user.name;
     document.getElementById('modalUserName').innerText = displayName;
-    // Add a tag if user is anonymous and admin is viewing
     if (isAdminMode && user.isAnonymous) {
         document.getElementById('modalUserName').innerHTML += ` <span style="color: #f59e0b; font-size: 0.8rem; font-weight: normal;">(במצב אנונימי)</span>`;
     }
@@ -689,10 +643,9 @@ async function showUserDetails(uid) {
     document.getElementById('modalUserRank').innerHTML = `<i class="fas fa-medal" style="margin-left: 5px;"></i> דרגה: ${getRankName(user.learned)}`;
     document.getElementById('modalUserAge').innerText = user.age ? `גיל: ${user.age}` : '';
 
-    // --- Subscription & Avatar Aura ---
     const subDiv = document.getElementById('modalUserSubscription');
     const avatarDiv = document.getElementById('modalUserAvatar');
-    avatarDiv.className = 'relative mb-4'; // Reset aura
+    avatarDiv.className = 'relative mb-4';
     subDiv.innerHTML = '';
 
     if (user.subscription && user.subscription.level > 0) {
@@ -701,17 +654,14 @@ async function showUserDetails(uid) {
 
         subDiv.innerHTML = `<div class="subscription-badge" style="background:${color}20; color:${color}; border:1px solid currentColor;"><i class="fas fa-crown"></i> ${user.subscription.name}</div>`;
 
-        // Apply aura to the avatar container
         avatarDiv.classList.add(`aura-lvl-${user.subscription.level}`, 'aura-base');
-        avatarDiv.style.borderRadius = '50%'; // Ensure roundness for aura effect
+        avatarDiv.style.borderRadius = '50%';
     }
 
-    // --- Contact Info & Privacy ---
     const contactContainer = document.getElementById('modalContactInfo');
     const showFullDetails = (isAdminMode || uid === 'me' || approvedPartners.has(user.email));
     let contactHtml = '';
 
-    // City (always visible)
     contactHtml += `
         <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
             <i class="fas fa-map-marker-alt text-yellow-500"></i>
@@ -719,7 +669,6 @@ async function showUserDetails(uid) {
             <span>${user.city || 'לא צוין'}</span>
         </div>`;
 
-    // Last Seen (always visible)
     const lastSeenText = user.lastSeen ? timeAgo(user.lastSeen) : 'לא ידוע';
     const lastSeenTitle = user.lastSeen ? formatHebrewDate(user.lastSeen) : '';
 
@@ -753,7 +702,6 @@ async function showUserDetails(uid) {
         `;
     }
 
-    // כפתור מעקב
     if (user.email !== currentUser.email) {
         contactHtml += `
             <button id="followBtn" class="w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm ${isFollowing ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-yellow-500/90 hover:bg-yellow-500 text-white'}" onclick="toggleFollow('${user.email}')">
@@ -762,7 +710,6 @@ async function showUserDetails(uid) {
     }
     contactContainer.innerHTML = contactHtml;
 
-    // --- Book Lists ---
     const booksContainer = document.getElementById('modalUserBooks');
     const archiveContainer = document.getElementById('modalUserArchive');
     const archiveSection = document.getElementById('modalArchiveSection');
@@ -770,7 +717,6 @@ async function showUserDetails(uid) {
     booksContainer.innerHTML = '';
     archiveContainer.innerHTML = '';
 
-    // Active books
     if (!user.books || user.books.length === 0) {
         booksContainer.innerHTML = '<div class="text-center text-sm text-slate-500 p-4">לא לומד ספרים כרגע</div>';
     } else {
@@ -801,7 +747,6 @@ async function showUserDetails(uid) {
         });
     }
 
-    // הצגת ארכיון (ספרים שהושלמו)
     if (user.completedBooks && user.completedBooks.length > 0) {
         archiveSection.style.display = 'block';
         user.completedBooks.forEach(b => {
@@ -839,7 +784,6 @@ async function checkAndSendRequest(email, book, btnElement) {
 
     if (success && btnElement) {
         btnElement.outerHTML = `<span class="text-xs text-orange-500">(בקשה נשלחה)</span>`;
-        // Add to local state to persist until next sync
         pendingSentRequests.push({ receiver: email, book: book, created_at: new Date().toISOString() });
     } else if (btnElement) {
         btnElement.disabled = false;
@@ -864,7 +808,7 @@ async function toggleFollow(targetEmail) {
             btn.className = 'w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm bg-gray-200 hover:bg-gray-300 text-gray-700';
             showToast("אתה עוקב כעת!", "success");
         }
-        updateFollowersCount(); // Update the count in the header dropdown
+        updateFollowersCount();
     } catch (e) {
         console.error(e);
         showToast("שגיאה בעדכון עוקב", "error");
@@ -876,14 +820,11 @@ async function showFollows() {
     modal.style.display = 'flex';
     bringToFront(modal);
 
-    // The tabs are now part of the HTML, so we just need to trigger the first render.
-    // The `renderFollowsList` will handle the active state of the button.
     renderFollowsList('followers', document.querySelector('#followers-tabs button:first-child'));
 }
 
 async function renderFollowsList(type, tabEl) {
     if (tabEl) {
-        // New tab styling
         document.querySelectorAll('#followers-tabs button').forEach(t => {
             t.classList.remove('bg-amber-400', 'text-white', 'shadow-md', 'dark:bg-amber-400', 'dark:text-slate-900');
             t.classList.add('text-slate-500', 'dark:text-slate-400');
@@ -924,7 +865,7 @@ async function renderFollowsList(type, tabEl) {
         const subLevel = u.subscription?.level || 0;
         const isSub = subLevel > 0;
         const tier = isSub ? SUBSCRIPTION_TIERS.find(t => t.level === subLevel) : null;
-        const glowColor = tier ? tier.color : '#a855f7'; // default purple
+        const glowColor = tier ? tier.color : '#a855f7';
 
         const avatarGlowStyle = isSub ? `border: 2px solid ${glowColor}; box-shadow: 0 0 15px ${glowColor}4D;` : '';
         const cardGlowClass = isSub ? 'border-2' : 'border border-slate-200 dark:border-slate-700';
@@ -983,14 +924,13 @@ async function saveProfile() {
     const name = document.getElementById('profileName').value;
     const phone = document.getElementById('profilePhone').value;
     const city = document.getElementById('profileCity').value;
-    const address = document.getElementById('profileAddress').value; // וודא שיש לך input כזה ב-HTML
+    const address = document.getElementById('profileAddress').value;
     const age = document.getElementById('profileAge').value;
     const isAnon = document.getElementById('anonSwitch').checked;
     const newPass = document.getElementById('profileNewPass').value;
     const secQ = document.getElementById('profileSecQ').value;
     const secA = document.getElementById('profileSecA').value;
 
-    // Validation
     if (!validateInput(name, 'name')) {
         return customAlert("השם שהוזן אינו תקין.");
     }
@@ -999,7 +939,6 @@ async function saveProfile() {
     }
 
 
-    // עדכון מקומי
     currentUser.displayName = name;
     currentUser.phone = phone;
     currentUser.city = city;
@@ -1009,7 +948,6 @@ async function saveProfile() {
 
     localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
-    // עדכון מיידי של הכותרת והנתונים הגלובליים
     updateHeader();
     const myUserIndex = globalUsersData.findIndex(u => u.email === currentUser.email);
     if (myUserIndex !== -1) {
@@ -1019,7 +957,6 @@ async function saveProfile() {
         globalUsersData[myUserIndex].isAnonymous = isAnon;
     }
 
-    // עדכון בענן (Upsert)
     let updateData = {
         email: currentUser.email,
         display_name: name,
@@ -1033,7 +970,6 @@ async function saveProfile() {
     };
 
     try {
-        // עדכון סיסמה בנפרד ובצורה מאובטחת
         if (newPass) {
             if (!validateInput(newPass, 'password')) {
                 return customAlert("הסיסמה החדשה חייבת להכיל לפחות 6 תווים, כולל אותיות ומספרים.");
@@ -1044,10 +980,9 @@ async function saveProfile() {
             });
             if (passError) throw passError;
             showToast('הסיסמה עודכנה בהצלחה!', "success");
-            document.getElementById('profileNewPass').value = ''; // ניקוי השדה
+            document.getElementById('profileNewPass').value = '';
         }
 
-        // עדכון שאלות אבטחה
         if (secQ && secA) {
             updateData.security_questions = [{ q: secQ, a: secA }];
         }
@@ -1059,7 +994,6 @@ async function saveProfile() {
         if (error) throw error;
         showToast('הפרופיל עודכן בהצלחה!', "success");
 
-        // רענון כדי לראות את השינויים מיד
         syncGlobalData();
         switchScreen('dashboard', document.querySelector('.nav-item'));
 
@@ -1074,19 +1008,16 @@ function switchScreen(name, el, chatFilter) {
 
     if (name === 'chats' && !requireAuth()) return;
 
-    // איפוס תצוגת הוספה למצב ברירת מחדל (תפריט)
     if (name === 'add') {
         showAddSection('menu');
     }
 
-    // טיפול במצב ניהול
     const headerTitle = document.getElementById('headerTitle');
     const bottomNav = document.querySelector('.floating-nav-container');
     const headerEmail = document.getElementById('headerUserEmail');
     const spacer = document.getElementById('bottom-spacer');
     const container = document.querySelector('.container');
 
-    // איפוס סגנונות קונטיינר למצב רגיל
     container.style.maxWidth = '';
     container.style.margin = '';
     container.style.padding = '';
@@ -1098,7 +1029,7 @@ function switchScreen(name, el, chatFilter) {
         container.style.maxWidth = '100%';
         container.style.margin = '0';
         container.style.padding = '0';
-        container.style.height = 'calc(100vh - 65px)'; // גובה מלא פחות האדר
+        container.style.height = 'calc(100vh - 65px)';
         container.style.overflow = 'hidden';
 
         bottomNav.classList.add('nav-hidden');
@@ -1109,10 +1040,9 @@ function switchScreen(name, el, chatFilter) {
         isAdminMode = false;
         headerTitle.innerText = 'בית המדרש';
         document.getElementById('bot-mode-indicator').style.display = 'none';
-        // אם אנחנו מחוברים כבוט, נציג כפתור חזרה
         if (realAdminUser) {
             document.getElementById('bot-mode-indicator').style.display = 'block';
-            headerEmail.innerHTML = ''; // Hide text but keep element for layout
+            headerEmail.innerHTML = '';
         } else {
             headerEmail.style.display = 'block';
             if (currentUser) {
@@ -1127,7 +1057,7 @@ function switchScreen(name, el, chatFilter) {
             bottomNav.classList.add('nav-hidden');
             if (spacer) spacer.style.display = 'none';
             headerEmail.innerHTML = `<button class="btn-back" onclick="switchScreen('dashboard', document.querySelector('.floating-nav-item'))"><i class="fas fa-arrow-left"></i> יציאה מהצ'אטים</button>`;
-            container.style.maxWidth = 'calc(100% - 2rem)'; // כמעט רוחב מלא
+            container.style.maxWidth = 'calc(100% - 2rem)';
             container.style.margin = '0 auto';
             container.style.height = 'calc(100vh - 67px)';
             container.style.overflow = 'hidden';
@@ -1141,7 +1071,6 @@ function switchScreen(name, el, chatFilter) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + name).classList.add('active');
 
-    // Update active state for the new floating nav
     document.querySelectorAll('.floating-nav-item').forEach(n => n.classList.remove('active'));
     if (el && el.closest('.floating-nav-item')) {
         el.closest('.floating-nav-item').classList.add('active');
@@ -1149,7 +1078,7 @@ function switchScreen(name, el, chatFilter) {
 
     if (name === 'chavrutas') renderChavrutas();
     if (name === 'calendar') renderCalendar();
-    if (name === 'community') renderCommunity(); // Mazal Tov moved to chats
+    if (name === 'community') renderCommunity();
     if (name === 'chats') renderChatList(chatFilter || 'personal');
     if (name === 'archive') loadChatRating();
     if (name === 'shop') renderShop();
@@ -1161,9 +1090,7 @@ function toggleQuickDate() { document.getElementById('quickDateDiv').style.displ
 
 let notifications = [];
 
-// פונקציה להוספת הודעה חדשה
-function addNotification(text, id = null, isHtml = false) { // Add isHtml flag
-    // מניעת כפילויות
+function addNotification(text, id = null, isHtml = false) {
     if (id && notifications.some(n => n.id === id)) return;
 
     notifications.unshift({
@@ -1175,7 +1102,6 @@ function addNotification(text, id = null, isHtml = false) { // Add isHtml flag
     updateNotifUI();
 }
 
-// עדכון הממשק של ההודעות
 function updateNotifUI() {
     const badge = document.getElementById('notif-badge');
     const list = document.getElementById('notif-list');
@@ -1185,10 +1111,8 @@ function updateNotifUI() {
         badge.style.display = 'flex';
         list.innerHTML = notifications.map((n, index) => {
             if (n.html) {
-                // The buttons inside will handle their own logic. No top-level onclick.
                 return `<div style="padding: 10px; border-bottom: 1px solid #eee; background: #fff;">${n.html}</div>`;
             }
-            // For simple text notifications, allow clicking to remove.
             return `
                     <div style="padding: 8px; border-bottom: 1px solid #f1f5f9; background: #fffbeb; cursor:pointer;" onclick="removeNotification(${index})">
                         <div style="font-weight: bold;">${n.text}</div>
@@ -1207,7 +1131,6 @@ function removeNotification(index) {
     updateNotifUI();
 }
 
-// פתיחה/סגירה של תפריט ההודעות
 function toggleNotifications() {
     const profileDropdown = document.getElementById('profile-dropdown');
     if (profileDropdown) {
@@ -1218,23 +1141,19 @@ function toggleNotifications() {
 
     if (isOpening) {
         dropdown.style.display = 'block';
-        // When opening, we just show the list. We can also hide the badge.
         document.getElementById('notif-badge').style.display = 'none';
     } else {
         dropdown.style.display = 'none';
-        // When closing, clear all notifications from view.
         notifications = [];
         updateNotifUI();
     }
 }
-// === פונקציות חסרות לציור כרטיסים וניהול התקדמות ===
 
 function renderGoalCard(goal, container, isActive) {
     const div = document.createElement('div');
     div.id = `goal-card-${goal.id}`;
     div.className = 'glass rounded-super p-6 transition-all hover:shadow-2xl hover:translate-y-[-2px] border border-white/50 dark:border-slate-700/40 mb-4';
 
-    // חישוב אחוזים
     const percent = Math.min(100, Math.round((goal.currentUnit / goal.totalUnits) * 100));
 
     let html = `
@@ -1329,7 +1248,6 @@ function toGematria(num) {
 }
 
 function unitToDafString(goal) {
-    // בדיקה אם הספר הוא מסוג "תלמוד בבלי"
     const bookEntry = BOOKS_DB.find(b => b.name === goal.bookName);
     const isTalmud = bookEntry && bookEntry.category === "תלמוד בבלי";
 
@@ -1342,12 +1260,10 @@ function unitToDafString(goal) {
         const amud = goal.currentUnit % 2 === 0 ? '.' : ':';
         return `דף ${toGematria(daf)}${amud}`;
     }
-    // לכל השאר, הצג יחידות
     if (goal.currentUnit === 0) return "טרם התחיל";
     return `${goal.currentUnit} / ${goal.totalUnits} יחידות`;
 }
 
-// === פונקציות חדשות (הערות ומצב מרוכז) ===
 
 let currentNotesData = { goalId: null, notes: [] };
 let noteZIndex = 1;
@@ -1360,7 +1276,6 @@ async function openNotes(goalId) {
     currentNotesData.notes = Array.isArray(goal.notes) ? goal.notes : [];
     currentNotesData.bookName = goal.bookName;
 
-    // בדיקה אם יש חברותא וסנכרון פתקים
     const chavruta = chavrutaConnections.find(c => c.book === goal.bookName);
     if (chavruta) {
         try {
@@ -1376,11 +1291,9 @@ async function openNotes(goalId) {
 
     const modalContent = document.querySelector('#notesModal .modal-content');
 
-    // ניקוי קונטיינר ישן אם קיים
     const container = document.getElementById('notesContainer');
     if (container) container.remove();
 
-    // שימוש ב-iframe לטעינת notes.html
     let frame = document.getElementById('notesFrame');
     if (!frame) {
         frame = document.createElement('iframe');
@@ -1431,13 +1344,11 @@ async function completeGoal(goalId) {
     const goalIndex = userGoals.findIndex(g => g.id === goalId);
     if (goalIndex === -1) return;
 
-    // עדכון סטטוס לארכיון
     userGoals[goalIndex].status = 'completed';
     userGoals[goalIndex].completedDate = new Date().toISOString();
 
-    saveGoals(); // שמירה קריטית!
+    saveGoals();
 
-    // הפעלת החגיגה (Confetti)
     confetti({
         particleCount: 150,
         spread: 70,
@@ -1445,16 +1356,13 @@ async function completeGoal(goalId) {
         colors: ['#2ecc71', '#3498db', '#f1c40f']
     });
 
-    // הצגת הודעת שמחה
     showToast("אשריך! סיימת את הלימוד: " + userGoals[goalIndex].bookName, "success");
     addNotification(`🎉 מזל טוב! סיימת את מסכת ${userGoals[goalIndex].bookName}!`);
-    renderGoals(); // ריענון התצוגה (יעבור אוטומטית ללשונית ארכיון)
+    renderGoals();
 
-    // מחיקת תזכורות בלוח הקשורות לספר זה
     const bookName = userGoals[goalIndex].bookName;
     const schedules = JSON.parse(localStorage.getItem('chavruta_schedules') || '{}');
 
-    // הסרת חברותא פעילה מרשימת המאושרים (כדי להסתיר את הצ'אט)
     const conn = chavrutaConnections.find(c => c.book === bookName);
     if (conn) {
         approvedPartners.delete(conn.email);
@@ -1468,7 +1376,6 @@ async function completeGoal(goalId) {
     localStorage.setItem('chavruta_schedules', JSON.stringify(schedules));
 
     try {
-        // מחיקת בקשת החברותא מהשרת
         await supabaseClient.from('chavruta_requests')
             .delete()
             .eq('book_name', bookName)
@@ -1476,7 +1383,6 @@ async function completeGoal(goalId) {
         await supabaseClient.from('schedules').delete().eq('user_email', currentUser.email).eq('book_name', bookName);
     } catch (e) { console.error("Error deleting schedule on complete", e); }
 
-    // Post to Mazal Tov board
     try {
         await supabaseClient.from('siyum_board').insert({
             user_email: currentUser.email,
@@ -1485,7 +1391,6 @@ async function completeGoal(goalId) {
         });
     } catch (e) { console.error("Failed to post to siyum board", e); }
 
-    // עדכון ב-Supabase
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
             await supabaseClient
@@ -1499,16 +1404,15 @@ async function completeGoal(goalId) {
         console.error("Error updating status in cloud", e);
     }
 
-    // שליחת התראה לעוקבים
     const { data: followers } = await supabaseClient.from('user_followers').select('follower_email').eq('following_email', currentUser.email);
     if (followers && followers.length > 0) {
         const msgs = followers.map(f => ({
-            sender_email: 'updates@system', // נשלח כעדכון מהנעקבים
+            sender_email: 'updates@system',
             receiver_email: f.follower_email,
             message: `המשתמש ${currentUser.displayName} סיים את המסכת <strong>${bookName}</strong>!`,
             is_html: true
         }));
-        // Can't use RPC for batch insert easily, so we loop.
+
         for (const m of msgs) {
             await supabaseClient.rpc('send_message', {
                 p_sender_email: m.sender_email, p_receiver_email: m.follower_email,
@@ -1525,60 +1429,48 @@ async function updateProgress(goalId, change, btnElement = null) {
         showClickFeedback(btnElement, change);
     }
 
-    // 1. מציאת הלימוד ברשימה המקומית
     const goal = userGoals.find(g => g.id == goalId);
     if (!goal) return;
 
-    // 2. חישוב הכמות החדשה (לא פחות מ-0 ולא יותר מהסך הכל)
     const newAmount = Math.max(0, Math.min(goal.totalUnits, goal.currentUnit + change));
 
-    // אם לא היה שינוי, לא עושים כלום
     if (newAmount === goal.currentUnit) return;
 
     goal.currentUnit = newAmount;
     saveGoals();
 
-    // עדכון ה-DOM ישירות לאנימציה חלקה
     const goalCard = document.getElementById(`goal-card-${goalId}`);
     if (goalCard) {
         const percent = Math.min(100, Math.round((goal.currentUnit / goal.totalUnits) * 100));
 
-        // עדכון טקסט הדף/יחידה
         const dafStringEl = goalCard.querySelector('p.text-sm.text-slate-500');
         if (dafStringEl) dafStringEl.innerText = unitToDafString(goal);
 
-        // עדכון טקסט עמודים לסיום
         const remainingEl = goalCard.querySelector('.flex.justify-between.text-xs span.text-slate-400');
         if (remainingEl) remainingEl.innerText = `${goal.totalUnits - goal.currentUnit} עמודים לסיום`;
 
-        // עדכון טקסט אחוזים
         const percentTextEl = goalCard.querySelector('.font-bold.text-primary');
         if (percentTextEl) percentTextEl.innerText = `${percent}%`;
 
-        // עדכון פס התקדמות
         const progressBarEl = goalCard.querySelector('.progress-gradient');
         if (progressBarEl) progressBarEl.style.width = `${percent}%`;
 
-        // עדכון סטטיסטיקה כללית
         let totalLearned = userGoals.reduce((sum, g) => sum + (g.currentUnit || 0), 0);
         const currentPoints = currentUser ? (currentUser.reward_points || 0) : 0;
         document.getElementById('stat-pages').innerText = (totalLearned + currentPoints).toLocaleString();
         updateRankProgressBar(totalLearned);
     } else {
-        renderGoals(); // Fallback אם הכרטיס לא נמצא
+        renderGoals();
     }
 
-    // עדכון מעקב יומי (גם אם זה שלילי - תיקון טעות)
     incDailyProgress(goalId, change);
 
-    // --- עדכון מיידי של פס ההתקדמות היומי וחגיגות ---
     if (goal.targetDate) {
         const diffTime = new Date(goal.targetDate) - new Date();
         const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-        const dailyTarget = Math.ceil((goal.totalUnits - goal.currentUnit) / diffDays); // חישוב מחדש של היעד
-        const doneToday = getDailyProgress(goal.id) + (change > 0 ? change : 0); // Use the new value for checking completion
+        const dailyTarget = Math.ceil((goal.totalUnits - goal.currentUnit) / diffDays);
+        const doneToday = getDailyProgress(goal.id) + (change > 0 ? change : 0);
 
-        // מציאת האלמנט ב-DOM
         const taskRow = document.getElementById(`daily-task-${goal.id}`);
         if (taskRow) {
             const dailyPercent = Math.min(100, (doneToday / Math.max(1, dailyTarget)) * 100);
@@ -1592,7 +1484,7 @@ async function updateProgress(goalId, change, btnElement = null) {
         }
 
         if (change > 0) {
-            const doneBefore = getDailyProgress(goal.id); // This is before the `incDailyProgress` call
+            const doneBefore = getDailyProgress(goal.id);
             const doneAfter = doneBefore + change;
 
             if (doneBefore < dailyTarget && doneAfter >= dailyTarget) {
@@ -1610,19 +1502,14 @@ async function updateProgress(goalId, change, btnElement = null) {
             }
         }
     }
-    // --------------------------------------------------------
 
-    // הערה: הסרנו את renderGoals() מכאן כדי למנוע קפיצה ("בום") ולשמור על האנימציה
 
-    // 4. בדיקה אם הספר הסתיים
     if (goal.currentUnit >= goal.totalUnits && goal.status === 'active') {
         completeGoal(goal.id);
     }
 
-    // 5. שליחה ל-Supabase ברקע
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
-            // עדכון לפי המייל ושם הספר
             await supabaseClient
                 .from('user_goals')
                 .update({ current_unit: goal.currentUnit })
@@ -1640,7 +1527,6 @@ function showClickFeedback(btn, change) {
     span.innerText = change > 0 ? `+${change}` : change;
     span.style.color = change > 0 ? '#16a34a' : '#ef4444';
 
-    // מיקום האלמנט ביחס לכפתור ולגלילה
     const rect = btn.getBoundingClientRect();
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
@@ -1650,36 +1536,30 @@ function showClickFeedback(btn, change) {
 
     document.body.appendChild(span);
 
-    // הסרה בסיום האנימציה
     setTimeout(() => {
         if (span.parentNode) span.parentNode.removeChild(span);
     }, 800);
 }
 
-/* === לוגיקת תרומות ומנויים === */
-let currentDonationType = 'sub'; // 'sub' or 'one'
+let currentDonationType = 'sub';
 let selectedTierPrice = 0;
 
 function openDonationModal() {
     const modal = document.getElementById('donationModal');
     modal.style.display = 'flex';
-    bringToFront(modal); // הבאה לקדמת המסך
+    bringToFront(modal);
     document.getElementById('donationModal').style.display = 'flex';
-    setDonationType('sub'); // ברירת מחדל
+    setDonationType('sub');
     renderTiers();
 
-    // עדכון טקסט האחוזים
     const progress = localStorage.getItem('torahApp_campaign_progress') || 60;
     const percentage = parseFloat(progress) || 0;
     const goalAmount = 6500;
     const currentAmount = Math.round((percentage / 100) * goalAmount);
     document.getElementById('campaignProgressText').innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
-    // עדכון מד התקדמות לפי הגדרות ניהול
     document.getElementById('campaignProgressBar').style.width = progress + '%';
 
-    // האזנה לשינוי בסכום המותאם אישית
     document.getElementById('customDonationAmount').addEventListener('input', function () {
-        // הסרת בחירה מהכרטיסים
         document.querySelectorAll('.tier-card').forEach(c => c.classList.remove('selected'));
         selectedTierPrice = 0;
 
@@ -1719,7 +1599,6 @@ function setDonationType(type) {
         document.getElementById('customDonationAmount').placeholder = "סכום חודשי אחר";
     }
 
-    // עדכון כפתורי סכומים מהירים לפי הסוג
     const chipsContainer = document.getElementById('quickAmountChips');
     chipsContainer.innerHTML = '';
     let amounts = [];
@@ -1753,7 +1632,6 @@ function renderTiers() {
         const div = document.createElement('div');
         div.id = `goal-card-${goal.id}`;
         div.className = 'tier-card';
-        // div.style.borderTop = `4px solid ${tier.color}`; // הוסר לבקשת המשתמש
         div.onclick = () => selectTier(tier.price, div);
         div.innerHTML = `
             <div class="tier-price">₪${tier.price}</div>
@@ -1767,16 +1645,14 @@ function selectTier(price, element) {
     selectedTierPrice = price;
     document.querySelectorAll('.tier-card').forEach(c => c.classList.remove('selected'));
     element.classList.add('selected');
-    document.getElementById('customDonationAmount').value = ''; // איפוס שדה מותאם אישית
+    document.getElementById('customDonationAmount').value = '';
     document.getElementById('projectedTier').innerHTML = '';
 }
 
 function getTierByAmount(amount) {
-    // מוצא את הדרגה הגבוהה ביותר שהסכום מכסה (המסלול הנמוך הקרוב מלמטה)
-    // המשתמש ביקש: "הדרגה תקבע על פי המסלול הנמוך הקרוב אליו" - כלומר אם אני שם 120, אני מקבל דרגה של 100.
     const eligibleTiers = SUBSCRIPTION_TIERS.filter(t => t.price <= amount);
     if (eligibleTiers.length === 0) return null;
-    return eligibleTiers[eligibleTiers.length - 1]; // האחרון הוא הגבוה ביותר האפשרי
+    return eligibleTiers[eligibleTiers.length - 1];
 }
 
 async function processDonation() {
@@ -1794,15 +1670,11 @@ async function processDonation() {
 
         await customAlert(donationMsg, true);
 
-        // שמירת המנוי למשתמש
         currentUser.subscription = { amount: finalAmount, level: tier.level, name: tier.name, subscription_date: new Date().toISOString() };
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
-        // שמירה בענן (עדכון שדה subscription בטבלת users - נניח שקיים JSONB או עמודות מתאימות)
-        // לצורך הדוגמה נשמור ב-JSONB או נעדכן את הפרופיל
-        await saveProfile(); // זה כבר שומר את currentUser המעודכן לענן
+        await saveProfile();
 
-        // --- התראה לחברותות (Goal 3) ---
         if (approvedPartners.size > 0) {
             const buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectTier(${tier.level}, ${finalAmount})'>לרכישת אותו מסלול</button>`;
             const msg = `היי! בדיוק הצטרפתי למנוי "${tier.name}" בבית המדרש כדי להחזיק תורה. לא תרצה לעשות זאת גם אתה?${buttonHtml}`;
@@ -1820,7 +1692,6 @@ async function processDonation() {
 
         showThankYouAnimation();
 
-        // שליחת התראה לעוקבים על תרומה
         const { data: followers } = await supabaseClient.from('user_followers').select('follower_email').eq('following_email', currentUser.email);
         if (followers && followers.length > 0) {
             const msgs = followers.map(f => ({
@@ -1829,7 +1700,7 @@ async function processDonation() {
                 message: `המשתמש ${currentUser.displayName} תרם לחיזוק בית המדרש!`,
                 is_html: true
             }));
-            // Can't use RPC for batch insert easily, so we loop.
+
             for (const m of msgs) {
                 await supabaseClient.rpc('send_message', {
                     p_sender_email: m.sender_email, p_receiver_email: m.receiver_email,
@@ -1843,7 +1714,6 @@ async function processDonation() {
 
         await customAlert(donationMsg, true);
 
-        // תרומה חד פעמית
         if (approvedPartners.size > 0) {
             const buttonHtml = `<br><button class='btn-link' style='margin-top:5px;' onclick='openDonationModalAndSelectOneTime(${finalAmount})'>גם אני רוצה לתרום</button>`;
             const msg = `היי! הרגע תרמתי ₪${finalAmount} לחיזוק בית המדרש. זכות גדולה! ממליץ גם לך :)${buttonHtml}`;
@@ -1894,7 +1764,6 @@ function openSuggestionModal() {
     bringToFront(modal);
 }
 
-// === לוגיקת דף תוצאות חברותא ===
 let currentChavrutaSearchResults = [];
 let currentSearchBook = '';
 let activeAgeFilter = null;
@@ -1912,23 +1781,19 @@ function renderChavrutaResultsPage() {
 
     let filtered = [...currentChavrutaSearchResults];
 
-    // סינון: הצג רק משתמשים שלומדים את אותו הספר
     if (currentSearchBook) {
         filtered = filtered.filter(u => u.books && u.books.includes(currentSearchBook));
     }
 
-    // סינון לפי גיל
     if (activeAgeFilter) {
         filtered = filtered.filter(u => u.age && u.age >= activeAgeFilter.min && u.age <= activeAgeFilter.max);
     }
 
-    // סינון לפי עיר
     const sameCity = document.getElementById('filterSameCity').checked;
     if (sameCity && currentUser && currentUser.city) {
         filtered = filtered.filter(u => u.city && u.city.trim() === currentUser.city.trim());
     }
 
-    // סינון לפי היסטוריית לימוד
     const historyFilter = document.getElementById('filterHistory').checked;
     if (historyFilter) {
         filtered = filtered.filter(u => chavrutaConnections.some(c => c.email === u.email));
@@ -1945,7 +1810,7 @@ function renderChavrutaResultsPage() {
     filtered.forEach(user => {
         const displayName = user.isAnonymous ? "לומד אנונימי" : (user.display_name || user.name || "לומד");
         const badge = getUserBadgeHtml(user);
-        const matchPercent = Math.min(100, Math.round((user.matchScore / 300) * 100)); // נרמול ל-100% בערך
+        const matchPercent = Math.min(100, Math.round((user.matchScore / 300) * 100));
         const dashOffset = 213.6 - (213.6 * matchPercent) / 100;
 
         const card = document.createElement('div');
@@ -2056,12 +1921,10 @@ async function sendSuggestion() {
 }
 
 function showThankYouAnimation() {
-    // סגירת כל המודאלים והתפריטים
     closeModal();
     document.getElementById('profile-dropdown').style.display = 'none';
     document.getElementById('notif-dropdown').style.display = 'none';
 
-    // יצירת שכבת תודה
     const overlay = document.createElement('div');
     overlay.className = 'thank-you-overlay fixed inset-0 flex items-center justify-center z-[9999] p-4';
     overlay.innerHTML = `
@@ -2103,7 +1966,6 @@ function showThankYouAnimation() {
     `;
     document.body.appendChild(overlay);
 
-    // פיצוצי קונפטי מרובים
     window.confettiInterval = setInterval(() => {
         const randomX = Math.random();
         const randomY = Math.random();
@@ -2117,11 +1979,10 @@ function closeThankYou(btn) {
     btn.closest('.thank-you-overlay').remove();
 }
 
-// עזרים למעקב יומי מקומי (כדי להציג את פס ההתקדמות היומי)
 function getDailyProgress(goalId) {
     const key = 'daily_track_' + goalId;
     const data = JSON.parse(localStorage.getItem(key) || '{}');
-    const today = new Date().toLocaleDateString('en-GB'); // DD/MM/YYYY
+    const today = new Date().toLocaleDateString('en-GB');
     if (data.date !== today) return 0;
     return data.count || 0;
 }
@@ -2131,16 +1992,14 @@ function openBookText(bookName) {
 
     let linkKey = '';
 
-    // Special handling for cycles
     if (bookName === 'דף היומי') linkKey = 'Daf_Yomi';
     else if (bookName === 'משנה יומית') linkKey = 'Mishnah_Yomit';
     else if (bookName === 'רמב"ם יומי') linkKey = 'Rambam_Yomi';
     else if (bookName === 'הלכה יומית') linkKey = 'Halakhah_Yomit';
     else {
-        // Fallback: use book name with underscores
-        // Note: The new BOOKS_DB doesn't have linkKey, so we rely on Sefaria's smart URL handling or simple replacement
+
         linkKey = bookName.replace(/ /g, '_');
-        // Fallback for books not in library
+
         if (!linkKey) {
             linkKey = bookName.replace(/ /g, '_');
         }
@@ -2160,7 +2019,6 @@ function openBookText(bookName) {
         modal.style.display = 'flex';
         bringToFront(modal);
     } else {
-        // Fallback to old behavior if modal elements don't exist
         window.open(url, '_blank');
     }
 }
@@ -2197,7 +2055,6 @@ function openScheduleModal(email, book, name) {
     document.getElementById('scheduleTargetName').innerText = `עם ${name} (${book})`;
     currentScheduleKey = `${email}::${book}`;
 
-    // טעינת הגדרות קיימות
     const schedules = JSON.parse(localStorage.getItem('chavruta_schedules') || '{}');
     const existing = schedules[currentScheduleKey];
 
@@ -2225,7 +2082,6 @@ async function saveSchedule() {
         delete schedules[currentScheduleKey];
         await customAlert('התזכורת בוטלה (לא נבחרו ימים או שעה).');
 
-        // מחיקה מהענן
         try {
             const [pEmail, bName] = currentScheduleKey.split('::');
             await supabaseClient.from('schedules').delete()
@@ -2238,7 +2094,6 @@ async function saveSchedule() {
         schedules[currentScheduleKey] = { days, time, partnerName, book: currentScheduleKey.split('::')[1] };
         showToast('התזכורת נשמרה בהצלחה!', "success");
 
-        // שמירה בענן
         try {
             const [pEmail, bName] = currentScheduleKey.split('::');
             await supabaseClient.from('schedules').upsert({
@@ -2260,7 +2115,6 @@ function renderCalendar() {
     const container = document.getElementById('calendarView');
     if (!container) return;
 
-    // Header
     let html = `
     <div class="flex items-center gap-3 mb-6 justify-start">
         <h2 class="text-2xl font-bold text-gray-800 dark:text-white m-0">לוח זמנים שבועי</h2>
@@ -2320,10 +2174,8 @@ async function cancelChavruta(partnerEmail) {
 
         showToast("החברותא בוטלה בהצלחה.", "info");
 
-        // הסרה מיידית מהרשימה המקומית להסתרת הצ'אט
         approvedPartners.delete(partnerEmail);
 
-        // מחיקת תזכורות משותפות בלוח
         const schedules = JSON.parse(localStorage.getItem('chavruta_schedules') || '{}');
         Object.keys(schedules).forEach(key => {
             if (key.startsWith(partnerEmail + '::')) {
@@ -2389,7 +2241,6 @@ async function renderMazalTovInMainArea() {
     siyumin.forEach(siyum => {
         const name = siyum.users ? (siyum.users.display_name || 'לומד') : 'לומד';
         const mazalTovCount = siyum.siyum_reactions[0]?.count || 0;
-        // עיצוב משופר ללוח סיומים
         const div = document.createElement('div');
         div.className = 'card siyum-card siyum-festive-bg';
         div.style.marginBottom = '15px';
@@ -2430,7 +2281,6 @@ async function submitReport() {
     if (!reason) return customAlert("נא לפרט את סיבת הדיווח");
 
     try {
-        // שליחת דיווח למנהל לבדיקה (ללא חסימה מיידית)
         await supabaseClient.from('user_reports').insert([{ reporter_email: currentUser.email, reported_email: target, reason: reason }]);
 
         showToast("הדיווח הועבר למנהל המערכת לבדיקה.", "info");
@@ -2442,7 +2292,6 @@ async function submitReport() {
 }
 
 
-// פונקציה להגדרת האזנה לשינויים בזמן אמת
 function setupRealtime() {
     if (!currentUser || typeof supabaseClient === 'undefined') return;
     if (realtimeSubscription) return;
@@ -2459,7 +2308,6 @@ function setupRealtime() {
                     audio.play().catch(e => console.error("Audio error", e));
                 }
 
-                // My sent request was approved
                 if (payload.eventType === 'UPDATE' && newItem.status === 'approved' && oldItem.status === 'pending' && newItem.sender_email === currentUser.email) {
                     const receiverUser = globalUsersData.find(u => u.email === newItem.receiver_email);
                     const receiverName = receiverUser ? receiverUser.name : newItem.receiver_email;
@@ -2489,7 +2337,7 @@ function setupRealtime() {
             syncGlobalData();
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_goals' }, (payload) => {
-            // עדכון מהיר של פתקים אם רלוונטי
+
             if (currentNotesData.goalId && payload.new.book_name === document.getElementById('notesBookTitle').innerText) {
                 const chavruta = chavrutaConnections.find(c => c.book === payload.new.book_name);
                 if (chavruta && payload.new.user_email === chavruta.email) {
@@ -2505,9 +2353,8 @@ function setupRealtime() {
             }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
-            // בדיקה אם המשתמש הנוכחי נחסם בזמן אמת
             if (payload.new.email === currentUser.email && payload.new.is_banned) {
-                location.reload(); // יגרום לטעינה מחדש וכניסה למסך חסימה
+                location.reload();
             }
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'system_announcements' }, (payload) => {
@@ -2523,7 +2370,6 @@ function setupRealtime() {
             }
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'siyum_board' }, (payload) => {
-            // עדכון לוח סיומים בזמן אמת אם הוא פתוח
             if (document.getElementById('mazaltov-main-container')) {
                 renderMazalTovInMainArea();
             }
@@ -2551,7 +2397,6 @@ function setupRealtime() {
             if (payload.payload && payload.payload.id) {
                 const msgEl = document.getElementById(`msg-${payload.payload.id}`);
                 if (msgEl) {
-                    // Remove the wrapper if it exists
                     if (msgEl.parentElement && (msgEl.parentElement.classList.contains('new-message-animation') || msgEl.parentElement.style.display === 'flex')) msgEl.parentElement.remove();
                     else msgEl.remove();
                 }
@@ -2565,7 +2410,6 @@ function setupRealtime() {
             if (status === 'CHANNEL_ERROR') console.error('שגיאה בחיבור לזמן אמת');
         });
 
-    // הוספת מאזין להודעות פרטיות המשודרות
     realtimeSubscription.on('broadcast', { event: 'private_message' }, (payload) => {
         if (payload.payload && payload.payload.message) {
             handleRealtimeMessage({ eventType: 'INSERT', new: payload.payload.message, table: 'chat_messages', schema: 'public', old: {} });
@@ -2581,11 +2425,9 @@ function handleRealtimeMessage(payload) {
         const sender = newMsg.sender_email ? newMsg.sender_email.toLowerCase() : '';
         const receiver = newMsg.receiver_email ? newMsg.receiver_email.toLowerCase() : '';
 
-        // בדיקת שרשור בזמן אמת
         if (newMsg.message.includes('ref:')) {
             const refMatch = newMsg.message.match(/ref:(\d+)/);
             if (refMatch && document.getElementById(`msg-${refMatch[1]}`)) {
-                // כאן אפשר להוסיף אינדיקציה ויזואלית להודעת האב
                 const parentMsg = document.getElementById(`msg-${refMatch[1]}`);
                 if (!parentMsg.querySelector('.thread-active-indicator')) {
                     const indicator = document.createElement('span');
@@ -2594,7 +2436,6 @@ function handleRealtimeMessage(payload) {
                     parentMsg.appendChild(indicator);
                 }
             }
-            // אם חלון השרשור פתוח וההודעה שייכת אליו
             if (activeThreadId && refMatch && refMatch[1] === activeThreadId) {
                 const container = document.getElementById('thread-messages');
                 if (container) {
@@ -2603,11 +2444,9 @@ function handleRealtimeMessage(payload) {
             }
         }
 
-        // Handle Book Chat
         if (newMsg.receiver_email && newMsg.receiver_email.startsWith('book:')) {
             const bookId = newMsg.receiver_email;
 
-            // בדיקה חכמה יותר למציאת חלון הצ'אט (כולל תמיכה בקידודים שונים או אותיות גדולות/קטנות)
             let win = document.getElementById(`chat-window-${bookId}`);
             if (!win) {
                 const allWins = document.querySelectorAll('.chat-window');
@@ -2621,9 +2460,7 @@ function handleRealtimeMessage(payload) {
 
             const container = win ? win.querySelector('.chat-messages-area') : document.getElementById(`msgs-${bookId}`);
 
-            // בדיקה אם חלון הצ'אט פתוח (בין אם צף ובין אם ראשי)
             if ((win || container) && sender !== myEmail) {
-                // שימוש ב-ID המדויק של החלון הפתוח כדי למנוע כפילויות
                 const targetId = win ? win.id.replace('chat-window-', '') : bookId;
                 appendMessageToWindow(targetId, newMsg.message, 'other', newMsg.id, newMsg.created_at, false, sender);
 
@@ -2654,7 +2491,6 @@ function handleRealtimeMessage(payload) {
                 localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
                 updateChatBadge();
                 if (Notification.permission === "granted") {
-                    // הסרת תגיות HTML מהתראה שולחנית
                     const plainMsg = newMsg.message.replace(/<[^>]*>?/gm, '');
                     new Notification(`הודעה חדשה מ-${senderDisplayName}`, { body: plainMsg, icon: "https://cdn-icons-png.flaticon.com/512/2997/2997295.png" });
                 }
@@ -2675,8 +2511,8 @@ function handleRealtimeMessage(payload) {
         if (newMsg.sender_email.toLowerCase() === getCurrentChatEmail().toLowerCase() && newMsg.is_read) {
             const check = document.getElementById(`check-${newMsg.id}`);
             if (check) {
-                check.innerText = '✓✓'; // Update to double tick text
-                check.style.color = '#4ade80'; // Green for read
+                check.innerText = '✓✓';
+                check.style.color = '#4ade80';
             }
         }
         if (newMsg.message && typeof updateMessageDOM === 'function') {
@@ -2703,17 +2539,14 @@ function formatBroadcast(tag) {
     const newText = `<${tag}>${selectedText}</${tag}>`;
     textarea.value = before + newText + after;
     textarea.focus();
-    // Place cursor after the inserted text
     textarea.selectionStart = start + newText.length;
     textarea.selectionEnd = start + newText.length;
 }
 
 
 
-// === ניהול אדמין ===
 let keySequence = [];
 document.addEventListener('keydown', async (e) => {
-    // Do not reset if only a modifier key is pressed
     if (e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta') {
         return;
     }
@@ -2729,8 +2562,7 @@ document.addEventListener('keydown', async (e) => {
 
     if (e.altKey) {
         const k = e.key.toLowerCase();
-        if (k.length === 1) e.preventDefault(); // Prevent browser default actions for Alt+key
-
+        if (k.length === 1) e.preventDefault();
         keySequence.push(k);
 
         if (keySequence.length > 5) keySequence.shift();
@@ -2738,15 +2570,14 @@ document.addEventListener('keydown', async (e) => {
         const seqStr = keySequence.join('');
 
 
-        // Data War sequence: Alt + C, O
         if (seqStr.endsWith('co') || seqStr.endsWith('בם')) {
             e.preventDefault();
-            keySequence = []; // Reset after successful trigger
+            keySequence = [];
             const pass = await customPrompt("הכנס סיסמת מנהל:");
-            if (pass === "כל יכול") {
+            if (pass === "0000") {
                 toggleDataWar();
             } else if (pass) await customAlert("סיסמה שגויה");
-            return; // Stop further processing
+            return;
         }
     }
 });
@@ -2761,13 +2592,11 @@ function switchAdminTab(tabName) {
     if (section) section.classList.add('active');
     if (button) button.classList.add('active');
 
-    // Call render function for the specific tab
     if (tabName === 'users') renderAdminUsersTable();
     if (tabName === 'reports') renderAdminReports();
     if (tabName === 'inbox') renderAdminInbox();
     if (tabName === 'suggestions') renderAdminSuggestions();
     if (tabName === 'roadmap') renderAdminRoadmap();
-    // Add other tab functions here as needed
 }
 
 async function renderAdminRoadmap() {
@@ -2886,7 +2715,6 @@ async function deleteRoadmapFeature(id) {
     }
 }
 
-// --- בחירת משתמשים למחיקת צ'אט ---
 let selectedUsersForDelete = [];
 
 function openUserSelection(targetInputId) {
@@ -2917,7 +2745,7 @@ function renderUserSelectionList() {
 
 function toggleSelectAllUsers(el) {
     const cb = el.querySelector('input');
-    const checked = !cb.checked; // Toggle
+    const checked = !cb.checked; 
     cb.checked = checked;
     document.querySelectorAll('.user-select-cb').forEach(c => c.checked = checked);
 }
@@ -2961,7 +2789,6 @@ async function sendSystemBroadcast() {
 
     try {
         await supabaseClient.from('system_announcements').insert([{ message: msg }]);
-        // השידור מתבצע דרך ה-Realtime Listener שמוגדר ב-setupRealtime
         showToast('ההודעה נשלחה!', "success");
         document.getElementById('adminSystemMsg').value = '';
     } catch (e) {
@@ -2985,7 +2812,6 @@ async function checkBanLifted() {
     }
 }
 
-/* --- ניהול תפריט פרופיל --- */
 function toggleProfileMenu() {
     const notifDropdown = document.getElementById('notif-dropdown');
     if (notifDropdown) {
@@ -3006,7 +2832,6 @@ function toggleGuestProfileMenu() {
         return;
     }
 
-    // Populate with guest options
     menu.innerHTML = `
         <div class="profile-menu-item" onclick="requireAuth()">
             <i class="fas fa-medal"></i> הישגים
@@ -3034,32 +2859,30 @@ function toggleGuestProfileMenu() {
             <i class="fas fa-sign-in-alt"></i> התחבר או הירשם
         </div>
     `;
-    // Set dark mode switch state
     if (document.getElementById('darkModeSwitch')) document.getElementById('darkModeSwitch').checked = localStorage.getItem('torahApp_darkMode') === 'true';
     menu.style.display = 'block';
 }
 
-// סגירת התפריט בלחיצה בחוץ
 document.addEventListener('click', function (event) {
     const container = document.querySelector('.profile-container');
     if (container && !container.contains(event.target)) {
         document.getElementById('profile-dropdown').style.display = 'none';
     }
 
-    // סגירת תפריט התראות בלחיצה בחוץ
     const notifContainer = document.querySelector('#notif-container');
     const notifMenu = document.getElementById('notif-dropdown');
     if (notifContainer && !notifContainer.contains(event.target) && notifMenu.style.display === 'block') {
-        toggleNotifications(); // Use the toggle function to handle state
-    }
+        toggleNotifications(); 
+        }
 
-    // Close search dropdown if clicked outside
+
+        
+
     const searchContainer = document.querySelector('.header-search-container');
     if (searchContainer && !searchContainer.contains(event.target)) {
         closeSearchDropdown();
     }
 
-    // Close chat menu if clicked outside
     const chatMenuContainer = document.querySelector('.chat-menu-container');
     if (chatMenuContainer && !chatMenuContainer.contains(event.target)) {
         const chatMenu = document.getElementById('chat-menu-dropdown');
@@ -3073,7 +2896,6 @@ async function sendAppeal() {
     const email = sessionStorage.getItem('banned_email');
     if (!msg) return customAlert("נא לכתוב תוכן לפנייה");
 
-    // בדיקת שחרור חסימה (אולי המנהל שחרר בינתיים)
     const { data: user } = await supabaseClient.from('users').select('is_banned').eq('email', email).single();
     if (user && !user.is_banned) {
         localStorage.removeItem('device_banned');
@@ -3082,7 +2904,6 @@ async function sendAppeal() {
     }
 
     try {
-        // Using RPC to bypass RLS for banned users
         const { error } = await supabaseClient.rpc('send_message', {
             p_sender_email: email,
             p_receiver_email: 'admin@system',
@@ -3144,7 +2965,6 @@ async function renderMazalTovBoard() {
 
 
 function toggleDarkMode(e, forceState) {
-    // e is the change event from the checkbox
     const body = document.body;
     const isDark = forceState !== undefined ? forceState : e.target.checked;
 
@@ -3157,7 +2977,6 @@ function toggleDarkMode(e, forceState) {
     localStorage.setItem('torahApp_darkMode', isDark);
 }
 
-// === Ads Management ===
 async function saveAds() {
     const content = document.getElementById('adminAdsContent').value;
     try {
@@ -3172,12 +2991,11 @@ async function saveAds() {
 
 async function loadAds() {
     const container = document.getElementById('ads-container');
-    // In a real app, you'd load from Supabase
     try {
         const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').maybeSingle();
         if (error || !data) throw error || new Error("No data");
         container.innerHTML = data.value || '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
-        logAdView(); // Log view when ads are loaded
+        logAdView(); 
     } catch (e) {
         container.innerHTML = '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
     }
@@ -3188,7 +3006,7 @@ async function addSiyumReaction(siyumId, btn) {
     try {
         const { error } = await supabaseClient.from('siyum_reactions').insert({ siyum_id: siyumId, reactor_email: currentUser.email });
 
-        if (error && error.code === '23505') { // unique constraint violation
+        if (error && error.code === '23505') { 
             return showToast("כבר אמרת מזל טוב!", "info");
         }
         if (error) throw error;
@@ -3202,7 +3020,6 @@ async function addSiyumReaction(siyumId, btn) {
 
 }
 
-// === Data War Animation ===
 window.isNetworkMonitorActive = false;
 let isVerboseNetworkLog = false;
 
@@ -3218,8 +3035,8 @@ function toggleDataWar() {
     if (window.isNetworkMonitorActive) {
         populateNetworkUsers();
     } else {
-        document.getElementById('networkLog').innerHTML = ''; // Clear log on close
-        document.getElementById('user-icons-container').innerHTML = ''; // Clear icons
+        document.getElementById('networkLog').innerHTML = ''; 
+        document.getElementById('user-icons-container').innerHTML = ''; 
     }
 }
 
@@ -3228,7 +3045,7 @@ function populateNetworkUsers() {
     const visualizer = document.getElementById('network-visualizer');
     if (!container || !visualizer) return;
 
-    container.innerHTML = ''; // Clear previous
+    container.innerHTML = ''; 
     const onlineUsers = globalUsersData.filter(u => u.lastSeen && (new Date() - new Date(u.lastSeen) < 5 * 60 * 1000));
 
     const width = visualizer.clientWidth;
@@ -3240,7 +3057,7 @@ function populateNetworkUsers() {
     const userCount = onlineUsers.length;
 
     onlineUsers.forEach((user, i) => {
-        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2); // Start from top
+        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2); 
         const x = centerX + radiusX * Math.cos(angle);
         const y = centerY + radiusY * Math.sin(angle);
 
@@ -3248,9 +3065,9 @@ function populateNetworkUsers() {
         const safeEmail = user.email.replace(/[@.-]/g, '');
         userDiv.id = `net-user-${safeEmail}`;
         userDiv.className = 'net-user';
-        userDiv.dataset.id = user.email; // Store original email
-        userDiv.style.left = `${x - 30}px`; // Adjust for half width
-        userDiv.style.top = `${y - 30}px`; // Adjust for half height
+        userDiv.dataset.id = user.email;
+        userDiv.style.left = `${x - 30}px`;
+        userDiv.style.top = `${y - 30}px`; 
 
         userDiv.innerHTML = `
             <div class="user-icon-emoji">💻</div>
@@ -3336,10 +3153,8 @@ window.fetch = async function (...args) {
     }
 };
 
-// פונקציה לטעינת כל הספרים מאוצריא/ספריא
 async function populateAllBooks() {
     const select = document.getElementById('bookSelect');
-    // אם כבר קיים חיפוש, לא נעשה כלום
     if (document.getElementById('newBookSearch')) return;
 
     const searchContainer = document.createElement('div');
@@ -3359,8 +3174,8 @@ async function populateAllBooks() {
 
     if (select && select.parentNode) {
         select.parentNode.insertBefore(searchContainer, select);
-        select.style.display = 'none'; // הסתרת ה-select הישן
-        select.id = 'bookSelect_hidden'; // מניעת התנגשויות
+        select.style.display = 'none'; 
+        select.id = 'bookSelect_hidden'; 
     }
 }
 
@@ -3379,20 +3194,18 @@ async function openThread(msgId, text, chatId) {
     container.innerHTML = `<div style="background:#e2e8f0; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;"><strong>הודעת מקור:</strong><br>${text}</div>`;
     container.innerHTML += `<div style="text-align:center; color:#94a3b8;">טוען תגובות...</div>`;
 
-    // מיקוד הסמן בשדה הקלט
+ 
     setTimeout(() => {
         const input = document.getElementById('thread-input');
         if (input) input.focus();
     }, 100);
 
-    // שליפת תגובות מהשרת
     const { data: replies } = await supabaseClient
         .from('chat_messages')
         .select('*')
-        .ilike('message', `%ref:${msgId}%`) // חיפוש הודעות שמכילות את ה-ID המוסתר
+        .ilike('message', `%ref:${msgId}%`) 
         .order('created_at');
 
-    // ניקוי הודעת הטעינה
     const loadingMsg = container.querySelector('div:last-child');
     if (loadingMsg && loadingMsg.innerText === 'טוען תגובות...') loadingMsg.remove();
 
@@ -3404,7 +3217,6 @@ async function openThread(msgId, text, chatId) {
 }
 
 function appendThreadMessage(rep, container) {
-    // ניקוי ה-ref מההודעה המוצגת
     const cleanMsg = rep.message.replace(/<span style="display:none">ref:.*?<\/span>/, '');
     const senderUser = globalUsersData.find(u => u.email === rep.sender_email);
     const senderName = senderUser ? senderUser.name : rep.sender_email.split('@')[0];
@@ -3412,7 +3224,6 @@ function appendThreadMessage(rep, container) {
     const fullTextSafe = cleanMsg.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const likeDisabled = isMe ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : '';
 
-    // בדיקת מנוי
     const isSubscribed = senderUser && senderUser.subscription && senderUser.subscription.level > 0;
     const subIcon = isSubscribed ? `<i class="fas fa-crown" style="color:#d97706; font-size:0.7rem; margin-right:3px;" title="מנוי"></i>` : '';
 
@@ -3485,11 +3296,9 @@ async function sendThreadMessage() {
         cancelReply(activeThreadChatId);
     }
 
-    // Send message with hidden ref
     const finalMsg = `${finalContent} <span style="display:none">ref:${activeThreadId}</span>`;
 
     try {
-        // Using RPC to bypass RLS, similar to sendMessage
         const { error } = await supabaseClient.rpc('send_message', {
             p_sender_email: currentUser.email,
             p_receiver_email: activeThreadChatId,
@@ -3501,7 +3310,6 @@ async function sendThreadMessage() {
 
         input.value = '';
 
-        // הוספה מיידית לתצוגה
         appendThreadMessage({
             id: 'temp-' + Date.now(),
             sender_email: currentUser.email,
@@ -3509,9 +3317,6 @@ async function sendThreadMessage() {
             created_at: new Date().toISOString()
         }, document.getElementById('thread-messages'));
 
-        // Manually append to thread view
-        // No need to append manually if realtime works, but for instant feedback we can rely on realtime or append a temp one.
-        // Since we have realtime listener for chat_messages, it should appear automatically.
     } catch (e) {
         console.error("Error sending thread message:", e);
         await customAlert("שגיאה בשליחת התגובה: " + e.message);
@@ -3526,7 +3331,6 @@ function toggleChatMenu(event) {
     }
 }
 
-// === Tracking Functions (Fix for Points 4 & 7) ===
 async function logVisit() {
     let visitorId = localStorage.getItem('visitor_id');
     if (!visitorId) {
@@ -3565,14 +3369,11 @@ async function getDafYomi() {
     } catch (e) { console.error("Could not fetch Daf Yomi", e); }
 }
 
-// === Community Screen Logic (Fix for Point 5) ===
 function renderCommunity() {
     loadAds();
 
-    // Render User Stats Graph
     const ctx = document.getElementById('userStatsChart');
     if (ctx) {
-        // Prepare data: Books per status
         const active = userGoals.filter(g => g.status === 'active').length;
         const completed = userGoals.filter(g => g.status === 'completed').length;
         const totalPages = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
@@ -3598,7 +3399,6 @@ function renderCommunity() {
     }
 }
 
-// מיפוי פעולות רשת לעברית
 function getHebrewActionName(url) {
     if (!url) return 'פעולה לא ידועה';
     if (url.includes('users') && !url.includes('last_seen')) return 'טעינת משתמשים';
@@ -3619,18 +3419,16 @@ function visualizeNetworkActivity(type, details) {
     const { action, from, to, isBoring, status } = details;
 
     if (isBoring && !isVerboseNetworkLog) {
-        return; // Skip visualization and logging
+        return; 
     }
 
-    // --- Visualization ---
     if (action === 'sendMessage') {
-        // Animate from sender to cloud, then cloud to receiver
-        drawNetworkLine(from, 'cloud', '#60a5fa'); // Blue for request
+        drawNetworkLine(from, 'cloud', '#60a5fa'); 
         setTimeout(() => {
-            drawNetworkLine('cloud', to, '#4ade80'); // Green for delivery
+            drawNetworkLine('cloud', to, '#4ade80'); 
         }, 400);
     } else {
-        // Generic request/response
+
         if (type === 'request') {
             drawNetworkLine(from, 'cloud', '#60a5fa');
         } else if (type === 'response') {
@@ -3638,7 +3436,6 @@ function visualizeNetworkActivity(type, details) {
         }
     }
 
-    // Log entry
     const entry = document.createElement('div');
     entry.style.marginBottom = '4px';
     entry.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
@@ -3667,26 +3464,22 @@ function visualizeNetworkActivity(type, details) {
     if (log.children.length > 30) log.lastChild.remove();
 }
 
-// האזנה גלובלית ללחיצות לניהול חלונות
 document.addEventListener('mousedown', (e) => {
     const win = e.target.closest('.chat-window, .modal-content, .auth-box, .modal-overlay');
     if (win) {
-        // אם זה מודאל, נביא את המודאל עצמו (overlay) לקדמה
+
         if (win.classList.contains('modal-overlay')) {
             bringToFront(win);
         } else if (win.classList.contains('chat-window')) {
             bringToFront(win);
         } else {
-            // אם זה תוכן בתוך מודאל, נביא את המודאל העוטף
             const overlay = win.closest('.modal-overlay');
             if (overlay) bringToFront(overlay);
         }
     }
 });
 
-// סגירת תפריטי הודעות בלחיצה בחוץ
 document.addEventListener('click', (e) => {
-    // סגירת תפריטי שרשור (משתמשים ב-active)
     const clickedMsgWrapper = e.target.closest('.msg-actions-menu');
     document.querySelectorAll('.msg-menu-dropdown.active').forEach(dropdown => {
         if (!clickedMsgWrapper || !clickedMsgWrapper.contains(dropdown)) {
@@ -3694,7 +3487,6 @@ document.addEventListener('click', (e) => {
         }
     });
 
-    // סגירת תפריטי צ'אט ראשי (משתמשים ב-hidden)
     const clickedChatWrapper = e.target.closest('.chat-action-menu-container');
     document.querySelectorAll('.chat-action-dropdown:not(.hidden)').forEach(dropdown => {
         if (!clickedChatWrapper || !clickedChatWrapper.contains(dropdown)) {
@@ -3706,12 +3498,11 @@ document.addEventListener('click', (e) => {
 
 window.onload = async function () {
     try {
-        await init(); // טוען את הממשק הבסיסי
+        await init(); 
     } catch (e) {
         console.log("האתר עלה ללא סנכרון ענן");
     }
 
-    // בדיקה אם המשתמש מחובר והצגת המסך המתאים
     if (currentUser) {
         renderGoals();
         loadAds();
@@ -3746,7 +3537,6 @@ function showAchievements() {
     const remaining = Math.max(0, nextThreshold - totalLearned);
     const rating = currentUser.chat_rating || 0;
 
-    // חישוב דרגת רייטינג
     const ratingRank = getRatingRankName(rating);
     const ratingThresholds = [50, 150, 300, 500, 750, 1000, 1800, 3500, 5000, 10000, 50000];
     let nextRatingThreshold = 50000;
@@ -3817,7 +3607,6 @@ async function openRoadmapModal() {
     modal.style.display = 'flex';
     bringToFront(modal);
 
-    // Load the template
     try {
         let templateHtml;
         try {
@@ -3826,7 +3615,6 @@ async function openRoadmapModal() {
             templateHtml = await response.text();
         } catch (fetchErr) {
             console.warn("Could not fetch roadmap.html (CORS/Offline), using fallback.", fetchErr);
-            // Fallback template if fetch fails (e.g. file:/// protocol)
             templateHtml = `
             <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden relative flex flex-col m-4 max-h-[80vh]">
                 <button aria-label="סגור" class="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors z-10" onclick="document.getElementById('roadmapModal').style.display='none'">
@@ -3849,7 +3637,6 @@ async function openRoadmapModal() {
 
         modal.innerHTML = templateHtml;
 
-        // Now fetch data and render
         const { data: features, error } = await supabaseClient
             .from('roadmap_features')
             .select('*')
@@ -3867,7 +3654,7 @@ async function openRoadmapModal() {
 
         currentRoadmapFeatures = features;
 
-        setRoadmapFilter('done'); // Default view
+        setRoadmapFilter('done'); 
 
     } catch (e) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
@@ -3879,12 +3666,10 @@ function setRoadmapFilter(filter, btn) {
     const modal = document.getElementById('roadmapModal');
     if (!modal) return;
 
-    // UI Update
     const tabs = modal.querySelectorAll('.roadmap-tab');
     const inactiveClass = 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50';
     const activeClass = 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm';
 
-    // If auto-called without button element, find the correct button
     if (!btn) {
         tabs.forEach(t => {
             if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(`'${filter}'`)) btn = t;
@@ -3899,7 +3684,6 @@ function setRoadmapFilter(filter, btn) {
         btn.className = `roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeClass}`;
     }
 
-    // Filter and Render
     const listArea = document.getElementById('roadmap-list-area');
     if (listArea && currentRoadmapFeatures) {
         const filtered = currentRoadmapFeatures.filter(f => f.status === filter);
@@ -3979,7 +3763,6 @@ function toHebrewDateString(dateString) {
     if (!dateString) return 'תאריך לא ידוע';
     try {
         const date = new Date(dateString);
-        // Using Intl for proper Hebrew calendar conversion
         const day = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { day: 'numeric' }).format(date);
         const month = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { month: 'long' }).format(date);
         const year = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { year: 'numeric' }).format(date);

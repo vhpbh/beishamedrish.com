@@ -168,7 +168,6 @@
             transition: opacity 0.5s;
         }
 
-        /* Scrollbar */
         ::-webkit-scrollbar {
             width: 6px;
         }
@@ -185,7 +184,6 @@
             display: block;
         }
 
-        /* Share Modal Styles */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5); z-index: 1000;
@@ -242,7 +240,6 @@
         </div>
     </div>
 
-    <!-- Share Modal -->
     <div id="shareModal" class="modal-overlay">
         <div class="modal-box">
             <h3 style="margin-top:0; color:#1e293b;">ניהול שיתוף</h3>
@@ -274,7 +271,6 @@
         let supabase = null;
         let saveDebounce;
 
-        // טעינת נתונים מהחלון הראשי
         window.onload = async function () {
             try {
                 if (window.parent) {
@@ -285,11 +281,9 @@
                 if (stored) {
                     context = JSON.parse(stored);
                     
-                    // Load from DB if possible
                     if (supabase && currentUser && context.bookName) {
                         await loadNotesFromDB();
                     } else {
-                        // Fallback to local
                         if (Array.isArray(context.notes)) {
                             notes = context.notes.map((n, i) => ({
                                 id: n.id || Date.now() + i,
@@ -316,7 +310,6 @@
                 .eq('book_name', context.bookName)
                 .eq('user_email', currentUser.email);
 
-            // Also fetch shared notes
             const { data: shared, error: sharedError } = await supabase
                 .from('notes')
                 .select('*, note_collaborators!inner(permission_level)')
@@ -336,11 +329,9 @@
             if (dbNotes.length > 0) {
                 notes = dbNotes.map(n => ({
                     ...n,
-                    is_shared: n.is_shared_with_me || false // Flag for UI
+                    is_shared: n.is_shared_with_me || false 
                 }));
             } else if (context.notes && context.notes.length > 0) {
-                // Migration: No notes in DB, but local notes exist. Upload them.
-                // Convert local format to DB format
                 for (let n of context.notes) {
                     const content = (n.content || n) === '<div>התחל לכתוב כאן...</div>' ? '' : (n.content || n);
                     const { data: inserted } = await supabase.from('notes').insert({
@@ -394,7 +385,6 @@
             const editor = document.getElementById('editor');
             editor.style.display = 'block';
             
-            // Check permissions
             if (note.is_shared_with_me && note.permission === 'view') {
                 editor.contentEditable = false;
                 document.getElementById('saveStatus').innerText = 'צפייה בלבד';
@@ -409,7 +399,6 @@
             }
             editor.focus();
 
-            // הזזת הסמן לסוף הטקסט (משמאל ב-RTL)
             const range = document.createRange();
             range.selectNodeContents(editor);
             range.collapse(false);
@@ -425,12 +414,12 @@
             if (!title) return;
 
             const newNote = {
-                id: 'temp-' + Date.now(), // Temp ID until saved
+                id: 'temp-' + Date.now(), 
                 title: title,
                 content: '',
                 date: new Date().toISOString()
             };
-            notes.unshift(newNote); // הוספה לראש הרשימה
+            notes.unshift(newNote); 
             renderList();
             loadNote(newNote.id);
             saveNotes();
@@ -444,7 +433,6 @@
             notes = notes.filter(n => n.id != noteId);
             
             if (supabase && typeof noteId === 'string' && !noteId.startsWith('temp-')) {
-                // Delete from DB
                 await supabase.from('notes').delete().eq('id', noteId);
             }
 
@@ -480,7 +468,7 @@
                     clearTimeout(saveDebounce);
                     saveDebounce = setTimeout(() => {
                         saveNotes();
-                    }, 2000); // שמירה אוטומטית לאחר 2 שניות
+                    }, 2000); 
                 }
             }
         }
@@ -490,9 +478,8 @@
             const note = notes.find(n => n.id === activeNoteId);
             if (!note) return;
 
-            // Save to DB if available
             if (supabase && currentUser) {
-                if (note.is_shared_with_me && note.permission === 'view') return; // Cannot edit
+                if (note.is_shared_with_me && note.permission === 'view') return; 
 
                 const payload = {
                     title: note.title,
@@ -500,31 +487,25 @@
                     updated_at: new Date().toISOString()
                 };
 
-                // If it's a new note (temp ID), insert it
                 if (typeof note.id === 'string' && note.id.startsWith('temp-')) {
                     payload.user_email = currentUser.email;
                     payload.book_name = context.bookName;
                     const { data, error } = await supabase.from('notes').insert(payload).select().single();
                     if (data) {
-                        note.id = data.id; // Update ID to real UUID
+                        note.id = data.id; 
                     }
                 } else {
-                    // Update existing
                     await supabase.from('notes').update(payload).eq('id', note.id);
                 }
             }
 
-            // בדיקה שכל האובייקטים קיימים לפני הניסיון לשמור
             if (window.parent && window.parent.updateGoalNotes && context && context.goalId) {
-                // Sync back to goal structure for backward compatibility/cache
-                // We just pass the array of objects
-                // שליחת הנתונים לשמירה
                 window.parent.updateGoalNotes(context.goalId, notes);
 
                 const statusEl = document.getElementById('saveStatus');
                 if (statusEl) {
                     statusEl.textContent = 'נשמר בענן ✓';
-                    statusEl.style.opacity = '1'; // כדאי לוודא שהאלמנט גלוי לפני ה-setTimeout
+                    statusEl.style.opacity = '1'; 
                     setTimeout(() => {
                         statusEl.style.opacity = '0';
                     }, 2000);
@@ -540,7 +521,7 @@
         function formatDoc(cmd, value = null) {
             document.execCommand(cmd, false, value);
             document.getElementById('editor').focus();
-            handleInput(); // Trigger auto-save after formatting
+            handleInput(); 
         }
 
         function downloadNote() {
@@ -563,7 +544,7 @@
             const note = notes.find(n => n.id === activeNoteId);
             
             if (typeof note.id === 'string' && note.id.startsWith('temp-')) {
-                await saveNotes(); // Ensure it has a real ID
+                await saveNotes(); 
             }
 
             if (note.is_shared_with_me) {
@@ -574,7 +555,6 @@
             document.getElementById('shareModal').style.display = 'flex';
             document.getElementById('shareNoteTitle').innerText = `שיתוף: ${note.title}`;
             
-            // Pre-fill partner email if available
             const partnerEmail = getPartnerEmail();
             if (partnerEmail) document.getElementById('newCollabEmail').value = partnerEmail;
 
@@ -629,7 +609,7 @@
             } else {
                 loadCollaborators(note.id);
                 document.getElementById('newCollabEmail').value = '';
-                note.is_shared = true; // Update local state for UI
+                note.is_shared = true; 
                 renderList();
             }
         }

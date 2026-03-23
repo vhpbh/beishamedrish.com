@@ -1,5 +1,3 @@
-// d:\בית המדרש\9.01.03\shop.js
-
 let shopItems = [];
 let userInventory = [];
 
@@ -20,8 +18,6 @@ async function renderShop() {
     `;
     return;
 
-    // כותרת ותצוגת נקודות
-    // כותרת ותצוגת נקודות
     let html = `
     <div class="max-w-7xl mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
@@ -44,7 +40,6 @@ async function renderShop() {
     `;
 
     try {
-        // שליפת פריטים מהחנות
         const { data: items, error: itemsError } = await supabaseClient
             .from('shop_items')
             .select('*')
@@ -54,7 +49,6 @@ async function renderShop() {
         if (itemsError) throw itemsError;
         shopItems = items;
 
-        // שליפת המלאי של המשתמש
         if (currentUser) {
             const { data: inv, error: invError } = await supabaseClient
                 .from('user_inventory')
@@ -64,7 +58,6 @@ async function renderShop() {
             userInventory = inv;
         }
 
-        // רינדור הגריד
         html += `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">`;
 
         if (shopItems.length === 0) {
@@ -89,7 +82,6 @@ async function renderShop() {
                     }
                 } else {
                     if (canAfford) {
-                        // If it has a landing page, the button opens it first
                         const action = hasLandingPage ? `openProductLandingPage(${item.id})` : `purchaseItem(${item.id}, ${item.price})`;
                         const btnText = hasLandingPage ? 'פרטים ורכישה' : `רכוש ב-${item.price} <i class="fas fa-coins text-xs"></i>`;
 
@@ -101,7 +93,6 @@ async function renderShop() {
                     }
                 }
 
-                // תצוגה מקדימה לפי סוג
                 let previewHtml = '';
                 if (item.image_url) {
                     if (item.item_type === 'icon') {
@@ -171,7 +162,6 @@ function openProductLandingPage(itemId) {
     const item = shopItems.find(i => i.id === itemId);
     if (!item) return;
 
-    // Create a full screen modal for the landing page
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.style.display = 'flex';
@@ -214,7 +204,6 @@ async function purchaseItem(itemId, price) {
     if (!await customConfirm(`האם לרכוש פריט זה ב-${price} נקודות?`)) return;
 
     try {
-        // 1. הפחתת נקודות
         const { error: updateError } = await supabaseClient.rpc('decrement_field', {
             table_name: 'users',
             field_name: 'reward_points',
@@ -224,7 +213,6 @@ async function purchaseItem(itemId, price) {
 
         if (updateError) throw updateError;
 
-        // 2. הוספה למלאי
         const { error: insertError } = await supabaseClient.from('user_inventory').insert([{
             user_email: currentUser.email,
             item_id: itemId
@@ -232,7 +220,6 @@ async function purchaseItem(itemId, price) {
 
         if (insertError) throw insertError;
 
-        // עדכון מקומי
         currentUser.reward_points -= price;
         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
@@ -249,8 +236,6 @@ async function purchaseItem(itemId, price) {
 async function equipItem(itemId, type) {
     if (!requireAuth()) return;
     try {
-        // 1. איפוס בחירה קודמת מאותו סוג (למשל, ביטול רקע קודם)
-        // נשלוף את כל הפריטים מהסוג הזה שיש למשתמש
         const itemsOfType = shopItems.filter(i => i.item_type === type).map(i => i.id);
 
         await supabaseClient.from('user_inventory')
@@ -258,7 +243,6 @@ async function equipItem(itemId, type) {
             .eq('user_email', currentUser.email)
             .in('item_id', itemsOfType);
 
-        // 2. הפעלת הפריט החדש
         await supabaseClient.from('user_inventory')
             .update({ is_equipped: true })
             .eq('user_email', currentUser.email)
@@ -266,7 +250,6 @@ async function equipItem(itemId, type) {
 
         showToast("הפריט הופעל בהצלחה!", "success");
 
-        // החלת השינויים מיד
         await applyUserCustomizations();
         renderShop();
 
@@ -279,7 +262,6 @@ async function equipItem(itemId, type) {
 async function applyUserCustomizations() {
     if (!currentUser) return;
 
-    // שליפת פריטים פעילים
     const { data: inventory, error } = await supabaseClient
         .from('user_inventory')
         .select('item_id, shop_items(*)')
@@ -288,9 +270,7 @@ async function applyUserCustomizations() {
 
     if (error || !inventory) return;
 
-    // איפוס ברירות מחדל
     document.body.style.backgroundImage = '';
-    // כאן אפשר להוסיף איפוס לאייקון אם צריך
 
     inventory.forEach(record => {
         const item = record.shop_items;
@@ -304,8 +284,7 @@ async function applyUserCustomizations() {
                 document.body.style.backgroundPosition = 'center';
             }
         }
-        // כאן אפשר להוסיף לוגיקה לאייקון אישי (item_type === 'icon')
-        // למשל לעדכן את ה-src של תמונת הפרופיל בהאדר
+        
         if (item.item_type === 'icon' && item.image_url) {
             const profileBtn = document.getElementById('headerProfileBtn');
             if (profileBtn) {

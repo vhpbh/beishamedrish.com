@@ -3,7 +3,6 @@ let approvedPartners = new Set(chavrutaConnections.map(c => c.email));
 let pendingSentRequests = [];
 
 async function sendChavrutaRequest(receiverEmail, bookName) {
-    // בדיקה אם המשתמש מחובר לפני שממשיכים
     if (!currentUser) {
         await customAlert("עליך להיות מחובר כדי לשלוח בקשת חברותא");
         return false;
@@ -11,8 +10,6 @@ async function sendChavrutaRequest(receiverEmail, bookName) {
 
     try {
         console.log("שולח בקשה:", { receiverEmail, bookName });
-
-        // וודא ששם המשתנה כאן (supabase) תואם למה שהגדרת למעלה
         const { error } = await supabaseClient
             .from('chavruta_requests')
             .insert([{
@@ -47,8 +44,6 @@ async function respondToRequest(reqId, action) {
         showToast(action === 'approved' ? "הבקשה אושרה! כעת ניתן לראות פרטי קשר." : "הבקשה נדחתה.", action === 'approved' ? "success" : "info");
 
         if (action === 'approved') {
-            // שליפת פרטי הבקשה כדי להוסיף את הלימוד אצלי אם חסר
-            // Award points to both users
             try {
                 const { data: req } = await supabaseClient.from('chavruta_requests').select('sender_email, receiver_email').eq('id', reqId).single();
                 if (req) {
@@ -64,29 +59,24 @@ async function respondToRequest(reqId, action) {
             if (reqData) {
                 const exists = userGoals.some(g => g.bookName === reqData.book_name && g.status === 'active');
                 if (!exists) {
-                    await createGoal(reqData.book_name, 100, null, "לימוד עם חברותא"); // יצירת לימוד אוטומטית
+                    await createGoal(reqData.book_name, 100, null, "לימוד עם חברותא");
                     showToast(`הספר ${reqData.book_name} נוסף לרשימת הלימוד שלך`, "success");
                 }
-                // הוספה לרשימת החברים המאושרים מקומית
+
                 const partnerEmail = reqData.sender_email === currentUser.email ? reqData.receiver_email : reqData.sender_email;
                 approvedPartners.add(partnerEmail);
                 chavrutaConnections.push({ email: partnerEmail, book: reqData.book_name });
-
-                // Find partner name for chat
                 const partnerUser = globalUsersData.find(u => u.email === partnerEmail);
                 const partnerName = partnerUser ? partnerUser.name : partnerEmail.split('@')[0];
 
-                // Switch to chats screen and open the chat, fulfilling the request for it to appear immediately.
                 switchScreen('chats', document.querySelector('.floating-nav-item[onclick*="chats"]'));
                 openChat(partnerEmail, partnerName);
             }
         }
 
-        // רענון הנתונים כדי לעדכן את רשימת החברים המאושרים
         document.getElementById('notif-list').innerHTML = '<p style="color:#999; text-align:center;">אין הודעות חדשות</p>';
         document.getElementById('notif-badge').style.display = 'none';
-        syncGlobalData(); // Sync immediately to ensure data consistency
-
+        syncGlobalData();
     } catch (e) {
         console.error(e);
         await customAlert("שגיאה בעדכון הבקשה.");
@@ -94,11 +84,8 @@ async function respondToRequest(reqId, action) {
 }
 
 async function checkIncomingRequests() {
-    // בדיקה אם המשתמש מחובר - אם אין currentUser, פשוט עוצרים
     if (!currentUser) return;
-
     try {
-        // שליפת בקשות שבהן המשתמש הנוכחי הוא הנמען והסטטוס ממתין
         const { data: requests, error } = await supabaseClient
             .from('chavruta_requests')
             .select('*')
@@ -109,7 +96,6 @@ async function checkIncomingRequests() {
 
         if (requests && requests.length > 0) {
             requests.forEach(req => {
-                // חיפוש שם השולח מתוך נתוני המשתמשים הכלליים
                 const senderUser = globalUsersData ? globalUsersData.find(u => u.email === req.sender_email) : null;
                 const senderName = senderUser ? senderUser.name : req.sender_email;
 
@@ -128,7 +114,6 @@ async function checkIncomingRequests() {
                     </div>
                 `;
 
-                // הוספת ההתראה למערכת
                 if (typeof addNotification === 'function') {
                     addNotification(htmlContent, `req-${req.id}`, true);
                 }
@@ -186,7 +171,6 @@ function renderChavrutas() {
         return;
     }
 
-    // Active Chavrutas Section
     if (approvedPartners.size > 0) {
         html += `
         <section class="flex flex-col gap-6">
@@ -367,12 +351,11 @@ function openChavrutaSelector() {
 }
 
 function startAddNewChavrutaFlow() {
-    // This variable is defined in goals.js
     if (typeof nextActionAfterGoalCreation !== 'undefined') {
         nextActionAfterGoalCreation = 'findChavruta';
     }
     closeModal();
     const addNavButton = Array.from(document.querySelectorAll('.floating-nav-item')).find(el => el.getAttribute('onclick')?.includes("switchScreen('add'"));
     switchScreen('add', addNavButton);
-    showAddSection('new'); // Go directly to the "new book" form
+    showAddSection('new');
 }

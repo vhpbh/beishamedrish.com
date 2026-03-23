@@ -2,7 +2,7 @@ const DETAILED_TRACTATES = [
     { 
         name: "ברכות", 
         category: "תלמוד בבלי", 
-        units: 126, // סך הכל 63 דפים
+        units: 126, 
         chapters: [
             { name: "מאימתי", pages: 13, start_page: 2 },
             { name: "היה קורא", pages: 5, start_page: 13 },
@@ -18,7 +18,7 @@ const DETAILED_TRACTATES = [
     { 
         name: "שבת", 
         category: "תלמוד בבלי", 
-        units: 314, // סך הכל 157 דפים
+        units: 314, 
         chapters: [
             { name: "יציאות השבת", pages: 20, start_page: 2 },
             { name: "במה מדליקין", pages: 16, start_page: 20 },
@@ -52,7 +52,7 @@ const MOED_TRACTATES = [
     { 
         name: "עירובין", 
         category: "תלמוד בבלי", 
-        units: 210, // 105 דפים
+        units: 210, 
         chapters: [
             { name: "מבוי", pages: 17, start_page: 2 },
             { name: "עושין פסין", pages: 8, start_page: 18 },
@@ -69,7 +69,7 @@ const MOED_TRACTATES = [
     { 
         name: "פסחים", 
         category: "תלמוד בבלי", 
-        units: 242, // 121 דפים
+        units: 242, 
         chapters: [
             { name: "אור לארבעה עשר", pages: 21, start_page: 2 },
             { name: "כל שעה", pages: 15, start_page: 22 },
@@ -86,7 +86,7 @@ const MOED_TRACTATES = [
     { 
         name: "יומא", 
         category: "תלמוד בבלי", 
-        units: 176, // 88 דפים
+        units: 176,
         chapters: [
             { name: "שבעת ימים", pages: 18, start_page: 2 },
             { name: "בראשונה", pages: 8, start_page: 19 },
@@ -101,7 +101,7 @@ const MOED_TRACTATES = [
     { 
         name: "סוכה", 
         category: "תלמוד בבלי", 
-        units: 112, // 56 דפים
+        units: 112, 
         chapters: [
             { name: "סוכה שהיא גבוהה", pages: 20, start_page: 2 },
             { name: "הישן תחת המיטה", pages: 9, start_page: 20 },
@@ -229,7 +229,7 @@ const NASHIM_COMPLETION = [
     { 
         name: "נזיר", 
         category: "תלמוד בבלי", 
-        units: 132, // 66 דפים
+        units: 132, 
         chapters: [
             { name: "כל כינויי נזירות", pages: 11, start_page: 2 },
             { name: "הריני נזיר מן הגרוגרות", pages: 3, start_page: 13 },
@@ -245,7 +245,7 @@ const NASHIM_COMPLETION = [
     { 
         name: "סוטה", 
         category: "תלמוד בבלי", 
-        units: 98, // 49 דפים
+        units: 98, 
         chapters: [
             { name: "המקנא", pages: 13, start_page: 2 },
             { name: "היה מביא", pages: 6, start_page: 15 },
@@ -261,7 +261,7 @@ const NASHIM_COMPLETION = [
     { 
         name: "גיטין", 
         category: "תלמוד בבלי", 
-        units: 180, // 90 דפים
+        units: 180,
         chapters: [
             { name: "המביא גט ממדינת הים", pages: 14, start_page: 2 },
             { name: "המביא גט בארץ ישראל", pages: 10, start_page: 16 },
@@ -277,7 +277,7 @@ const NASHIM_COMPLETION = [
     { 
         name: "קידושין", 
         category: "תלמוד בבלי", 
-        units: 164, // 82 דפים
+        units: 164,
         chapters: [
             { name: "האשה נקנית", pages: 41, start_page: 2 },
             { name: "האיש מקדש", pages: 13, start_page: 43 },
@@ -291,7 +291,7 @@ const NEZIKIN_TRACTATES = [
     { 
         name: "בבא קמא", 
         category: "תלמוד בבלי", 
-        units: 238, // 119 דפים
+        units: 238,
         chapters: [
             { name: "ארבעה אבות נזיקין", pages: 16, start_page: 2 },
             { name: "כיצד הרגל", pages: 10, start_page: 18 },
@@ -308,7 +308,7 @@ const NEZIKIN_TRACTATES = [
     { 
         name: "בבא מציעא", 
         category: "תלמוד בבלי", 
-        units: 238, // 119 דפים
+        units: 238,
         chapters: [
             { name: "שנים אוחזין", pages: 20, start_page: 2 },
             { name: "אלו מציאות", pages: 13, start_page: 22 },
@@ -328,18 +328,17 @@ const YERUSHALMI_MOED_CONT = [
     { 
         name: "ירושלמי עירובין", 
         category: "תלמוד ירושלמי", 
-        units: 130, // 65 דפים
+        units: 130, 
         chapters: [
             { name: "מבוי", pages: 15, start_page: 2 },
             { name: "עושין פסין", pages: 10, start_page: 17 },
             { name: "בכל מערבין", pages: 12, start_page: 27 }
-            // השאר ממשיך בחלוקה דומה
         ]
     },
     { 
         name: "ירושלמי פסחים", 
         category: "תלמוד ירושלמי", 
-        units: 142, // 71 דפים
+        units: 142, 
         chapters: [
             { name: "אור לארבעה עשר", pages: 18, start_page: 2 },
             { name: "כל שעה", pages: 12, start_page: 20 },
@@ -352,7 +351,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "בבא בתרא", 
         category: "תלמוד בבלי", 
-        units: 352, // 176 דפים
+        units: 352, 
         chapters: [
             { name: "השותפין", pages: 15, start_page: 2 },
             { name: "לא יחפור", pages: 11, start_page: 17 },
@@ -369,7 +368,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "סנהדרין", 
         category: "תלמוד בבלי", 
-        units: 226, // 113 דפים
+        units: 226, 
         chapters: [
             { name: "דיני ממונות", pages: 16, start_page: 2 },
             { name: "כהן גדול", pages: 5, start_page: 18 },
@@ -387,7 +386,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "מכות", 
         category: "תלמוד בבלי", 
-        units: 48, // 24 דפים
+        units: 48, 
         chapters: [
             { name: "כיצד העדים", pages: 5, start_page: 2 },
             { name: "אלו הן הגולין", pages: 6, start_page: 7 },
@@ -397,7 +396,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "שבועות", 
         category: "תלמוד בבלי", 
-        units: 98, // 49 דפים
+        units: 98, 
         chapters: [
             { name: "שבועות שתים", pages: 12, start_page: 2 },
             { name: "ידיעות הטומאה", pages: 7, start_page: 14 },
@@ -412,7 +411,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "עבודה זרה", 
         category: "תלמוד בבלי", 
-        units: 152, // 76 דפים
+        units: 152, 
         chapters: [
             { name: "לפני אידיהן", pages: 20, start_page: 2 },
             { name: "אין מעמידין", pages: 18, start_page: 22 },
@@ -424,7 +423,7 @@ const NEZIKIN_COMPLETION = [
     { 
         name: "הוריות", 
         category: "תלמוד בבלי", 
-        units: 28, // 14 דפים
+        units: 28, 
         chapters: [
             { name: "הורו בית דין", pages: 3, start_page: 2 },
             { name: "הורה כהן משיח", pages: 5, start_page: 5 },
@@ -437,7 +436,7 @@ const KODASHIM_TRACTATES = [
     { 
         name: "זבחים", 
         category: "תלמוד בבלי", 
-        units: 240, // 120 דפים
+        units: 240, 
         chapters: [
             { name: "כל הזבחים", pages: 11, start_page: 2 },
             { name: "כל הזבחים שקיבלו", pages: 13, start_page: 13 },
@@ -457,7 +456,7 @@ const KODASHIM_TRACTATES = [
     { 
         name: "מנחות", 
         category: "תלמוד בבלי", 
-        units: 220, // 110 דפים
+        units: 220, 
         chapters: [
             { name: "כל המנחות", pages: 16, start_page: 2 },
             { name: "הקומץ את המנחה", pages: 8, start_page: 18 },
@@ -479,31 +478,31 @@ const YERUSHALMI_MOED_FINAL = [
     { 
         name: "ירושלמי יומא", 
         category: "תלמוד ירושלמי", 
-        units: 84, // 42 דפים
+        units: 84, 
         chapters: [{ name: "שבעת ימים", pages: 8, start_page: 2 }, { name: "בראשונה", pages: 6, start_page: 10 }]
     },
     { 
         name: "ירושלמי סוכה", 
         category: "תלמוד ירושלמי", 
-        units: 52, // 26 דפים
+        units: 52, 
         chapters: [{ name: "סוכה שהיא גבוהה", pages: 10, start_page: 2 }, { name: "הישן תחת המיטה", pages: 6, start_page: 12 }]
     },
     { 
         name: "ירושלמי ראש השנה", 
         category: "תלמוד ירושלמי", 
-        units: 44, // 22 דפים
+        units: 44,
         chapters: [{ name: "ארבעה ראשי שנים", pages: 12, start_page: 2 }, { name: "אם אינם מכירים", pages: 10, start_page: 14 }]
     },
     { 
         name: "ירושלמי תענית", 
         category: "תלמוד ירושלמי", 
-        units: 52, // 26 דפים
+        units: 52, 
         chapters: [{ name: "מאימתי", pages: 14, start_page: 2 }, { name: "סדר תעניות", pages: 12, start_page: 16 }]
     },
     { 
         name: "ירושלמי מגילה", 
         category: "תלמוד ירושלמי", 
-        units: 68, // 34 דפים
+        units: 68, 
         chapters: [{ name: "מגילה נקראת", pages: 15, start_page: 2 }, { name: "הקורא למפרע", pages: 8, start_page: 17 }]
     }
 ];
@@ -512,7 +511,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "חולין", 
         category: "תלמוד בבלי", 
-        units: 284, // 142 דפים
+        units: 284,
         chapters: [
             { name: "הכל שוחטין", pages: 26, start_page: 2 },
             { name: "השוחט", pages: 14, start_page: 27 },
@@ -531,7 +530,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "בכורות", 
         category: "תלמוד בבלי", 
-        units: 122, // 61 דפים
+        units: 122,
         chapters: [
             { name: "הלוקח עובר", pages: 12, start_page: 2 },
             { name: "הלוקח בהמה", pages: 7, start_page: 13 },
@@ -547,7 +546,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "ערכין", 
         category: "תלמוד בבלי", 
-        units: 68, // 34 דפים
+        units: 68, 
         chapters: [
             { name: "הכל מעריכין", pages: 9, start_page: 2 },
             { name: "אין בערכין", pages: 4, start_page: 10 },
@@ -560,7 +559,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "תמורה", 
         category: "תלמוד בבלי", 
-        units: 68, // 34 דפים
+        units: 68, 
         chapters: [
             { name: "הכל ממירין", pages: 12, start_page: 2 },
             { name: "יש בקרבנות", pages: 5, start_page: 13 },
@@ -571,7 +570,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "כריתות", 
         category: "תלמוד בבלי", 
-        units: 56, // 28 דפים
+        units: 56, 
         chapters: [
             { name: "שלשים וששה", pages: 9, start_page: 2 },
             { name: "ארבעה מחוסרי", pages: 5, start_page: 10 },
@@ -584,7 +583,7 @@ const KODASHIM_COMPLETION = [
     { 
         name: "מעילה", 
         category: "תלמוד בבלי", 
-        units: 44, // 22 דפים
+        units: 44, 
         chapters: [
             { name: "קדשי קדשים", pages: 6, start_page: 2 },
             { name: "חטאת העוף", pages: 3, start_page: 8 },
@@ -594,12 +593,12 @@ const KODASHIM_COMPLETION = [
         ]
     },
     { 
-        name: "תמיד ומדות", // שילוב של מסכתות קצרות
+        name: "תמיד ומדות", 
         category: "תלמוד בבלי", 
-        units: 26, // 13 דפים סה"כ
+        units: 26, 
         chapters: [
-            { name: "בשלשה מקומות", pages: 3, start_page: 25 }, // תמיד
-            { name: "מידות", pages: 5, start_page: 33 } // מידות
+            { name: "בשלשה מקומות", pages: 3, start_page: 25 }, 
+            { name: "מידות", pages: 5, start_page: 33 } 
         ]
     }
 ];
@@ -608,7 +607,7 @@ const TAHOROT_BAVLI = [
     { 
         name: "נידה", 
         category: "תלמוד בבלי", 
-        units: 146, // 73 דפים
+        units: 146, 
         chapters: [
             { name: "שמאי אומר", pages: 12, start_page: 2 },
             { name: "כל היד", pages: 8, start_page: 13 },
@@ -628,19 +627,19 @@ const YERUSHALMI_ZERAIM = [
     { 
         name: "ירושלמי פאה", 
         category: "תלמוד ירושלמי", 
-        units: 74, // 37 דפים
+        units: 74, 
         chapters: [{ name: "אלו דברים", pages: 10, start_page: 2 }, { name: "מאימתי", pages: 8, start_page: 12 }]
     },
     { 
         name: "ירושלמי דמאי", 
         category: "תלמוד ירושלמי", 
-        units: 68, // 34 דפים
+        units: 68, 
         chapters: [{ name: "הקלין שבדמאי", pages: 12, start_page: 2 }, { name: "אלו דברים", pages: 10, start_page: 14 }]
     },
     { 
         name: "ירושלמי כלאיים", 
         category: "תלמוד ירושלמי", 
-        units: 88, // 44 דפים
+        units: 88,
         chapters: [{ name: "החיטין והזונין", pages: 15, start_page: 2 }, { name: "כל מיני", pages: 10, start_page: 17 }]
     }
 ];
@@ -649,7 +648,7 @@ const YERUSHALMI_ZERAIM_COMPLETION = [
     { 
         name: "ירושלמי שביעית", 
         category: "תלמוד ירושלמי", 
-        units: 62, // 31 דפים
+        units: 62, 
         chapters: [
             { name: "עד אימתי חורשין", pages: 10, start_page: 2 },
             { name: "מנודדין", pages: 8, start_page: 12 },
@@ -660,7 +659,7 @@ const YERUSHALMI_ZERAIM_COMPLETION = [
     { 
         name: "ירושלמי תרומות", 
         category: "תלמוד ירושלמי", 
-        units: 56, // 28 דפים
+        units: 56, 
         chapters: [
             { name: "חמישה לא יתרמו", pages: 10, start_page: 2 },
             { name: "התורם קישות", pages: 9, start_page: 12 },
@@ -670,7 +669,7 @@ const YERUSHALMI_ZERAIM_COMPLETION = [
     { 
         name: "ירושלמי מעשרות", 
         category: "תלמוד ירושלמי", 
-        units: 52, // 26 דפים
+        units: 52, 
         chapters: [
             { name: "כלל אמרו במעשרות", pages: 13, start_page: 2 },
             { name: "היה עובר", pages: 13, start_page: 15 }
@@ -679,7 +678,7 @@ const YERUSHALMI_ZERAIM_COMPLETION = [
     { 
         name: "ירושלמי מעשר שני", 
         category: "תלמוד ירושלמי", 
-        units: 66, // 33 דפים
+        units: 66, 
         chapters: [
             { name: "מעשר שני אין מוכרין", pages: 11, start_page: 2 },
             { name: "מעשר שני ניתן להוצאה", pages: 11, start_page: 13 },
@@ -687,9 +686,9 @@ const YERUSHALMI_ZERAIM_COMPLETION = [
         ]
     },
     { 
-        name: "ירושלמי חלה ואורלה", // שילוב יחידות קצרות
+        name: "ירושלמי חלה ואורלה", 
         category: "תלמוד ירושלמי", 
-        units: 96, // 48 דפים סה"כ
+        units: 96, 
         chapters: [
             { name: "חלה - חמישה דברים", pages: 14, start_page: 2 },
             { name: "אורלה - הנוטע לסייג", pages: 10, start_page: 16 }
@@ -701,7 +700,7 @@ const YERUSHALMI_NASHIM = [
     { 
         name: "ירושלמי יבמות", 
         category: "תלמוד ירושלמי", 
-        units: 170, // 85 דפים
+        units: 170, 
         chapters: [
             { name: "חמש עשרה נשים", pages: 15, start_page: 2 },
             { name: "כיצד אשת אחיו", pages: 12, start_page: 17 },
@@ -715,7 +714,7 @@ const YERUSHALMI_NASHIM = [
     { 
         name: "ירושלמי סוטה", 
         category: "תלמוד ירושלמי", 
-        units: 94, // 47 דפים
+        units: 94,
         chapters: [
             { name: "המקנא", pages: 12, start_page: 2 },
             { name: "היה מביא", pages: 10, start_page: 14 },
@@ -726,7 +725,7 @@ const YERUSHALMI_NASHIM = [
     { 
         name: "ירושלמי כתובות", 
         category: "תלמוד ירושלמי", 
-        units: 144, // 72 דפים
+        units: 144, 
         chapters: [
             { name: "בתולה נישאת", pages: 15, start_page: 2 },
             { name: "האשה שנתארמלה", pages: 12, start_page: 17 },
@@ -738,7 +737,7 @@ const YERUSHALMI_NASHIM = [
     { 
         name: "ירושלמי נדרים וגמרא", 
         category: "תלמוד ירושלמי", 
-        units: 160, // נדרים + נזיר + גיטין + קידושין (לפי הפירוט ב-units)
+        units: 160, 
         chapters: [
             { name: "נדרים - כל כינויי", pages: 12, start_page: 2 },
             { name: "נזיר - כל כינויי", pages: 12, start_page: 14 },
@@ -752,7 +751,7 @@ const YERUSHALMI_NEZIKIN = [
     { 
         name: "ירושלמי בבא קמא", 
         category: "תלמוד ירושלמי", 
-        units: 88, // 44 דפים
+        units: 88,
         chapters: [
             { name: "ארבעה אבות נזיקין", pages: 12, start_page: 2 },
             { name: "כיצד הרגל", pages: 10, start_page: 14 },
@@ -763,7 +762,7 @@ const YERUSHALMI_NEZIKIN = [
     { 
         name: "ירושלמי בבא מציעא", 
         category: "תלמוד ירושלמי", 
-        units: 66, // 33 דפים
+        units: 66,
         chapters: [
             { name: "שנים אוחזין", pages: 11, start_page: 2 },
             { name: "אלו מציאות", pages: 11, start_page: 13 },
@@ -773,7 +772,7 @@ const YERUSHALMI_NEZIKIN = [
     { 
         name: "ירושלמי בבא בתרא", 
         category: "תלמוד ירושלמי", 
-        units: 68, // 34 דפים
+        units: 68,
         chapters: [
             { name: "השותפין", pages: 11, start_page: 2 },
             { name: "חזקת הבתים", pages: 12, start_page: 13 },
@@ -783,7 +782,7 @@ const YERUSHALMI_NEZIKIN = [
     { 
         name: "ירושלמי סנהדרין", 
         category: "תלמוד ירושלמי", 
-        units: 114, // 57 דפים
+        units: 114,
         chapters: [
             { name: "דיני ממונות", pages: 15, start_page: 2 },
             { name: "זה בורר", pages: 14, start_page: 17 },
@@ -797,7 +796,7 @@ const YERUSHALMI_COMPLETION = [
     { 
         name: "ירושלמי ברכות", 
         category: "תלמוד ירושלמי", 
-        units: 68, // 34 דפים
+        units: 68, 
         chapters: [
             { name: "מאימתי", pages: 10, start_page: 2 },
             { name: "היה קורא", pages: 6, start_page: 12 },
@@ -808,7 +807,7 @@ const YERUSHALMI_COMPLETION = [
     { 
         name: "ירושלמי שבת", 
         category: "תלמוד ירושלמי", 
-        units: 92, // 46 דפים
+        units: 92, 
         chapters: [
             { name: "יציאות השבת", pages: 12, start_page: 2 },
             { name: "במה מדליקין", pages: 10, start_page: 14 },
@@ -819,7 +818,7 @@ const YERUSHALMI_COMPLETION = [
     { 
         name: "ירושלמי מועד קטן", 
         category: "תלמוד ירושלמי", 
-        units: 18, // 9 דפים
+        units: 18, 
         chapters: [
             { name: "משקין", pages: 8, start_page: 2 },
             { name: "מי שהפך", pages: 10, start_page: 10 }
@@ -828,7 +827,7 @@ const YERUSHALMI_COMPLETION = [
     { 
         name: "ירושלמי חגיגה", 
         category: "תלמוד ירושלמי", 
-        units: 22, // 11 דפים
+        units: 22, 
         chapters: [
             { name: "הכל חייבין", pages: 10, start_page: 2 },
             { name: "אין דורשין", pages: 8, start_page: 12 },
@@ -838,7 +837,7 @@ const YERUSHALMI_COMPLETION = [
     { 
         name: "ירושלמי עבודה זרה", 
         category: "תלמוד ירושלמי", 
-        units: 34, // 17 דפים
+        units: 34, 
         chapters: [
             { name: "לפני אידיהן", pages: 10, start_page: 2 },
             { name: "אין מעמידין", pages: 10, start_page: 12 },
@@ -849,7 +848,7 @@ const YERUSHALMI_COMPLETION = [
 { 
     name: "קינים", 
     category: "תלמוד בבלי", 
-    units: 6, // 3 דפים (בדרך כלל מופיע בסוף קדשים)
+    units: 6, 
     chapters: [
         { name: "חטאת העוף", pages: 2, start_page: 22 },
         { name: "קן שנתערבה", pages: 2, start_page: 24 },

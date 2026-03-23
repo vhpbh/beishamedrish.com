@@ -1,5 +1,4 @@
 function setupInterfaceChanges() {
-    // 1. יצירת מסך פרסומות אם לא קיים
     if (!document.getElementById('screen-ads')) {
         const adsScreen = document.createElement('div');
         adsScreen.id = 'screen-ads';
@@ -18,7 +17,6 @@ function setupInterfaceChanges() {
         if (container && container.parentNode) container.parentNode.appendChild(adsScreen);
     }
 
-    // 1.5. הוספת מודאל סיומים
     if (!document.getElementById('completionsModal')) {
         const completionsModal = document.createElement('div');
         completionsModal.id = 'completionsModal';
@@ -37,10 +35,7 @@ function setupInterfaceChanges() {
         document.body.appendChild(completionsModal);
     }
 
-    // 2. עדכון סרגל הניווט התחתון
-    // Bottom nav is now static in HTML, no longer generated here.
 
-    // 3. הוספת "לוח" (Leaderboard) לתפריט הפרופיל
     const profileMenu = document.getElementById('profile-dropdown');
     if (profileMenu) {
         profileMenu.innerHTML = `
@@ -77,13 +72,11 @@ function setupInterfaceChanges() {
         `;
     }
 
-    // 7. הסתרת שורת חיפוש לומד בחברותות
     const userSearchInput = document.getElementById('userSearchInput');
     if (userSearchInput && userSearchInput.parentElement) {
         userSearchInput.parentElement.style.display = 'none';
     }
 
-    // 8. הוספת תיקון CSS למצב לילה בצ'אט
     if (!document.getElementById('dark-mode-chat-fix')) {
         const style = document.createElement('style');
         style.id = 'dark-mode-chat-fix';
@@ -108,7 +101,6 @@ function setupInterfaceChanges() {
         document.head.appendChild(style);
     }
 
-    // 11. הוספת אנימציות ושיפורי עיצוב
     if (!document.getElementById('app-ui-improvements')) {
         const uiStyle = document.createElement('style');
         uiStyle.id = 'app-ui-improvements';
@@ -263,19 +255,15 @@ function setupInterfaceChanges() {
         document.head.appendChild(uiStyle);
     }
 
-    // 9. הסתרת אלמנטים מהדשבורד לבקשת המשתמש
     const rankContainer = document.getElementById('rank-info')?.closest('.card');
     if (rankContainer) rankContainer.style.display = 'none';
-    // הרייטינג הוחזר לבקשת המשתמש
 
-    // 10. הפיכת אייקון הספר שבהאדר ללחיץ
     const headerBookIcon = document.querySelector('.header .fa-book-open');
     if (headerBookIcon) {
         headerBookIcon.style.cursor = 'pointer';
         headerBookIcon.onclick = () => switchScreen('dashboard', document.querySelector('.floating-nav-item'));
     }
 
-    // 12. שינוי תווית דפים/פרקים לניקוד בדשבורד
     const pagesStat = document.getElementById('stat-pages');
     if (pagesStat && pagesStat.parentElement) {
         Array.from(pagesStat.parentElement.children).forEach(child => {
@@ -320,19 +308,11 @@ function showMaintenanceOverlay() {
     overlay.innerHTML = `
         <div class="maintenance-content">
             <div class="maintenance-icon">
-                <i class="fas fa-tools fa-spin" style="animation-duration: 3s;"></i>
+                <i class="fas fa-tools"></i>
             </div>
-            <h1>אנחנו בשיפוצים! <span style="font-size:0.6em; opacity:0.7;">(או בהפסקת קפה...)</span></h1>
+            <h1>אנחנו בשיפוצים!</h1>
             <p>האתר כרגע במצב תחזוקה. המלאכים שלנו עובדים קשה כדי לסדר את הספרים במדפים, לנקות את הסטנדרים ולחזק את השרתים.</p>
             <p style="font-weight:bold;">נחזור בקרוב עם כוחות מחודשים!</p>
-            
-            <div class="maintenance-notify">
-                <p>רוצה לדעת מתי חוזרים? השאר אימייל ונעדכן אותך:</p>
-                <div style="display:flex; gap:10px; justify-content:center; max-width:400px; margin:0 auto;">
-                    <input type="email" id="maintenanceEmail" placeholder="האימייל שלך..." class="maintenance-input">
-                    <button class="btn" style="width:auto;" onclick="subscribeToMaintenanceUpdates()">עדכנו אותי</button>
-                </div>
-            </div>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -340,7 +320,6 @@ function showMaintenanceOverlay() {
 
 async function subscribeToMaintenanceUpdates() {
     const email = document.getElementById('maintenanceEmail').value.trim();
-    // שימוש ב-validateInput מ-auth.js אם זמין, אחרת בדיקה בסיסית
     const isValid = (typeof validateInput === 'function') ? validateInput(email, 'email') : /\S+@\S+\.\S+/.test(email);
 
     if (!email || !isValid) {
@@ -348,13 +327,11 @@ async function subscribeToMaintenanceUpdates() {
     }
 
     try {
-        // ניסיון לשמור בטבלה ייעודית (אם קיימת)
         await supabaseClient.from('maintenance_subscribers').insert([{ email: email }]);
         await customAlert('תודה! נעדכן אותך מיד כשהאתר יחזור לפעילות.', false);
         document.getElementById('maintenanceEmail').value = '';
     } catch (e) {
         console.error(e);
-        // הודעה חיובית בכל מקרה כדי לא לתסכל את המשתמש
         await customAlert('תודה! המייל נרשם במערכת.', false);
     }
 }

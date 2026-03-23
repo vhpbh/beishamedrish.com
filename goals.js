@@ -21,39 +21,38 @@ function renderGoals() {
     let hasTasks = false;
     let totalLearned = 0;
 
-    // בדיקת ריקנות
+
     const activeGoals = userGoals.filter(g => g.status === 'active');
     if (activeGoals.length === 0) {
-        // Empty state handled by the add button at the bottom
     }
 
     userGoals.forEach(goal => {
-        // חישוב אחוז התקדמות
+
         const percent = Math.min(100, Math.round((goal.currentUnit / goal.totalUnits) * 100));
         totalLearned += goal.currentUnit;
 
-        // בדיקה אם יש חברותא לספר זה
+
         const connection = chavrutaConnections.find(c => c.book === goal.bookName && c.email);
         const partner = connection ? globalUsersData.find(u => u.email === connection.email) : null;
         const partnerName = partner ? partner.name : (connection ? connection.email : '');
 
         if (goal.status === 'active') {
-            // יצירת כרטיס לימוד פעיל
+
             const div = document.createElement('div');
-            div.id = `goal-card-${goal.id}`; // הוספת ID לזיהוי ייחודי
+            div.id = `goal-card-${goal.id}`;
             div.className = 'glass rounded-super p-6 transition-all hover:shadow-2xl hover:translate-y-[-2px] border border-white/50 dark:border-slate-700/40 mb-4';
 
             if (window.newGoalId === goal.id.toString()) {
-                // div.classList.add('new-goal-highlight'); // Optional: adapt to new style
+
                 if (window.isNewGoalAnimation) {
-                    // div.classList.add('new-goal-animation');
-                    window.isNewGoalAnimation = false; // איפוס
+
+                    window.isNewGoalAnimation = false;
                 }
             }
 
-            // אנימציה אם הושלם הרגע
+
             if (window.justCompletedDailyGoal === goal.id) {
-                // div.classList.add('daily-goal-reached');
+
             }
 
             div.innerHTML = `
@@ -112,7 +111,7 @@ function renderGoals() {
             </div>`;
             list.appendChild(div);
 
-            // חישוב יעד יומי (אם הוגדר תאריך יעד)
+
             if (goal.targetDate && tasksList) {
                 const diffTime = new Date(goal.targetDate) - new Date();
                 const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
@@ -121,13 +120,13 @@ function renderGoals() {
                     hasTasks = true;
                     const dailyTarget = (unitsLeft / diffDays).toFixed(1);
 
-                    // חישוב התקדמות יומית
+
                     const doneToday = getDailyProgress(goal.id);
                     const dailyPercent = Math.min(100, (doneToday / Math.ceil(dailyTarget)) * 100);
                     const isDailyDone = doneToday >= Math.ceil(dailyTarget);
 
                     const taskDiv = document.createElement('div');
-                    taskDiv.id = `daily-task-${goal.id}`; // זיהוי ייחודי לעדכון
+                    taskDiv.id = `daily-task-${goal.id}`;
                     taskDiv.className = 'task-row';
 
                     if (window.justCompletedDailyGoal === goal.id) {
@@ -145,7 +144,7 @@ function renderGoals() {
                 }
             }
         } else {
-            // הצגת הלימוד בארכיון
+
             if (archiveList) {
                 const archiveDiv = document.createElement('div');
                 archiveDiv.className = 'goal-item';
@@ -161,7 +160,7 @@ function renderGoals() {
         }
     });
 
-    // עדכון תצוגת הדרגות והסטטיסטיקה
+
     updateRankProgressBar(totalLearned);
     document.getElementById('dailyTasksContainer').style.display = hasTasks ? 'block' : 'none';
 
@@ -188,21 +187,19 @@ function renderGoals() {
         if (completedEl) completedEl.innerText = completedBooksCount;
     }
 
-    // שמירת סטטיסטיקה למטמון לטעינה מהירה בפעם הבאה
-    // עדכון: שומרים את הניקוד הכולל במקום רק דפים
+
+
     const stats = { books: activeBooksCount, pages: totalScore, completed: completedBooksCount };
     localStorage.setItem('torahApp_stats', JSON.stringify(stats));
 
-    // Rating updated elsewhere
 
-    // איפוס דגלים
     window.justCompletedDailyGoal = null;
     window.newGoalId = null;
 }
 
 async function createGoal(name, total, targetDate, dedication, startPage = 2) {
     if (!requireAuth()) return;
-    // 1. יצירת האובייקט
+
     const newGoal = {
         id: Date.now().toString(),
         bookName: name,
@@ -214,8 +211,8 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
         startPage: startPage
     };
 
-    // 2. הוספה לרשימה המקומית ורענון
-    userGoals.unshift(newGoal); // הוספה לראש הרשימה
+
+    userGoals.unshift(newGoal);
     saveGoals();
 
     window.newGoalId = newGoal.id;
@@ -223,17 +220,16 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
 
     renderGoals();
 
-    // 3. בדיקה אם יש פעולה להמשיך איתה, כמו חיפוש חברותא
     if (nextActionAfterGoalCreation === 'findChavruta') {
-        nextActionAfterGoalCreation = null; // איפוס הדגל
+        nextActionAfterGoalCreation = null;
         setTimeout(() => {
             openChavrutaSearch(newGoal.bookName);
-        }, 300); // השהיה קצרה לממשק להתייצב
+        }, 300);
     } else {
-        switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]); // מעבר לבית (אינדקס 0)
+        switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
     }
 
-    // 4. שמירה ב-Supabase
+
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
             await supabaseClient.from('user_goals').insert([{
@@ -269,15 +265,15 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
 
 async function addNewGoal() {
     if (!requireAuth()) return;
-    // זיהוי האלמנטים במסך
+
     const bookSelectEl = document.getElementById('bookSelect');
     const customNameEl = document.getElementById('customNameInput');
     const customAmountEl = document.getElementById('customAmountInput');
-    // const sefariaInput = document.getElementById('sefariaSearchInput'); // Removed
+
 
     const dateEl = document.getElementById('targetDateInput');
     const dedicationEl = document.getElementById('dedicationInput');
-    const quickTypeEl = document.getElementById('quickType'); // למקרה של הוספה מהירה
+    const quickTypeEl = document.getElementById('quickType');
     const quickAmountEl = document.getElementById('quickAmount');
     const newBookSearchEl = document.getElementById('newBookSearch');
 
@@ -286,50 +282,49 @@ async function addNewGoal() {
     let targetDate = "";
     let startPage = 2;
 
-    // בדיקה: האם זו הוספה מהירה (מהכרטיס העליון) או רגילה?
+
     if (quickAmountEl && quickAmountEl.value) {
         bookName = quickTypeEl.value;
         totalUnits = parseInt(quickAmountEl.value);
         if (document.getElementById('quickDedication').value) {
-            // טיפול בהקדשה מהירה אם צריך
+
         }
     } else {
-        // הוספה רגילה מהטופס הגדול
+
         if (newBookSearchEl && newBookSearchEl.value) {
-            // בחירה דרך חיפוש
+
             bookName = newBookSearchEl.value.trim();
 
-            // בדיקת בחירת פרק
             const scope = document.getElementById('bookScopeSelect').value;
             if (scope === 'chapter') {
                 const chapterSelect = document.getElementById('chapterSelect');
                 const selectedChapterName = chapterSelect.options[chapterSelect.selectedIndex].text;
 
-                // חיפוש במידע המפורט (עם בדיקת תקינות)
+
                 const detailedBook = (typeof ALL_PRAKIM_DATA !== 'undefined') ? ALL_PRAKIM_DATA.find(b => b.name === bookName) : null;
                 if (detailedBook) {
                     const chapterData = detailedBook.chapters.find(c => c.name === selectedChapterName || `פרק ${c.name}` === selectedChapterName);
                     if (chapterData) {
                         bookName = `${bookName} - ${selectedChapterName}`;
                         startPage = chapterData.start_page;
-                        // עדכון כמות יחידות לפרק (דפים * 2)
+
                         totalUnits = chapterData.pages * 2;
                     }
                 } else {
-                    // Fallback: אם אין מידע מפורט, עדיין נוסיף את שם הפרק לשם הספר כדי שהמשתמש ידע מה בחר
+
                     bookName = `${bookName} - ${selectedChapterName}`;
                 }
             }
 
             totalUnits = parseInt(customAmountEl.value);
             if (!totalUnits) {
-                // ניסיון לקחת מהשדה המחושב אם המשתמש לא הזין ידנית
+
                 const calcVal = document.getElementById('calculatedUnits')?.value;
                 if (calcVal) totalUnits = parseInt(calcVal);
             }
-            if (!totalUnits) totalUnits = 50; // ברירת מחדל
+            if (!totalUnits) totalUnits = 50;
         } else if (bookSelectEl && bookSelectEl.value && (!newBookSearchEl || bookSelectEl.style.display !== 'none')) {
-            // בחירה מרשימה קיימת (צריך לפענח את ה-JSON)
+
             try {
                 const bookData = JSON.parse(bookSelectEl.value);
                 bookName = bookData.name;
@@ -337,7 +332,7 @@ async function addNewGoal() {
             } catch (e) {
                 console.error("Error parsing book data", e);
                 bookName = bookSelectEl.value;
-                // אם אין יחידות, ננסה לחפש שדה אחר או נבקש מהמשתמש (כאן נניח 0 כברירת מחדל אם נכשל)
+
                 totalUnits = 50;
             }
         } else if (customNameEl && customNameEl.value) {
@@ -355,13 +350,13 @@ async function addNewGoal() {
         return;
     }
 
-    // בדיקות תקינות
+
     if (!bookName || !totalUnits || totalUnits <= 0) {
         await customAlert("נא לוודא שנבחר ספר/הוזן שם וכמות יחידות תקינה");
         return;
     }
 
-    // יצירת האובייקט (השינוי הועבר ל-createGoal, כאן רק קוראים לה)
+
     const newGoal = {
         id: Date.now().toString(),
         bookName: bookName,
@@ -374,28 +369,28 @@ async function addNewGoal() {
         startPage: startPage
     };
 
-    // שמירה ועדכון
-    userGoals.unshift(newGoal); // הוספה לראש הרשימה
-    localStorage.setItem('torahApp_goals', JSON.stringify(userGoals)); // או השם שאתה משתמש בו לשמירה
-    saveGoals(); // פונקציית העזר שלך לשמירה
 
-    // סימון להבהוב (לפני הרינדור)
+    userGoals.unshift(newGoal);
+    localStorage.setItem('torahApp_goals', JSON.stringify(userGoals));
+    saveGoals();
+
+
     window.newGoalId = newGoal.id;
-    window.isNewGoalAnimation = true; // דגל לאנימציה מיוחדת
+    window.isNewGoalAnimation = true;
 
-    renderGoals(); // רענון המסך
+    renderGoals();
 
-    // איפוס שדות
+
     if (customNameEl) customNameEl.value = '';
     if (customAmountEl) customAmountEl.value = '';
 
     if (quickAmountEl) quickAmountEl.value = '';
     showToast("הלימוד נוסף בהצלחה!", "success");
 
-    // מעבר ללוח הבקרה
-    switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]); // מעבר לבית (אינדקס 0)
 
-    // שמירה בענן (Supabase)
+    switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
+
+
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && currentUser.email) {
             await supabaseClient.from('user_goals').insert([{
@@ -411,33 +406,32 @@ async function addNewGoal() {
         }
     } catch (e) {
         console.log("נשמר מקומית בלבד");
-        console.error("שגיאת שמירה בענן:", e); // הדפסת השגיאה לניפוי באגים
+        console.error("שגיאת שמירה בענן:", e);
     }
 }
 
 async function loadGoals() {
-    // 1. טעינה מיידית מ-LocalStorage (ללא המתנה לרשת)
+
     const localGoals = localStorage.getItem('torahApp_goals');
     if (localGoals) {
         userGoals = JSON.parse(localGoals);
-        // מיגרציה לנתונים ישנים אם חסר startPage
         userGoals.forEach(g => {
             if (!g.startPage) g.startPage = 2;
         });
-        renderGoals(); // רינדור מיידי למסך
+        renderGoals();
     }
 
     try {
-        // ניסיון לטעון מהענן
+
         const { data: cloudGoals, error } = await supabaseClient
             .from('user_goals')
             .select('*')
             .eq('user_email', currentUser.email);
 
 
-        // אם יש נתונים מהענן, נעדכן את המידע המקומי ונרנדר מחדש
+
         if (cloudGoals && !error) {
-            await syncGlobalData(); // מפעיל את הלוגיקה המלאה של הסנכרון
+            await syncGlobalData();
         }
     } catch (e) {
         console.error("שגיאה בטעינת לימודים:", e);
@@ -445,7 +439,7 @@ async function loadGoals() {
 }
 
 function saveGoals() {
-    // שמירה מקומית
+
     localStorage.setItem('torahApp_goals', JSON.stringify(userGoals));
 }
 
@@ -453,17 +447,17 @@ async function deleteGoal(goalId) {
     if (!requireAuth()) return;
     if (!(await customConfirm("האם אתה בטוח שברצונך למחוק את הלימוד הזה?"))) return;
 
-    // 1. מציאת הלימוד כדי לדעת מה למחוק מהענן אחר כך
+
     const goalToDelete = userGoals.find(g => g.id == goalId);
 
-    // 2. עדכון הרשימה המקומית (סינון החוצה של האידי שנמחק)
+
     userGoals = userGoals.filter(g => g.id != goalId);
 
-    // 3. שמירה ורענון מסך
+
     saveGoals();
     renderGoals();
 
-    // 4. מחיקה מהענן (Supabase)
+
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && goalToDelete) {
             await supabaseClient
@@ -472,7 +466,7 @@ async function deleteGoal(goalId) {
                 .eq('user_email', currentUser.email)
                 .eq('book_name', goalToDelete.bookName);
 
-            // מחיקת חברותות קשורות
+
             await supabaseClient.from('chavruta_requests')
                 .delete()
                 .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
@@ -494,8 +488,6 @@ function handleScopeChange() {
     if (scope === 'chapter') {
         chapterDiv.style.display = 'block';
         chapterSelect.innerHTML = '';
-
-        // בדיקה בנתונים המפורטים של פרקים (עם בדיקת תקינות למניעת קריסה)
         const detailedBook = (typeof ALL_PRAKIM_DATA !== 'undefined') ? ALL_PRAKIM_DATA.find(b => b.name === bookName) : null;
 
         if (detailedBook && detailedBook.chapters) {
@@ -506,12 +498,9 @@ function handleScopeChange() {
                 chapterSelect.appendChild(opt);
             });
         } else {
-            // Fallback לגנרי אם אין מידע
             let maxChapters = 50;
-            // ניסיון למצוא את כמות הפרקים המדויקת מ-BOOKS_DB
             if (typeof BOOKS_DB !== 'undefined') {
                 const bookEntry = BOOKS_DB.find(b => b.name === bookName);
-                // עבור ספרים שבהם היחידות הן פרקים (תנ"ך, משנה, הלכה וכו')
                 if (bookEntry && ['תנ"ך', 'משנה', 'מוסר ומחשבה', 'הלכה'].includes(bookEntry.category)) {
                     maxChapters = bookEntry.units;
                 }
@@ -526,7 +515,6 @@ function handleScopeChange() {
         }
         updateCalculatedUnits();
 
-        // האזנה לשינוי בבחירת פרק
         chapterSelect.onchange = function () {
             try {
                 const val = JSON.parse(this.value);
@@ -536,15 +524,12 @@ function handleScopeChange() {
         };
     } else {
         chapterDiv.style.display = 'none';
-        // שחזור כמות מלאה
         const searchVal = document.getElementById('newBookSearch')?.value;
         if (searchVal) {
-            // נסה למצוא שוב ב-DB המקומי
             let units = 50;
             const found = BOOKS_DB.find(b => b.name === searchVal);
             if (found) units = found.units;
             document.getElementById('calculatedUnits').value = units;
-            // עדכון גם לשדה הגלוי
             if (document.getElementById('customAmountInput')) document.getElementById('customAmountInput').value = units;
         }
     }
@@ -556,25 +541,19 @@ async function selectBookFromSearch(bookName) {
     const detailsArea = document.getElementById('bookDetailsArea');
     if (detailsArea) detailsArea.style.display = 'block';
 
-    // טעינת מבנה הספר (פרקים)
     try {
         const res = await fetch(`https://www.sefaria.org.il/api/v2/raw/index/${bookName}`);
         const data = await res.json();
         selectedBookStructure = data;
 
-        // איפוס בחירה
         document.getElementById('bookScopeSelect').value = 'full';
-        // ביטול החסימה - נאפשר תמיד בחירה (במקרה שאין נתונים מפורטים תוצג רשימה גנרית של פרקים)
         const scopeSelect = document.getElementById('bookScopeSelect');
         if (scopeSelect) scopeSelect.disabled = false;
 
-        handleScopeChange(); // רענון ממשק
+        handleScopeChange(); 
 
-        // ננסה לקחת את ה-length מה-shape או להעריך
-        let estimatedUnits = 50; // ברירת מחדל
+        let estimatedUnits = 50; 
         if (data.schema && data.schema.sectionNames) {
-            // לוגיקה פשוטה להערכה, בפועל ספריא נותן shape ב-API אחר, אבל נשתמש בזה כבסיס
-            // אם זה תלמוד, ננסה למצוא במסד הנתונים המקומי שלנו
             const found = BOOKS_DB.find(b => b.name === bookName);
             if (found) estimatedUnits = found.units;
         }
@@ -583,7 +562,7 @@ async function selectBookFromSearch(bookName) {
 
     } catch (e) {
         console.error("Error fetching book structure", e);
-        document.getElementById('calculatedUnits').value = 100; // Fallback
+        document.getElementById('calculatedUnits').value = 100; 
     }
 }
 
@@ -620,7 +599,6 @@ async function addQuickLog() {
     const amount = parseInt(document.getElementById('quickAmount').value);
     const dedication = document.getElementById('quickDedication').value;
 
-    // נתונים חדשים לתכנון זמן
     const paceType = document.getElementById('quickPace').value;
     const dateInput = document.getElementById('quickDateInput').value;
     let targetDate = "";
@@ -636,7 +614,6 @@ async function addQuickLog() {
 
     createGoal(bookName, amount, targetDate, dedication);
 
-    // איפוס שדות
     document.getElementById('quickAmount').value = '';
     document.getElementById('quickDedication').value = '';
     document.getElementById('quickDateInput').value = '';
@@ -650,7 +627,6 @@ window.updateGoalNotes = async function (goalId, newNotes) {
         goal.notes = newNotes;
         saveGoals();
 
-        // שמירה לענן
         try {
             await supabaseClient.from('user_goals').update({ notes: newNotes }).eq('id', goalId);
         } catch (e) { console.error("Error saving notes to cloud", e); }
@@ -658,7 +634,7 @@ window.updateGoalNotes = async function (goalId, newNotes) {
 };
 
 async function updateRankProgressBar(score) {
-    return; // פונקציונליות הוסרה לבקשת המשתמש
+    return; 
     let currentRank = getRankName(score);
 
     if (notificationsEnabled && currentUser && previousRank && currentRank !== previousRank) {
@@ -668,7 +644,6 @@ async function updateRankProgressBar(score) {
             const msg = `👑 ברכות! עלית לדרגת ${currentRank}!`;
             addNotification(msg);
             showToast(msg, "success");
-            // Add reward points
             await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: 100, user_email: currentUser.email });
         }
     }

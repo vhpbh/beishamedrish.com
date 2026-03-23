@@ -69,7 +69,6 @@
             font-family: 'Assistant', sans-serif;
         }
 
-        /* --- מסך התחברות --- */
         #auth-overlay {
             position: fixed;
             top: 0;
@@ -77,7 +76,7 @@
             width: 100%;
             height: 100%;
             background-color: #f1f5f9;
-            z-index: 9999;
+            z-index: 10001;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -90,7 +89,6 @@
             background-color: #0f172a;
         }
 
-        /* Decorative blurred circles */
         .auth-bg-decoration-1,
         .auth-bg-decoration-2 {
             position: absolute;
@@ -120,7 +118,6 @@
             width: 16rem;
             height: 16rem;
             background-color: #3b82f6;
-            /* blue from other parts of the app */
         }
 
         .auth-box {
@@ -483,7 +480,6 @@
             background: #475569;
         }
 
-        /* --- כותרת --- */
         .sticky-header {
             position: sticky;
             top: 0;
@@ -512,7 +508,6 @@
             justify-content: space-between;
         }
 
-        /* שיפור מרכוז */
         .header-group-left {
             flex: 1;
             justify-content: flex-start;
@@ -640,7 +635,6 @@
             font-size: 1.2rem;
         }
 
-        /* --- תפריט פרופיל --- */
         .profile-container {
             position: relative;
             cursor: pointer;
@@ -696,11 +690,8 @@
         body.dark-mode .profile-dropdown,
         body.dark-mode #notif-dropdown {
             background: #1e293b;
-            /* card-bg */
             color: #f1f5f9;
-            /* text-main */
             border-color: #334155;
-            /* border-color */
         }
 
         body.dark-mode .profile-menu-item {
@@ -724,7 +715,6 @@
         }
 
 
-        /* --- כללי --- */
         .container {
             max-width: 1280px;
             margin: 20px auto;
@@ -841,7 +831,6 @@
             margin-top: 5px;
         }
 
-        /* כפתורי אייקון לכרטיסי לימוד */
         .btn-icon {
             background: transparent;
             border: 1px solid var(--border-color);
@@ -874,7 +863,6 @@
             border-color: var(--primary);
         }
 
-        /* --- לימוד --- */
         .goal-item {
             background: var(--bg);
             border-radius: 12px;
@@ -934,7 +922,6 @@
             padding: 8px;
         }
 
-        /* --- משימות יומיות --- */
         .daily-task-box {
             background: #eff6ff;
             border: 1px solid #bfdbfe;
@@ -964,7 +951,6 @@
             border-radius: 4px;
         }
 
-        /* --- כפתורי סבב --- */
         .cycles-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -988,7 +974,6 @@
             background: #fffbeb;
         }
 
-        /* --- לוח מובילים --- */
         .leaderboard-table {
             width: 100%;
             border-collapse: collapse;
@@ -1057,7 +1042,6 @@
             box-shadow: 0 4px 6px rgba(59, 130, 246, 0.4);
         }
 
-        /* --- צ'אט --- */
         .chat-container {
             display: flex;
             flex-direction: column;
@@ -1083,7 +1067,6 @@
             font-size: 0.9rem;
             position: relative;
             padding-bottom: 20px;
-            /* מקום לוי */
         }
 
         .msg-me {
@@ -1179,8 +1162,6 @@
             font-weight: bold;
         }
 
-        /* --- מודאל --- */
-        /* תיקון פס גלילה חיצוני למודאלים */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -1266,7 +1247,6 @@
             color: var(--danger);
         }
 
-        /* כפתורים יוקרתיים לכרטיסי חברותא */
         .btn-elegant {
             flex: 1;
             background: transparent;
@@ -1308,12 +1288,10 @@
             }
         }
 
-        /* מניעת גלילה כפולה כשהמודאל פתוח */
         body.modal-open {
             overflow: hidden;
         }
 
-        /* --- ניווט --- */
         .floating-nav-container {
             position: fixed;
             bottom: 1.5rem;
@@ -1324,7 +1302,6 @@
             max-width: 500px;
             padding: 0 1rem;
             pointer-events: none;
-            /* Allow clicking through the container area */
         }
 
         .floating-nav {
@@ -1335,7 +1312,6 @@
             justify-content: space-between;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
             pointer-events: auto;
-            /* Re-enable clicks on the nav itself */
         }
 
         .floating-nav-container {
@@ -1401,7 +1377,6 @@
         }
 
         .nav-item {
-            /* Keep for old references if any */
             text-align: center;
             color: #94a3b8;
             cursor: pointer;
@@ -1449,7 +1424,6 @@
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
         }
 
-        /* מתג */
         .switch {
             position: relative;
             display: inline-block;
@@ -1495,7 +1469,6 @@
             transform: translateX(20px);
         }
 
-        /* --- תוספת לעיצוב החדש --- */
         .controls-row {
             display: flex;
             justify-content: space-between;
@@ -1552,7 +1525,6 @@
             transition: width 0.3s ease;
         }
 
-        /* בחירת ימים */
         .day-selector {
             display: flex;
             gap: 5px;
@@ -1580,7 +1552,6 @@
             border-color: var(--accent);
         }
 
-        /* לוח שנה */
         .calendar-day {
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -1624,7 +1595,6 @@
             z-index: 10;
         }
 
-        /* עיצוב רשימת תוצאות חברותא */
         .chavruta-result {
             display: flex;
             justify-content: space-between;
@@ -1637,16 +1607,13 @@
             text-align: right;
         }
 
-        /* --- עיצוב אדמין כהה ומקצועי --- */
         .admin-card {
             background-color: #1e293b !important;
             color: #e2e8f0 !important;
             border: 1px solid #334155 !important;
-            /* Fix for admin scrolling */
             display: flex;
             flex-direction: column;
             height: calc(100vh - 67px - 40px);
-            /* Header height and container vertical margins */
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
         }
 
@@ -1791,7 +1758,6 @@
             color: #0f172a;
         }
 
-        /* --- צ'אט צף (Floating Chat) --- */
         .chat-window {
             position: fixed;
             top: 50%;
@@ -1892,7 +1858,6 @@
             padding: 1rem;
             background: var(--card-bg);
             border-top: none;
-            /* Removed mysterious line */
             display: flex;
             gap: 0.75rem;
             align-items: center;
@@ -1915,9 +1880,7 @@
         .chat-footer input:focus {
             outline: none;
             box-shadow: none;
-            /* Removed ugly border */
             background: #f1f5f9;
-            /* Slight highlight like main chat */
         }
 
         .chat-footer .btn {
@@ -1953,7 +1916,6 @@
             height: 20px;
         }
 
-        /* --- תיקון מצב ממוזער --- */
         .chat-window.minimized {
             top: auto;
             bottom: 90px;
@@ -1962,29 +1924,24 @@
             transform: none;
             width: 260px;
             height: 50px !important;
-            /* דורס כל גובה אחר */
             border-radius: 30px;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
             overflow: hidden;
         }
 
-        /* הסתרת כפתורים כשהחלון ממוזער */
         .chat-window.minimized .chat-header i {
             display: none !important;
         }
 
-        /* שמירה על כותרת לחיצה במצב ממוזער */
         .chat-window.minimized .chat-header {
             pointer-events: auto;
             height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
-            /* מרכוז הטקסט */
             padding: 0;
         }
 
-        /* --- אנימציית השלמת יעד יומי --- */
         @keyframes goalSuccess {
             0% {
                 transform: scale(1);
@@ -2008,7 +1965,6 @@
             border: 2px solid #16a34a !important;
         }
 
-        /* אנימציית הבהוב לצ'אט ממוזער */
         @keyframes chatFlash {
             0% {
                 background-color: var(--card-bg);
@@ -2035,7 +1991,6 @@
             padding-left: 5px;
         }
 
-        /* --- עיצוב מנויים ותרומות --- */
         @keyframes btn-shimmer {
             0% {
                 background-position: 0% 50%;
@@ -2133,7 +2088,6 @@
             font-weight: bold;
         }
 
-        /* אפקטי הילה למנויים */
         .aura-base {
             position: relative;
             z-index: 1;
@@ -2171,7 +2125,6 @@
             }
         }
 
-        /* רמות הילה */
         .aura-lvl-1,
         .aura-lvl-2 {
             box-shadow: 0 0 0 2px #e2e8f0, 0 0 10px rgba(0, 0, 0, 0.1);
@@ -2212,7 +2165,6 @@
             font-weight: bold;
         }
 
-        /* התאמה לפרופיל בהאדר */
         .profile-btn.aura-lvl-1,
         .profile-btn.aura-lvl-2 {
             box-shadow: 0 0 0 2px #e2e8f0;
@@ -2268,7 +2220,6 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
-        /* --- עיצוב דף הוספה חדש --- */
         .add-screen-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -2353,7 +2304,6 @@
             background: var(--bg);
         }
 
-        /* --- אנימציות חדשות --- */
         @keyframes flash-border {
             0% {
                 box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7);
@@ -2410,7 +2360,6 @@
             transform-origin: center;
         }
 
-        /* אנימציית הבהוב לספר חדש (כמו תרומה) */
         @keyframes newBookPulse {
             0% {
                 box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7);
@@ -2432,7 +2381,6 @@
             animation: newBookPulse 2s infinite;
         }
 
-        /* עיצוב לוח סיומים חגיגי */
         .siyum-card {
             background: linear-gradient(135deg, #fff 0%, #fffbeb 100%);
             border: 2px solid #fbbf24;
@@ -2499,7 +2447,6 @@
             animation: celebrate 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
 
-        /* תיקון קריאות במצב לילה */
         body.dark-mode input,
         body.dark-mode select,
         body.dark-mode textarea {
@@ -2510,11 +2457,9 @@
 
         .new-goal-highlight {
             animation: flash-border 1.5s ease-out 3;
-            /* 3 פעמים */
             border: 2px solid gold !important;
         }
 
-        /* --- Toast Notifications --- */
         .toast-container {
             position: fixed;
             bottom: 20px;
@@ -2571,7 +2516,6 @@
             color: var(--primary);
         }
 
-        /* כרטיסי חיפוש */
         .search-card-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -2608,7 +2552,6 @@
             font-size: 0.9rem;
         }
 
-        /* Chat Screen Styles */
         .chat-screen-container {
             display: flex;
             height: 100%;
@@ -2707,7 +2650,6 @@
             }
         }
 
-        /* --- General Search Modal --- */
         .search-tag {
             background: var(--bg);
             border: 1px solid var(--border-color);
@@ -2745,7 +2687,6 @@
             font-weight: bold;
         }
 
-        /* סגנון לציטוט בצ'אט */
         .chat-quote {
             border-right: 3px solid var(--accent);
             background: rgba(0, 0, 0, 0.05);
@@ -2823,7 +2764,6 @@
             min-width: 0;
         }
 
-        /* עיצוב חגיגי ללוח סיומים */
         .siyum-festive-bg {
             background: linear-gradient(135deg, #fffbeb 0%, #fff 50%, #fef3c7 100%);
             position: relative;
@@ -2864,7 +2804,6 @@
             }
         }
 
-        /* --- עיצוב חדש לחיפוש חברותא (תואם Tailwind) --- */
         @keyframes spin {
             from {
                 transform: rotate(0deg);
@@ -2908,7 +2847,6 @@
             animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
-        /* מחלקות עזר לעיצוב החדש */
         .text-primary {
             color: var(--accent);
         }
@@ -3027,7 +2965,6 @@
             color: white;
         }
 
-        /* רשימת בחירה למחיקת צ'אטים */
         .user-select-list {
             max-height: 300px;
             overflow-y: auto;
@@ -3082,7 +3019,6 @@
         }
 
 
-        /* --- מצב לימוד מרוכז --- */
         body.focus-mode header,
         body.focus-mode .bottom-nav,
         body.focus-mode .chat-window,
@@ -3099,7 +3035,6 @@
             margin: 0 !important;
         }
 
-        /* Network Visualizer Styles */
         #user-icons-container .net-user {
             position: absolute;
             width: 60px;
@@ -3128,7 +3063,6 @@
             font-size: 1.5rem;
         }
 
-        /* --- Community Screen Layout --- */
         .community-grid {
             display: grid;
             grid-template-columns: 250px 1fr 250px;
@@ -3181,7 +3115,6 @@
             font-weight: bold;
         }
 
-        /* תיקון כפתור הצעה בהאדר */
         .btn-link {
             cursor: pointer;
         }
@@ -3190,14 +3123,12 @@
             cursor: pointer;
         }
 
-        /* כפתורי מיון בלוח מובילים */
         .active-sort {
             background: var(--primary) !important;
             color: white !important;
             border-color: var(--primary) !important;
         }
 
-        /* Fix for marketing checkbox alignment in signup */
         #signup-form input[type="checkbox"] {
             width: auto;
             display: inline-block;
@@ -3211,13 +3142,11 @@
             vertical-align: middle;
         }
 
-        /* Ensure the container aligns right */
         .auth-box div:has(input[type="checkbox"]) {
             text-align: right;
             padding-right: 5px;
         }
 
-        /* --- New Dashboard Design --- */
         .dashboard-container {
             padding: 10px;
         }
@@ -3523,7 +3452,6 @@
             color: #EAB308;
         }
 
-        /* --- New Chat UI --- */
         .chat-screen-container {
             display: flex;
             height: 100%;
@@ -3534,16 +3462,13 @@
             background: var(--card-bg);
             border-left: 1px solid var(--border-color);
             width: 320px;
-            /* A bit wider */
         }
 
         body.dark-mode .chat-sidebar {
             background: #0f172a;
-            /* Darker sidebar bg */
             border-left-color: #1e293b;
         }
 
-        /* New Chat Tabs Style */
         .chat-tabs {
             padding: 8px;
             background: var(--bg);
@@ -3593,7 +3518,6 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
-        /* Tailwind-like utilities for chat */
         .rounded-chat {
             border-radius: 1.25rem;
         }
@@ -3620,7 +3544,6 @@
             transition: background-color 0.2s;
             cursor: pointer;
             margin: 0 8px;
-            /* Added margin to prevent sticking to edges */
         }
 
         .chat-list-item:hover {
@@ -3629,7 +3552,6 @@
 
         .chat-list-item.active {
             background-color: #eff6ff;
-            /* Light blue */
             border-color: #dbeafe;
         }
 
@@ -3689,7 +3611,6 @@
             background-color: #22c55e;
         }
 
-        /* Main Chat Area */
         .chat-main-header {
             height: 70px;
             border-bottom: 1px solid var(--border-color);
@@ -3802,13 +3723,11 @@
         .chat-messages-area .msg-me {
             border-bottom-right-radius: 4px;
             align-self: flex-start;
-            /* My messages on the right in RTL */
         }
 
         .chat-messages-area .msg-other {
             border-bottom-left-radius: 4px;
             align-self: flex-end;
-            /* Other's messages on the left in RTL */
         }
 
         .chat-main-footer {
@@ -3875,7 +3794,6 @@
             }
         }
 
-        /* --- Leaderboard Redesign --- */
         .lb-header-section {
             display: flex;
             align-items: center;
@@ -4054,7 +3972,6 @@
 
         .floating-nav-container.nav-hidden {
             transform: translate(-50%, 150px);
-            /* Move it down by more than its height */
 
         }
 
@@ -4079,7 +3996,6 @@
             }
         }
 
-        /* --- Maintenance Mode Overlay --- */
         .maintenance-overlay {
             position: fixed;
             top: 0;
@@ -4147,7 +4063,6 @@
             color: #94a3b8;
         }
 
-        /* אימות שדות טופס ויזואלי */
         .auth-input.valid {
             border: 2px solid #22c55e !important;
         }

@@ -6,18 +6,14 @@ function openSearchDropdown() {
     const dropdown = document.getElementById('searchDropdown');
     const tagsContainer = document.getElementById('search-tags-container');
 
-    // Populate tags if not already there
     if (tagsContainer.children.length === 0) {
         tagsContainer.innerHTML = SEARCH_TAGS.map(tag =>
             `<div class="search-tag" id="search-tag-${tag.id}" onclick="toggleSearchTag('${tag.id}')">${tag.name}</div>`
         ).join('');
     }
 
-    // Reset state
-    // document.querySelectorAll('.search-tag').forEach(t => t.classList.remove('active'));
     document.getElementById('generalSearchResults').innerHTML = `<div style="text-align:center; color:#94a3b8; padding-top: 50px;"><i class="fas fa-search" style="font-size: 3rem; opacity: 0.5;"></i><p>הקלד כדי להתחיל חיפוש</p></div>`;
 
-    // Auto-select tags based on context
     const activeScreen = document.querySelector('.screen.active')?.id;
     SEARCH_TAGS.forEach(tag => {
         if (activeScreen && tag.screens.includes(activeScreen)) {
@@ -25,7 +21,6 @@ function openSearchDropdown() {
         }
     });
 
-    // Special check for open chat windows
     if (document.querySelector('.chat-window:not(.minimized)')) {
         document.getElementById('search-tag-chats').classList.add('active');
     }
@@ -35,7 +30,6 @@ function openSearchDropdown() {
 
 function toggleSearchTag(tagId) {
     document.getElementById(`search-tag-${tagId}`).classList.toggle('active');
-    // Re-run search with new filters
     executeGeneralSearch();
 }
 
@@ -98,7 +92,6 @@ async function executeGeneralSearch() {
     renderGeneralSearchResults(results, query);
 }
 
-// Individual search functions
 async function searchUsers(query) {
     return globalUsersData.filter(u =>
         u.email.toLowerCase().includes(query) ||
@@ -173,7 +166,6 @@ function renderGeneralSearchResults(results, query) {
         return text.replace(regex, '<strong>$1</strong>');
     };
 
-    // Users
     if (results.users && results.users.length > 0) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">משתמשים</div>';
@@ -188,7 +180,6 @@ function renderGeneralSearchResults(results, query) {
         container.innerHTML += groupHtml;
     }
 
-    // My Goals
     if (results.my_goals && results.my_goals.length > 0) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">המסכתות שלי</div>';
@@ -203,7 +194,6 @@ function renderGeneralSearchResults(results, query) {
         container.innerHTML += groupHtml;
     }
 
-    // My Chavrutas
     if (results.my_chavrutas && results.my_chavrutas.length > 0) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">החברותות שלי</div>';
@@ -218,7 +208,6 @@ function renderGeneralSearchResults(results, query) {
         container.innerHTML += groupHtml;
     }
 
-    // Chat Messages
     if (results.chats && results.chats.length > 0) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">הודעות בצ\'אט</div>';
@@ -229,7 +218,6 @@ function renderGeneralSearchResults(results, query) {
             const partnerName = partner ? partner.name : partnerEmail;
             const safePartnerName = (partnerName || '').replace(/'/g, "\\'");
 
-            // תיקון: הסרת Book: מהשם אם קיים
             const displayName = partnerName.startsWith('book:') ? partnerName.replace('book:', '') : partnerName;
 
             groupHtml += `
@@ -242,7 +230,6 @@ function renderGeneralSearchResults(results, query) {
         container.innerHTML += groupHtml;
     }
 
-    // Library Books
     if (results.books && results.books.length > 0) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">ספרים בספרייה</div>';
@@ -264,14 +251,12 @@ function renderGeneralSearchResults(results, query) {
 }
 
 async function openChavrutaSearch(bookName) {
-    // בדיקה אם המשתמש מילא פרטים
     if (!currentUser.phone || !currentUser.city) {
         await customAlert("כדי למצוא חברותא, עליך למלא עיר ומספר טלפון בפרופיל.");
         switchScreen('profile', document.getElementById('nav-profile'));
         return;
     }
 
-    // קריאה לפונקציה החדשה שמציגה את ממשק החיפוש המעודכן
     await findChavruta(bookName);
 }
 
@@ -414,7 +399,7 @@ function showAddSection(sectionId) {
             if (sectionId === 'cycles') renderCyclesSection(target);
             if (sectionId === 'quick') renderQuickSection(target);
         }
-        if (sectionId === 'new') populateAllBooks(); // טעינת רשימת ספרים
+        if (sectionId === 'new') populateAllBooks(); 
     }
 }
 
@@ -431,7 +416,6 @@ function showToast(text, type = 'info') {
 
     container.prepend(toast);
 
-    // חישוב זמן תצוגה לפי אורך הטקסט (מינימום 3 שניות)
     const duration = Math.max(3000, text.length * 60);
 
     setTimeout(() => {
