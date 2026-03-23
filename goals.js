@@ -232,7 +232,7 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
-            await supabaseClient.from('user_goals').insert([{
+            const { data, error } = await supabaseClient.from('user_goals').insert([{
                 id: newGoal.id,
                 user_email: currentUser.email,
                 book_name: name,
@@ -240,8 +240,20 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
                 current_unit: 0,
                 status: 'active',
                 target_date: targetDate || null,
-                start_page: startPage
-            }]);
+                dedication: dedication || null
+            }]).select();
+
+            if (error) throw error;
+            if (data && data[0]) {
+                const realId = data[0].id.toString();
+                const idx = userGoals.findIndex(g => g.id === newGoal.id);
+                if (idx !== -1) {
+                    userGoals[idx].id = realId;
+                    saveGoals();
+                    if (window.newGoalId === newGoal.id) window.newGoalId = realId;
+                    renderGoals();
+                }
+            }
         }
     } catch (e) {
         console.error("שגיאה בסנכרון ענן, אך נשמר מקומית:", e);
@@ -393,7 +405,7 @@ async function addNewGoal() {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && currentUser.email) {
-            await supabaseClient.from('user_goals').insert([{
+            const { data, error } = await supabaseClient.from('user_goals').insert([{
                 id: newGoal.id,
                 user_email: currentUser.email,
                 book_name: bookName,
@@ -401,8 +413,20 @@ async function addNewGoal() {
                 current_unit: 0,
                 status: 'active',
                 target_date: targetDate || null,
-                start_page: startPage
-            }]);
+                dedication: newGoal.dedication
+            }]).select();
+            
+            if (error) throw error;
+            if (data && data[0]) {
+                const realId = data[0].id.toString();
+                const idx = userGoals.findIndex(g => g.id === newGoal.id);
+                if (idx !== -1) {
+                    userGoals[idx].id = realId;
+                    saveGoals();
+                    if (window.newGoalId === newGoal.id) window.newGoalId = realId;
+                    renderGoals();
+                }
+            }
         }
     } catch (e) {
         console.log("נשמר מקומית בלבד");
