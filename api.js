@@ -6,15 +6,18 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let syncInterval = null;
 let heartbeatInterval = null;
+let unreadSyncInterval = null;
 
 function startBackgroundServices() {
     if (!syncInterval) syncInterval = setInterval(syncGlobalData, 10000);
     if (!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 60000);
+    if (!unreadSyncInterval) unreadSyncInterval = setInterval(syncUnreadMessages, 30000); // סנכרון הודעות שלא נקראו כל 30 שניות
 }
 
 function stopBackgroundServices() {
     if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    if (unreadSyncInterval) { clearInterval(unreadSyncInterval); unreadSyncInterval = null; }
 }
 
 // שים לב לשינוי השם ל- supabaseClient
@@ -176,64 +179,6 @@ async function syncGlobalData() {
         }
         // ----------------------------------------
 
-        // --- בדיקת הודעות צ'אט שלא נקראו (כולל ממנהל) ---
-        if (currentUser) {
-            // Using RPC to bypass RLS
-            const { data: unreadChats, error: chatError } = await supabaseClient.rpc('get_my_unread_messages', {
-                p_my_email: currentUser.email
-            });
-
-            if (unreadChats) {
-                const counts = {};
-                unreadChats.forEach(msg => {
-                    let sEmail = msg.sender_email || '';
-                    if (!sEmail.startsWith('book:')) {
-                        sEmail = sEmail.toLowerCase();
-                    }
-
-                    // בדיקה אם ההודעה ישנה יותר מזמן הקריאה האחרון (טיפול בעדכון איטי מהשרת)
-                    const msgTime = new Date(msg.created_at).getTime();
-                    const lastRead = lastReadTimes[sEmail] || 0;
-                    if (msgTime <= lastRead) return; // דלג אם כבר נקרא מקומית
-
-                    // בדיקה אם חלון הצ'אט פתוח (צף או ראשי) - אם כן, לא נספור את ההודעה כ"לא נקראה"
-                    const floating = document.getElementById(`chat-window-${sEmail}`);
-                    const mainWin = document.getElementById(`msgs-${sEmail}`);
-                    const isMainActive = mainWin && document.getElementById('screen-chats').classList.contains('active');
-                    const isOpen = (floating && !floating.classList.contains('minimized')) || isMainActive;
-
-                    if (!isOpen) {
-                        counts[sEmail] = (counts[sEmail] || 0) + 1;
-                    }
-                });
-                unreadMessages = counts;
-                localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
-                if (typeof updateChatBadge === 'function') updateChatBadge();
-            }
-
-            if (unreadChats && unreadChats.length > 0) {
-                unreadChats.forEach(msg => {
-                    // אם אין חלון צ'אט פתוח עבור השולח הזה, נוסיף להתראות
-                    if (!document.getElementById(`chat-window-${msg.sender_email.toLowerCase()}`)) {
-                        // בדיקה אם זו הודעת מערכת לשידור
-                        if (msg.sender_email === 'admin@system' && msg.message.includes('הודעת מערכת')) {
-                            // הודעות מערכת מטופלות בנפרד ב-Realtime, אבל אם פספסנו:
-                            // לא נעשה כלום כאן כדי לא להציף
-                        }
-                        if (msg.sender_email === 'admin@system' && msg.message.includes('הודעת מערכת')) return; // דילוג על הודעות מערכת כפולות
-                        // The user reported that chat windows open unexpectedly.
-                        // This was happening here, where any unread message would trigger a minimized chat window.
-                        // The realtime handler already provides a notification. We are disabling this feature
-                        // to prevent intrusive windows from opening automatically.
-                        // const senderUser = globalUsersData.find(u => u.email === msg.sender_email);
-                        // const senderName = senderUser ? senderUser.name : msg.sender_email;
-                        // openChat(msg.sender_email, senderName, true);
-                    }
-                });
-            }
-        }
-
-
         if (users && goals) {
             globalUsersData = users.map(user => {
                 const uEmail = (user.email || "").trim().toLowerCase();
@@ -319,6 +264,62 @@ async function syncGlobalData() {
         console.error("שגיאה בסנכרון נתונים:", e.message);
     }
     checkIncomingRequests()
+}
+
+async function syncUnreadMessages() {
+    if (!currentUser) return;
+
+    try {
+        // Using RPC to bypass RLS - this can be slow if the user has many messages.
+        const { data: unreadChats, error: chatError } = await supabaseClient.rpc('get_my_unread_messages', {
+            p_my_email: currentUser.email
+        });
+
+        if (chatError) {
+            console.error("Unread sync error:", chatError);
+            return;
+        }
+
+        if (unreadChats) {
+            const counts = {};
+            unreadChats.forEach(msg => {
+                let sEmail = msg.sender_email || '';
+                if (!sEmail.startsWith('book:')) {
+                    sEmail = sEmail.toLowerCase();
+                }
+
+                // בדיקה אם ההודעה ישנה יותר מזמן הקריאה האחרון (טיפול בעדכון איטי מהשרת)
+                const msgTime = new Date(msg.created_at).getTime();
+                const lastRead = lastReadTimes[sEmail] || 0;
+                if (msgTime <= lastRead) return; // דלג אם כבר נקרא מקומית
+
+                // בדיקה אם חלון הצ'אט פתוח (צף או ראשי) - אם כן, לא נספור את ההודעה כ"לא נקראה"
+                const floating = document.getElementById(`chat-window-${sEmail}`);
+                const mainWin = document.getElementById(`msgs-${sEmail}`);
+                const isMainActive = mainWin && document.getElementById('screen-chats').classList.contains('active');
+                const isOpen = (floating && !floating.classList.contains('minimized')) || isMainActive;
+
+                if (!isOpen) {
+                    counts[sEmail] = (counts[sEmail] || 0) + 1;
+                }
+            });
+            unreadMessages = counts;
+            localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
+            if (typeof updateChatBadge === 'function') updateChatBadge();
+        }
+
+        // This part was for auto-opening chat windows, which is disabled.
+        // It's safe to keep it here as it doesn't perform heavy operations.
+        if (unreadChats && unreadChats.length > 0) {
+            unreadChats.forEach(msg => {
+                if (!document.getElementById(`chat-window-${msg.sender_email.toLowerCase()}`)) {
+                    if (msg.sender_email === 'admin@system' && msg.message.includes('הודעת מערכת')) return;
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Error in syncUnreadMessages:", e);
+    }
 }
 async function sendHeartbeat() {
     if (!currentUser) return;

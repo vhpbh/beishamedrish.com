@@ -105,6 +105,31 @@ async function handleSignup(e) {
         // הסתרת חיווי טעינה
         showToast("ההרשמה כמעט הושלמה...", "info");
 
+        // 2. אם הרישום הצליח, נשיג את ה-IP ונשמור לוג (זה יפעיל את המייל)
+        try {
+            // השגת ה-IP משירות חיצוני חינמי
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResponse.json();
+            const userIP = ipData.ip;
+
+            // שמירה בטבלת הלוגים - זה השלב שמפעיל את ה-SQL שכתבנו
+            const { error: logError } = await supabaseClient
+                .from('user_access_logs')
+                .insert([
+                    { 
+                        user_email: email, 
+                        ip_address: userIP 
+                    }
+                ]);
+
+            if (logError) throw logError;
+            
+            console.log("הלוג נשמר והמייל בדרך!");
+
+        } catch (err) {
+            console.error("הרישום הצליח, אך נכשלה שמירת ה-IP:", err.message);
+        }
+
         // בדיקה אם נוצר סשן באופן מיידי (אם אימות מייל כבוי ב-Supabase)
         if (data.session) {
             document.getElementById('auth-overlay').style.display = 'none';

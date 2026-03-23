@@ -1874,6 +1874,11 @@
             font-size: 0.9rem;
         }
 
+        .chat-window.minimized .chat-header span,
+        .chat-window.minimized .chat-header strong {
+            font-size: 0.85rem !important;
+        }
+
         .chat-messages-area {
             flex: 1;
             overflow-y: auto;

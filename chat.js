@@ -14,19 +14,18 @@ async function searchChats(query) {
 }
 
 // === מנגנון Polling (גיבוי לצ'אט) ===
-let chatPollInterval = null;
+let chatPollTimer = null;
 
 function startChatPolling() {
-    if (!chatPollInterval) {
-        chatPollInterval = setInterval(pollChats, 3000);
+    if (!chatPollTimer) {
+        pollChats();
     }
 }
 
 async function pollChats() {
     const windows = document.querySelectorAll('.chat-window');
     if (windows.length === 0) {
-        clearInterval(chatPollInterval);
-        chatPollInterval = null;
+        chatPollTimer = null;
         return;
     }
 
@@ -34,10 +33,22 @@ async function pollChats() {
         const partnerEmail = win.id.replace('chat-window-', '');
         await checkNewMessagesFor(partnerEmail);
     }
+    chatPollTimer = setTimeout(pollChats, 3000); // שימוש ב-Timeout במקום Interval למניעת חפיפת בקשות
 }
+
+function getChatContainer(partnerEmail) {
+    const popup = document.getElementById(`chat-window-${partnerEmail}`);
+    if (popup) return popup.querySelector('.chat-messages-area');
+    return document.getElementById(`msgs-${partnerEmail}`);
+}
+
 async function checkNewMessagesFor(partnerEmail) {
-    const container = document.getElementById(`msgs-${partnerEmail}`);
+    const container = getChatContainer(partnerEmail);
     if (!container) return;
+
+    // תיקון קריטי: אם הצ'אט עדיין בטעינה ראשונית - לא לבצע בדיקת הודעות חדשות
+    // זה מונע כפילות של טעינת כל ההיסטוריה במקביל ומאיץ משמעותית את הפתיחה
+    if (container.querySelector('.chat-loading-indicator')) return;
 
     let lastTime = new Date(0).toISOString();
     const bubbles = container.querySelectorAll('.message-bubble');
@@ -145,7 +156,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
                 <div class="flex items-center gap-3">
                     ${isBook ? '<i class="fas fa-book"></i>' : (isSystem ? '<i class="fas fa-shield-alt text-red-500"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`)))}
                     <div class="flex flex-col">
-                        <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white leading-tight">${partnerName === 'הודעת מנהל' ? '<i class="fas fa-shield-alt text-red-500"></i> ' : ''}${partnerName}</span>
+                        <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white leading-tight">${partnerName}</span>
                         ${isBook ? `<span class="text-[10px] ${bookOnlineCount > 0 ? 'text-emerald-500 font-bold' : 'text-slate-500'} dark:text-slate-400 font-normal">${bookOnlineCount} לומדים מחוברים</span>` : ''}
                     </div>
                 </div>
@@ -577,7 +588,7 @@ async function loadChatHistory(partnerEmail) {
 
     if (error) console.error("שגיאה בטעינת צ'אט:", error);
 
-    const container = document.getElementById(`msgs-${partnerEmail}`);
+    const container = getChatContainer(partnerEmail);
     if (!container) return;
 
     // Remove loading indicator if exists
@@ -817,7 +828,7 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     // הסתרת הודעות שרשור מהצ'אט הראשי
     if (text.includes('ref:')) return null;
 
-    const container = document.getElementById(`msgs-${partnerEmail}`);
+    const container = getChatContainer(partnerEmail);
     if (!container) return null;
 
     // מניעת כפילויות (חשוב למנגנון ה-Polling)
