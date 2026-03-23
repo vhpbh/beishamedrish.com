@@ -7,10 +7,39 @@ const JOKES = [
 
 // זיהוי מצב אופליין
 window.addEventListener('offline', () => {
+    if (document.getElementById('offline-overlay')) return;
+
     const overlay = document.createElement('div');
     overlay.id = 'offline-overlay';
-    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); color:white; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:99999; text-align:center;';
-    overlay.innerHTML = '<h1 style="font-size:4rem;">📶</h1><h2>אין אינטרנט?</h2><p style="font-size:1.2rem;">זה הזמן המצוין לחזור על תלמודך בעל פה!<br>(או לבדוק את הראוטר...)</p>';
+    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display:flex; justify-content:center; align-items:center; z-index:99999; animation: fadeIn 0.3s; padding: 20px; box-sizing: border-box;';
+
+    overlay.innerHTML = `
+        <div style="background: var(--card-bg, #ffffff); color: var(--text-main, #333333); width: 100%; max-width: 420px; padding: 2rem; border-radius: 24px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); position: relative; border: 1px solid var(--border-color, #e2e8f0);">
+            <button onclick="document.getElementById('offline-overlay').remove()" style="position: absolute; top: 1rem; left: 1rem; background: none; border: none; font-size: 1.25rem; color: #94a3b8; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='var(--danger, #ef4444)'" onmouseout="this.style.color='#94a3b8'">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div style="width: 72px; height: 72px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem auto; color: #ef4444;">
+                <span class="material-icons-round" style="font-size: 2.5rem;">wifi_off</span>
+            </div>
+            
+            <h2 style="font-size: 1.5rem; font-weight: 800; margin: 0 0 0.75rem 0; color: var(--text-main); display: block; text-align: center;">אין חיבור אינטרנט</h2>
+            
+            <p style="color: #64748b; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">
+                נראה שהתנתקת מהרשת. הנתונים המקומיים שלך שמורים והאפליקציה תמשיך לעבוד במצב אופליין.
+            </p>
+            
+            <div style="background: var(--bg, #f8fafc); border: 1px dashed #cbd5e1; border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem;">
+                <p style="margin: 0; font-size: 0.9rem; color: var(--accent, #ca8a04); font-weight: 500;">
+                    <i class="fas fa-lightbulb" style="margin-left: 5px;"></i> טיפ: זה זמן מצוין לחזרה על תלמודך!
+                </p>
+            </div>
+            
+            <button class="btn" onclick="document.getElementById('offline-overlay').remove()" style="width: 100%; justify-content: center; padding: 12px; font-size: 1rem;">
+                הבנתי, המשך ללמוד
+            </button>
+        </div>
+    `;
     document.body.appendChild(overlay);
 });
 window.addEventListener('online', () => {

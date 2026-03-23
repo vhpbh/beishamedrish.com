@@ -578,11 +578,16 @@ function checkUsernameAvailability() {
         indicator = document.createElement('span');
         indicator.id = 'usernameAvailabilityIndicator';
         indicator.style.position = 'absolute';
-        indicator.style.left = '15px'; // מיקום בצד שמאל של השדה (מתאים ל-RTL)
+        indicator.style.left = '10px'; // מיקום בצד שמאל
         indicator.style.top = '50%';
         indicator.style.transform = 'translateY(-50%)';
+        indicator.style.zIndex = '5';
         if (nameInput.parentElement) nameInput.parentElement.style.position = 'relative';
         nameInput.parentElement.appendChild(indicator);
+    } else {
+        indicator.style.left = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
     }
 
     const name = nameInput.value.trim();
@@ -590,7 +595,6 @@ function checkUsernameAvailability() {
     // נקה חיווי אם השדה ריק
     if (name === '') {
         indicator.innerHTML = '';
-        indicator.style.color = '';
         return;
     }
 
@@ -602,12 +606,10 @@ function checkUsernameAvailability() {
         const isTaken = globalUsersData.some(u => u.original_name && u.original_name.trim().toLowerCase() === name.toLowerCase());
 
         if (isTaken) {
-            indicator.innerHTML = '<i class="fas fa-times"></i>'; // X mark
-            indicator.style.color = '#ef4444';
+            indicator.innerHTML = '<span style="background:#fee2e2; color:#ef4444; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #fecaca; display:flex; align-items:center; gap:4px; font-weight:bold;">תפוס <i class="fas fa-times"></i></span>';
             indicator.title = 'שם משתמש תפוס';
         } else {
-            indicator.innerHTML = '<i class="fas fa-check"></i>'; // V mark
-            indicator.style.color = '#22c55e';
+            indicator.innerHTML = '<span style="background:#dcfce7; color:#16a34a; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #bbf7d0; display:flex; align-items:center; gap:4px; font-weight:bold;">פנוי <i class="fas fa-check"></i></span>';
             indicator.title = 'שם משתמש פנוי';
         }
     }, 300); // השהיה של 300 מילישניות
@@ -617,14 +619,31 @@ let emailCheckTimeout;
 
 function checkEmailAvailability() {
     const emailInput = document.getElementById('regEmail');
-    const indicator = document.getElementById('emailAvailabilityIndicator');
-    if (!emailInput || !indicator) return;
+    if (!emailInput) return;
+
+    let indicator = document.getElementById('emailAvailabilityIndicator');
+    if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.id = 'emailAvailabilityIndicator';
+        indicator.style.position = 'absolute';
+        indicator.style.left = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+        indicator.style.zIndex = '5';
+        if (emailInput.parentElement) {
+            emailInput.parentElement.style.position = 'relative';
+            emailInput.parentElement.appendChild(indicator);
+        }
+    } else {
+        indicator.style.left = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+    }
 
     const email = emailInput.value.trim().toLowerCase();
 
     if (email === '' || !validateInput(email, 'email')) {
         indicator.innerHTML = '';
-        indicator.style.color = '';
         return;
     }
 
@@ -633,15 +652,60 @@ function checkEmailAvailability() {
     emailCheckTimeout = setTimeout(async () => {
         const { data: exists } = await supabaseClient.rpc('check_email_exists', { p_email: email });
         if (exists) {
-            indicator.innerHTML = '&#x2718;'; // X mark
-            indicator.style.color = 'red';
+            indicator.innerHTML = '<span style="background:#fee2e2; color:#ef4444; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #fecaca; display:flex; align-items:center; gap:4px; font-weight:bold;">תפוס <i class="fas fa-times"></i></span>';
             indicator.title = 'כתובת אימייל תפוסה';
         } else {
-            indicator.innerHTML = '&#x2714;'; // Check mark
-            indicator.style.color = 'green';
+            indicator.innerHTML = '<span style="background:#dcfce7; color:#16a34a; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #bbf7d0; display:flex; align-items:center; gap:4px; font-weight:bold;">פנוי <i class="fas fa-check"></i></span>';
             indicator.title = 'כתובת אימייל פנויה';
         }
     }, 500);
+}
+
+let phoneCheckTimeout;
+
+function checkPhoneAvailability() {
+    const phoneInput = document.getElementById('regPhone');
+    if (!phoneInput) return;
+
+    let indicator = document.getElementById('phoneAvailabilityIndicator');
+    if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.id = 'phoneAvailabilityIndicator';
+        indicator.style.position = 'absolute';
+        indicator.style.left = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+        indicator.style.zIndex = '5';
+        if (phoneInput.parentElement) {
+            phoneInput.parentElement.style.position = 'relative';
+            phoneInput.parentElement.appendChild(indicator);
+        }
+    } else {
+        indicator.style.left = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+    }
+
+    const phone = phoneInput.value.trim();
+
+    if (phone === '' || !validateInput(phone, 'phone')) {
+        indicator.innerHTML = '';
+        return;
+    }
+
+    clearTimeout(phoneCheckTimeout);
+
+    phoneCheckTimeout = setTimeout(() => {
+        const isTaken = globalUsersData.some(u => u.phone === phone);
+
+        if (isTaken) {
+            indicator.innerHTML = '<span style="background:#fee2e2; color:#ef4444; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #fecaca; display:flex; align-items:center; gap:4px; font-weight:bold;">תפוס <i class="fas fa-times"></i></span>';
+            indicator.title = 'מספר טלפון תפוס';
+        } else {
+            indicator.innerHTML = '<span style="background:#dcfce7; color:#16a34a; padding:2px 8px; border-radius:12px; font-size:0.75rem; border:1px solid #bbf7d0; display:flex; align-items:center; gap:4px; font-weight:bold;">פנוי <i class="fas fa-check"></i></span>';
+            indicator.title = 'מספר טלפון פנוי';
+        }
+    }, 300);
 }
 
 
@@ -704,6 +768,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const regEmailInput = document.getElementById('regEmail');
     if (regEmailInput) {
         regEmailInput.addEventListener('input', checkEmailAvailability);
+    }
+    const regPhoneInput = document.getElementById('regPhone');
+    if (regPhoneInput) {
+        regPhoneInput.addEventListener('input', checkPhoneAvailability);
     }
     setupRealtimeValidation();
 });
