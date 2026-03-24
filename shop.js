@@ -7,6 +7,17 @@ async function renderShop() {
 
     container.innerHTML = '<div class="text-center p-20"><i class="fas fa-circle-notch fa-spin text-4xl text-amber-500"></i><p class="mt-4 text-slate-500">טוען נתונים...</p></div>';
 
+    container.innerHTML = `
+        <div class="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+            <div class="mb-6 p-6 bg-amber-50 dark:bg-amber-900/20 rounded-full">
+                <i class="fas fa-tools text-5xl text-amber-500"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 dark:text-white mb-2">החנות סגורה כרגע</h2>
+            <p class="text-slate-500 dark:text-slate-400">עקב תיקונים ותחזוקה.</p>
+        </div>
+    `;
+    return;
+
     let html = `
     <div class="max-w-7xl mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
@@ -52,7 +63,7 @@ async function renderShop() {
         if (shopItems.length === 0) {
             html += `<div class="col-span-full text-center text-slate-500 py-20 bg-white dark:bg-slate-800 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
                 <i class="fas fa-store-slash text-4xl mb-4 opacity-50"></i>
-                <p>החנות כרגע בתחזוקה ובשיפוצים</p>
+                <p>החנות ריקה כרגע. חזור בקרוב!</p>
             </div>`;
         } else {
             shopItems.forEach(item => {
@@ -251,54 +262,34 @@ async function equipItem(itemId, type) {
 async function applyUserCustomizations() {
     if (!currentUser) return;
 
-    try {
-        // תיקון שגיאת 400: שליפת הכל וסינון ב-JS (מונע קריסה אם עמודת is_equipped חסרה)
-        const { data: allInventory, error } = await supabaseClient
-            .from('user_inventory')
-            .select('*')
-            .eq('user_email', currentUser.email);
+    const { data: inventory, error } = await supabaseClient
+        .from('user_inventory')
+        .select('item_id, shop_items(*)')
+        .eq('user_email', currentUser.email)
+        .eq('is_equipped', true);
 
-        if (error || !allInventory || allInventory.length === 0) return;
+    if (error || !inventory) return;
 
-        const equippedInventory = allInventory.filter(i => i.is_equipped === true);
+    document.body.style.backgroundImage = '';
 
-        if (equippedInventory.length === 0) {
-            document.body.style.backgroundImage = '';
-            return;
+    inventory.forEach(record => {
+        const item = record.shop_items;
+        if (!item) return;
+
+        if (item.item_type === 'background') {
+            if (item.image_url) {
+                document.body.style.backgroundImage = `url('${item.image_url}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundAttachment = 'fixed';
+                document.body.style.backgroundPosition = 'center';
+            }
         }
-
-        const itemIds = equippedInventory.map(i => i.item_id);
-        const { data: items } = await supabaseClient
-            .from('shop_items')
-            .select('*')
-            .in('id', itemIds);
-
-        if (!items) return;
-
-        document.body.style.backgroundImage = '';
-
-        equippedInventory.forEach(record => {
-            const item = items.find(i => i.id === record.item_id);
-            if (!item) return;
-
-            if (item.item_type === 'background') {
-                if (item.image_url) {
-                    document.body.style.backgroundImage = `url('${item.image_url}')`;
-                    document.body.style.backgroundSize = 'cover';
-                    document.body.style.backgroundAttachment = 'fixed';
-                    document.body.style.backgroundPosition = 'center';
-                }
+        
+        if (item.item_type === 'icon' && item.image_url) {
+            const profileBtn = document.getElementById('headerProfileBtn');
+            if (profileBtn) {
+                profileBtn.innerHTML = `<img src="${item.image_url}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
             }
-
-            if (item.item_type === 'icon' && item.image_url) {
-                const profileBtn = document.getElementById('headerProfileBtn');
-                if (profileBtn) {
-                    profileBtn.innerHTML = `<img src="${item.image_url}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
-                }
-            }
-        });
-    } catch (e) {
-        console.warn("Error applying customizations (likely DB relation missing):", e);
-    }
-
+        }
+    });
 }

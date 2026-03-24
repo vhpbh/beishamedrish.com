@@ -200,8 +200,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     if (!isBook && !isUpdates) {
         const partner = globalUsersData.find(u => u.email === partnerEmail);
         if (partnerEmail === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000))) {
-            const onlineDot = document.getElementById(`online-${partnerEmail}`);
-            if (onlineDot) onlineDot.classList.add('active');
+            document.getElementById(`online-${partnerEmail}`).classList.add('active');
         }
     }
 

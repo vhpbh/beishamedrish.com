@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof showMaintenanceOverlay === 'function') {
+        document.body.innerHTML = ''; // מחיקת כל האלמנטים (כולל טופס התחברות)
+        showMaintenanceOverlay(); // הצגת הודעת התחזוקה
+        return; // עצירת שאר הסקריפטים
+    }
+
     setupInterfaceChanges();
 });
 
@@ -15,6 +21,11 @@ let realtimeSubscription = null;
 
 
 async function init() {
+    if (typeof showMaintenanceOverlay === 'function') {
+        showMaintenanceOverlay();
+        return;
+    }
+
     checkBanStatus();
 
 
@@ -95,7 +106,7 @@ async function init() {
 
         getDafYomi();
         checkCookieConsent();
-        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true);
+        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true); // null event
         notificationsEnabled = true;
 
         const completedStatCard = document.getElementById('stat-completed')?.closest('.stat-card');
@@ -323,7 +334,7 @@ function updateCalculatedUnits() {
     if (!requireAuth()) return;
     const scope = document.getElementById('bookScopeSelect').value;
     if (scope === 'chapter') {
-        document.getElementById('calculatedUnits').value = 20; 
+        document.getElementById('calculatedUnits').value = 20; // ממוצע משניות/פסוקים לפרק
     }
 }
 
@@ -472,11 +483,7 @@ async function findChavruta(bookName) {
     `).join('');
 
     try {
-        const { data: remoteUsers, error } = await supabaseClient.rpc('search_chavruta', {
-            p_city: document.getElementById('searchCityInput')?.value || '',
-            p_age: parseInt(document.getElementById('searchAgeInput')?.value) || 0,
-            p_name: document.getElementById('searchNameInput')?.value || ''
-        });
+        const { data: remoteUsers, error } = await supabaseClient.from('users').select('*');
         if (error) throw error;
 
         if (modal.style.display === 'none') return;
@@ -672,15 +679,25 @@ async function showUserDetails(uid) {
             <span>${lastSeenText}</span>
         </div>`;
 
-
-    if (uid !== 'me' && !approvedPartners.has(user.email)) {
-        const bookParam = currentSearchBook ? `'${currentSearchBook}'` : 'null';
+    if (showFullDetails) {
         contactHtml += `
-            <div class="mt-4">
-                <button class="w-full py-2 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm flex items-center justify-center gap-2" 
-                    onclick="checkAndSendRequest('${user.email}', ${bookParam} || prompt('לאיזה ספר תרצה להציע חברותא?'))">
-                    <i class="fas fa-paper-plane"></i> שלח בקשת חברותא
-                </button>
+            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
+                <i class="fas fa-phone text-green-500"></i>
+                <span class="font-semibold text-gray-800 dark:text-white">טלפון:</span>
+                <a class="text-green-600 font-bold hover:underline" href="tel:${user.phone || ''}">${user.phone || 'לא הוזן'}</a>
+            </div>
+            ${user.address ? `
+            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
+                <i class="fas fa-home text-yellow-500"></i>
+                <span class="font-semibold text-gray-800 dark:text-white">כתובת:</span>
+                <span>${user.address}</span>
+            </div>` : ''}
+        `;
+    } else {
+        contactHtml += `
+            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 text-center text-xs text-slate-500">
+                <i class="fas fa-lock"></i> הטלפון והכתובת חסויים.<br>
+                <small>הפרטים ייחשפו לאחר אישור חברותא הדדי.</small>
             </div>
         `;
     }
@@ -899,9 +916,7 @@ async function loadSchedules() {
             });
             localStorage.setItem('chavruta_schedules', JSON.stringify(schedules));
         }
-    } catch (e) {
-        console.warn("Could not load schedules (Table might be missing or RLS blocking):", e.message);
-    }
+    } catch (e) { console.error("Error loading schedules", e); }
 }
 
 async function saveProfile() {
@@ -1064,8 +1079,8 @@ function switchScreen(name, el, chatFilter) {
     if (name === 'chavrutas') renderChavrutas();
     if (name === 'calendar') renderCalendar();
     if (name === 'community') renderCommunity();
-    if (name === 'chats' && typeof renderChatList === 'function') renderChatList(chatFilter || 'personal');
-    if (name === 'archive' && typeof loadChatRating === 'function') loadChatRating();
+    if (name === 'chats') renderChatList(chatFilter || 'personal');
+    if (name === 'archive') loadChatRating();
     if (name === 'shop') renderShop();
     if (name === 'ads') loadAds();
 }
@@ -1585,10 +1600,27 @@ function setDonationType(type) {
     }
 
     const chipsContainer = document.getElementById('quickAmountChips');
-    if (chipsContainer) chipsContainer.innerHTML = '';
+    chipsContainer.innerHTML = '';
+    let amounts = [];
+    if (type === 'sub') {
+        amounts = SUBSCRIPTION_TIERS.map(t => t.price);
+    } else {
+        amounts = ONE_TIME_TIERS.map(t => t.price);
+    }
 
-    // רענון כרטיסי התרומה (Tiers) בהתאם לסוג שנבחר
-    renderTiers();
+    amounts.forEach(amt => {
+        const chip = document.createElement('div');
+        chip.className = 'amount-chip';
+        let label = `₪${amt}`;
+        if (type === 'sub') {
+            const t = SUBSCRIPTION_TIERS.find(x => x.price === amt);
+            if (t) label += `<div style="font-size:0.75rem; font-weight:normal; margin-top:2px; opacity:0.9;">${t.name}</div>`;
+        }
+        chip.innerHTML = label;
+
+        chip.onclick = () => { document.getElementById('customDonationAmount').value = amt; document.getElementById('customDonationAmount').dispatchEvent(new Event('input')); };
+        chipsContainer.appendChild(chip);
+    });
 }
 
 function renderTiers() {
@@ -1598,7 +1630,7 @@ function renderTiers() {
     const tiers = currentDonationType === 'sub' ? SUBSCRIPTION_TIERS : ONE_TIME_TIERS;
     tiers.forEach(tier => {
         const div = document.createElement('div');
-        div.id = `tier-card-${tier.price}`;
+        div.id = `goal-card-${goal.id}`;
         div.className = 'tier-card';
         div.onclick = () => selectTier(tier.price, div);
         div.innerHTML = `
@@ -2301,6 +2333,9 @@ function setupRealtime() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'user_goals' }, () => {
             syncGlobalData();
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+            syncGlobalData();
+        })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_goals' }, (payload) => {
 
             if (currentNotesData.goalId && payload.new.book_name === document.getElementById('notesBookTitle').innerText) {
@@ -2367,17 +2402,12 @@ function setupRealtime() {
                 }
             }
         })
-        .subscribe((status, err) => {
+        .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-               
+                console.log('מחובר לעדכונים בזמן אמת');
                 chatChannel = realtimeSubscription;
             }
-            if (status === 'CHANNEL_ERROR') {
-                console.warn('החיבור לשרת התנתק, מנסה להתחבר מחדש...', err);
-            }
-            if (status === 'TIMED_OUT') {
-                console.warn('החיבור לזמן אמת התנתק עקב timeout');
-            }
+            if (status === 'CHANNEL_ERROR') console.error('שגיאה בחיבור לזמן אמת');
         });
 
     realtimeSubscription.on('broadcast', { event: 'private_message' }, (payload) => {
@@ -2715,7 +2745,7 @@ function renderUserSelectionList() {
 
 function toggleSelectAllUsers(el) {
     const cb = el.querySelector('input');
-    const checked = !cb.checked;
+    const checked = !cb.checked; 
     cb.checked = checked;
     document.querySelectorAll('.user-select-cb').forEach(c => c.checked = checked);
 }
@@ -2842,11 +2872,11 @@ document.addEventListener('click', function (event) {
     const notifContainer = document.querySelector('#notif-container');
     const notifMenu = document.getElementById('notif-dropdown');
     if (notifContainer && !notifContainer.contains(event.target) && notifMenu.style.display === 'block') {
-        toggleNotifications();
-    }
+        toggleNotifications(); 
+        }
 
 
-
+        
 
     const searchContainer = document.querySelector('.header-search-container');
     if (searchContainer && !searchContainer.contains(event.target)) {
@@ -2965,7 +2995,7 @@ async function loadAds() {
         const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').maybeSingle();
         if (error || !data) throw error || new Error("No data");
         container.innerHTML = data.value || '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
-        logAdView();
+        logAdView(); 
     } catch (e) {
         container.innerHTML = '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
     }
@@ -2976,7 +3006,7 @@ async function addSiyumReaction(siyumId, btn) {
     try {
         const { error } = await supabaseClient.from('siyum_reactions').insert({ siyum_id: siyumId, reactor_email: currentUser.email });
 
-        if (error && error.code === '23505') {
+        if (error && error.code === '23505') { 
             return showToast("כבר אמרת מזל טוב!", "info");
         }
         if (error) throw error;
@@ -3005,8 +3035,8 @@ function toggleDataWar() {
     if (window.isNetworkMonitorActive) {
         populateNetworkUsers();
     } else {
-        document.getElementById('networkLog').innerHTML = '';
-        document.getElementById('user-icons-container').innerHTML = '';
+        document.getElementById('networkLog').innerHTML = ''; 
+        document.getElementById('user-icons-container').innerHTML = ''; 
     }
 }
 
@@ -3015,7 +3045,7 @@ function populateNetworkUsers() {
     const visualizer = document.getElementById('network-visualizer');
     if (!container || !visualizer) return;
 
-    container.innerHTML = '';
+    container.innerHTML = ''; 
     const onlineUsers = globalUsersData.filter(u => u.lastSeen && (new Date() - new Date(u.lastSeen) < 5 * 60 * 1000));
 
     const width = visualizer.clientWidth;
@@ -3027,7 +3057,7 @@ function populateNetworkUsers() {
     const userCount = onlineUsers.length;
 
     onlineUsers.forEach((user, i) => {
-        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2);
+        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2); 
         const x = centerX + radiusX * Math.cos(angle);
         const y = centerY + radiusY * Math.sin(angle);
 
@@ -3037,7 +3067,7 @@ function populateNetworkUsers() {
         userDiv.className = 'net-user';
         userDiv.dataset.id = user.email;
         userDiv.style.left = `${x - 30}px`;
-        userDiv.style.top = `${y - 30}px`;
+        userDiv.style.top = `${y - 30}px`; 
 
         userDiv.innerHTML = `
             <div class="user-icon-emoji">💻</div>
@@ -3144,8 +3174,8 @@ async function populateAllBooks() {
 
     if (select && select.parentNode) {
         select.parentNode.insertBefore(searchContainer, select);
-        select.style.display = 'none';
-        select.id = 'bookSelect_hidden';
+        select.style.display = 'none'; 
+        select.id = 'bookSelect_hidden'; 
     }
 }
 
@@ -3164,7 +3194,7 @@ async function openThread(msgId, text, chatId) {
     container.innerHTML = `<div style="background:#e2e8f0; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;"><strong>הודעת מקור:</strong><br>${text}</div>`;
     container.innerHTML += `<div style="text-align:center; color:#94a3b8;">טוען תגובות...</div>`;
 
-
+ 
     setTimeout(() => {
         const input = document.getElementById('thread-input');
         if (input) input.focus();
@@ -3173,7 +3203,7 @@ async function openThread(msgId, text, chatId) {
     const { data: replies } = await supabaseClient
         .from('chat_messages')
         .select('*')
-        .ilike('message', `%ref:${msgId}%`)
+        .ilike('message', `%ref:${msgId}%`) 
         .order('created_at');
 
     const loadingMsg = container.querySelector('div:last-child');
@@ -3389,13 +3419,13 @@ function visualizeNetworkActivity(type, details) {
     const { action, from, to, isBoring, status } = details;
 
     if (isBoring && !isVerboseNetworkLog) {
-        return;
+        return; 
     }
 
     if (action === 'sendMessage') {
-        drawNetworkLine(from, 'cloud', '#60a5fa');
+        drawNetworkLine(from, 'cloud', '#60a5fa'); 
         setTimeout(() => {
-            drawNetworkLine('cloud', to, '#4ade80');
+            drawNetworkLine('cloud', to, '#4ade80'); 
         }, 400);
     } else {
 
@@ -3468,7 +3498,7 @@ document.addEventListener('click', (e) => {
 
 window.onload = async function () {
     try {
-        await init();
+        await init(); 
     } catch (e) {
         console.log("האתר עלה ללא סנכרון ענן");
     }
@@ -3624,7 +3654,7 @@ async function openRoadmapModal() {
 
         currentRoadmapFeatures = features;
 
-        setRoadmapFilter('done');
+        setRoadmapFilter('done'); 
 
     } catch (e) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
