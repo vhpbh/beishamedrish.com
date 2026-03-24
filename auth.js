@@ -35,7 +35,7 @@ async function handleSignup(e) {
 
     if (globalUsersData.some(u => u.original_name && u.original_name.trim().toLowerCase() === name.trim().toLowerCase())) {
 
-        return customAlert("שם המשתמש שבחרת כבר קיים במערכת. אנא בחר שם אחר."); // Keep this as a final check
+        return customAlert("שם המשתמש שבחרת כבר קיים במערכת. אנא בחר שם אחר.");
     }
 
     if (phone && globalUsersData.some(u => u.phone === phone)) {
@@ -107,14 +107,14 @@ async function handleSignup(e) {
             const { error: logError } = await supabaseClient
                 .from('user_access_logs')
                 .insert([
-                    { 
-                        user_email: email, 
-                        ip_address: userIP 
+                    {
+                        user_email: email,
+                        ip_address: userIP
                     }
                 ]);
 
             if (logError) throw logError;
-            
+
             console.log("הלוג נשמר והמייל בדרך!");
 
         } catch (err) {

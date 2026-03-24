@@ -95,7 +95,7 @@ async function init() {
 
         getDafYomi();
         checkCookieConsent();
-        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true); // null event
+        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true);
         notificationsEnabled = true;
 
         const completedStatCard = document.getElementById('stat-completed')?.closest('.stat-card');
@@ -323,7 +323,7 @@ function updateCalculatedUnits() {
     if (!requireAuth()) return;
     const scope = document.getElementById('bookScopeSelect').value;
     if (scope === 'chapter') {
-        document.getElementById('calculatedUnits').value = 20; // ממוצע משניות/פסוקים לפרק
+        document.getElementById('calculatedUnits').value = 20; 
     }
 }
 
@@ -472,7 +472,11 @@ async function findChavruta(bookName) {
     `).join('');
 
     try {
-        const { data: remoteUsers, error } = await supabaseClient.from('users').select('*');
+        const { data: remoteUsers, error } = await supabaseClient.rpc('search_chavruta', {
+            p_city: document.getElementById('searchCityInput')?.value || '',
+            p_age: parseInt(document.getElementById('searchAgeInput')?.value) || 0,
+            p_name: document.getElementById('searchNameInput')?.value || ''
+        });
         if (error) throw error;
 
         if (modal.style.display === 'none') return;
@@ -668,25 +672,15 @@ async function showUserDetails(uid) {
             <span>${lastSeenText}</span>
         </div>`;
 
-    if (showFullDetails) {
+
+    if (uid !== 'me' && !approvedPartners.has(user.email)) {
+        const bookParam = currentSearchBook ? `'${currentSearchBook}'` : 'null';
         contactHtml += `
-            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
-                <i class="fas fa-phone text-green-500"></i>
-                <span class="font-semibold text-gray-800 dark:text-white">טלפון:</span>
-                <a class="text-green-600 font-bold hover:underline" href="tel:${user.phone || ''}">${user.phone || 'לא הוזן'}</a>
-            </div>
-            ${user.address ? `
-            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
-                <i class="fas fa-home text-yellow-500"></i>
-                <span class="font-semibold text-gray-800 dark:text-white">כתובת:</span>
-                <span>${user.address}</span>
-            </div>` : ''}
-        `;
-    } else {
-        contactHtml += `
-            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 text-center text-xs text-slate-500">
-                <i class="fas fa-lock"></i> הטלפון והכתובת חסויים.<br>
-                <small>הפרטים ייחשפו לאחר אישור חברותא הדדי.</small>
+            <div class="mt-4">
+                <button class="w-full py-2 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm flex items-center justify-center gap-2" 
+                    onclick="checkAndSendRequest('${user.email}', ${bookParam} || prompt('לאיזה ספר תרצה להציע חברותא?'))">
+                    <i class="fas fa-paper-plane"></i> שלח בקשת חברותא
+                </button>
             </div>
         `;
     }
@@ -2375,7 +2369,7 @@ function setupRealtime() {
         })
         .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
-                // console.log('מחובר לעדכונים בזמן אמת'); // הושתק למניעת עומס בלוג
+               
                 chatChannel = realtimeSubscription;
             }
             if (status === 'CHANNEL_ERROR') {
