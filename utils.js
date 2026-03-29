@@ -30,7 +30,7 @@ window.addEventListener('offline', () => {
             
             <div style="background: var(--bg, #f8fafc); border: 1px dashed #cbd5e1; border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem;">
                 <p style="margin: 0; font-size: 0.9rem; color: var(--accent, #ca8a04); font-weight: 500;">
-                    <i class="fas fa-lightbulb" style="margin-left: 5px;"></i> טיפ: זה זמן מצוין לחזרה על תלמודך!
+                    <i class="fas fa-lightbulb" style="margin-left: 5px;"></i>זה זמן מצוין לחזרה על תלמודך!
                 </p>
             </div>
             
@@ -208,12 +208,7 @@ function getFullUserBadges(user) {
     badgesHtml += `<span class="chat-badge" style="background-color: ${rankColor}; border: 1px solid ${rankColor}; color: white;">${rankName}</span>`;
 
 
-    if (user.badges && Array.isArray(user.badges)) {
-        user.badges.forEach(badge => {
-            let badgeColor = badge.toLowerCase() === 'מנהל' ? '#ef4444' : (badge.toLowerCase() === 'רב האתר' ? '#3b82f6' : '#f59e0b');
-            badgesHtml += `<span class="chat-badge" style="background-color: transparent; border: 1px solid ${badgeColor}; color: ${badgeColor};">${badge}</span>`;
-        });
-    }
+
     return badgesHtml;
 }
 

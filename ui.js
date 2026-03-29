@@ -1,4 +1,12 @@
 function setupInterfaceChanges() {
+    const headerTitle = document.getElementById('headerTitle');
+    if (headerTitle) {
+        headerTitle.style.cursor = 'pointer';
+        headerTitle.innerHTML = '<div style="display: flex; align-items: center; gap: 10px;"><img src="logo.png" alt="בית המדרש" style="height: 40px; vertical-align: middle;"> <span>בית המדרש</span></div>';
+        headerTitle.onclick = () => switchScreen('dashboard', document.querySelector('.floating-nav-item'));
+        headerTitle.innerText = 'בית המדרש';
+    }
+
     if (!document.getElementById('screen-ads')) {
         const adsScreen = document.createElement('div');
         adsScreen.id = 'screen-ads';

@@ -94,9 +94,12 @@ async function executeGeneralSearch() {
 
 async function searchUsers(query) {
     return globalUsersData.filter(u =>
-        u.email.toLowerCase().includes(query) ||
-        u.name.toLowerCase().includes(query) ||
-        (u.city && u.city.toLowerCase().includes(query))
+        ((u.email && u.email.toLowerCase().includes(query)) ||
+            u.name.toLowerCase().includes(query) ||
+            (u.city && u.city.toLowerCase().includes(query))) &&
+        u.id !== currentUser?.id &&
+        u.email !== currentUser?.email &&
+        u.name !== currentUser?.displayName
     );
 }
 
@@ -171,9 +174,9 @@ function renderGeneralSearchResults(results, query) {
         let groupHtml = '<div class="result-group-title">משתמשים</div>';
         results.users.forEach(u => {
             groupHtml += `
-                <div class="result-item" onclick="closeModal(); showUserDetails('${u.email}')">
-                    <div class="result-item-title">${highlight(u.name, query)}</div>
-                    <div class="result-item-context">${highlight(u.email, query)} - ${u.city || ''}</div>
+                <div class="result-item" onclick="closeModal(); showUserDetails('${u.id}')">
+                    <div class="result-item-title">${highlight(u.display_name || u.name, query)}</div>
+                    <div class="result-item-context">${u.city || ''}</div>
                 </div>
             `;
         });
@@ -221,7 +224,7 @@ function renderGeneralSearchResults(results, query) {
             const displayName = partnerName.startsWith('book:') ? partnerName.replace('book:', '') : partnerName;
 
             groupHtml += `
-                <div class="result-item" onclick="closeSearchDropdown(); openChat('${partnerEmail}', '${displayName.replace(/'/g, "\\'")}');">
+                <div class="result-item" onclick="closeSearchDropdown(); if(typeof openChat === 'function') openChat('${partnerEmail}', '${displayName.replace(/'/g, "\\'")}')">
                     <div class="result-item-title">שיחה עם ${displayName}</div>
                     <div class="result-item-context">${isMe ? 'אני' : partnerName}: ${highlight(msg.message, query)}</div>
                 </div>
@@ -268,8 +271,10 @@ function searchSpecificUser() {
     if (!query) return;
 
     const matches = globalUsersData.filter(u =>
-        (u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)) &&
-        u.email.toLowerCase() !== currentUser.email.toLowerCase()
+        (u.name.toLowerCase().includes(query) || (u.email && u.email.toLowerCase().includes(query))) &&
+        u.id !== currentUser?.id &&
+        u.name !== currentUser?.displayName &&
+        (!u.email || !currentUser?.email || u.email.toLowerCase() !== currentUser.email.toLowerCase())
     );
 
     if (matches.length === 0) {
@@ -399,7 +404,7 @@ function showAddSection(sectionId) {
             if (sectionId === 'cycles') renderCyclesSection(target);
             if (sectionId === 'quick') renderQuickSection(target);
         }
-        if (sectionId === 'new') populateAllBooks(); 
+        if (sectionId === 'new') populateAllBooks();
     }
 }
 

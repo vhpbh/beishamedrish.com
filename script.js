@@ -1,10 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof showMaintenanceOverlay === 'function') {
-        document.body.innerHTML = ''; // מחיקת כל האלמנטים (כולל טופס התחברות)
-        showMaintenanceOverlay(); // הצגת הודעת התחזוקה
-        return; // עצירת שאר הסקריפטים
-    }
-
     setupInterfaceChanges();
 });
 
@@ -21,11 +15,6 @@ let realtimeSubscription = null;
 
 
 async function init() {
-    if (typeof showMaintenanceOverlay === 'function') {
-        showMaintenanceOverlay();
-        return;
-    }
-
     checkBanStatus();
 
 
@@ -48,8 +37,29 @@ async function init() {
                     }
 
                     if (!userRecord && session.user) {
-                        console.warn("User record missing after retry. Using session metadata.");
-                        userRecord = { email: session.user.email, display_name: session.user.user_metadata.display_name, is_anonymous: false };
+                        console.warn("User record missing after retry. Attempting to create from session metadata.");
+                        const metadata = session.user.user_metadata;
+                        const newUserData = {
+                            id: session.user.id,
+                            email: session.user.email,
+                            display_name: metadata.display_name || session.user.email.split('@')[0],
+                            phone: metadata.phone || null,
+                            city: metadata.city || null,
+                            age: metadata.age ? parseInt(metadata.age) : null,
+                            address: metadata.address || null,
+                            is_anonymous: metadata.is_anonymous || false,
+                            security_questions: metadata.security_questions || [],
+                            marketing_consent: metadata.marketing_consent || false,
+                            last_seen: new Date().toISOString()
+                        };
+
+                        const { data: createdUser, error: createError } = await supabaseClient.from('users').insert([newUserData]).select().single();
+                        if (createError) {
+                            console.error("Error creating user record from session metadata:", createError);
+                            userRecord = { email: session.user.email, display_name: newUserData.display_name, is_anonymous: newUserData.is_anonymous };
+                        } else {
+                            userRecord = createdUser;
+                        }
                     }
 
                     if (userRecord) {
@@ -106,7 +116,7 @@ async function init() {
 
         getDafYomi();
         checkCookieConsent();
-        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true); // null event
+        if (localStorage.getItem('torahApp_darkMode') === 'true') toggleDarkMode(null, true);
         notificationsEnabled = true;
 
         const completedStatCard = document.getElementById('stat-completed')?.closest('.stat-card');
@@ -209,17 +219,21 @@ async function updateDailyStreak() {
             .from('users')
             .select('current_streak, last_streak_date')
             .eq('email', currentUser.email)
-            .single();
+            .maybeSingle();
 
         if (error) {
-            console.warn("Could not get streak data, columns might be missing.", error.message);
+            if (error.code === 'PGRST116' || error.status === 406) return;
+            throw error;
+        }
+
+        if (!user || typeof user !== 'object') {
             return;
         }
 
         const today = new Date();
         const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())).toISOString().split('T')[0];
 
-        const lastStreakDateStr = user.last_streak_date;
+        const lastStreakDateStr = user.last_streak_date || '';
 
         let newStreak = user.current_streak || 0;
         let pointsToAdd = 0;
@@ -257,7 +271,19 @@ async function updateDailyStreak() {
                         if (typeof renderGoals === 'function') renderGoals();
                     }
                 }
-                await supabaseClient.from('users').update(updatePayload).eq('email', currentUser.email);
+                const { error: updateError } = await supabaseClient.from('users').update({
+                    current_streak: updatePayload.current_streak,
+                    last_streak_date: updatePayload.last_streak_date
+                }).eq('email', currentUser.email);
+
+                if (updateError) {
+                    if (updateError.status === 500 || updateError.code === 'PGRST301') {
+                        showToast("עדכון הרצף נכשל: אין הרשאה לעדכן שדות אלו או שהחשבון מוגבל.", "error");
+                    } else {
+                        showToast(updateError.message || "שגיאת שרת בעדכון הרצף", "error");
+                    }
+                    throw updateError;
+                }
             }
         }
     } catch (e) {
@@ -334,7 +360,7 @@ function updateCalculatedUnits() {
     if (!requireAuth()) return;
     const scope = document.getElementById('bookScopeSelect').value;
     if (scope === 'chapter') {
-        document.getElementById('calculatedUnits').value = 20; // ממוצע משניות/פסוקים לפרק
+        document.getElementById('calculatedUnits').value = 20;
     }
 }
 
@@ -347,7 +373,7 @@ function renderLeaderboard() {
     const cityFilter = document.getElementById('leaderboardCityFilter') ? document.getElementById('leaderboardCityFilter').value.toLowerCase() : '';
     const bookFilter = document.getElementById('leaderboardBookFilter') ? document.getElementById('leaderboardBookFilter').value.toLowerCase() : '';
 
-    let all = globalUsersData.filter(u => u.email && (!currentUser || u.email.toLowerCase() !== currentUser.email.toLowerCase()));
+    let all = globalUsersData.filter(u => u.email && (!currentUser || (u.email.toLowerCase() !== currentUser.email.toLowerCase() && u.name !== currentUser.displayName)));
 
     const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
     const myRewardPoints = currentUser ? (currentUser.reward_points || 0) : 0;
@@ -483,12 +509,29 @@ async function findChavruta(bookName) {
     `).join('');
 
     try {
-        const { data: remoteUsers, error } = await supabaseClient.from('users').select('*');
+        let { data: remoteUsers, error } = await supabaseClient.rpc('search_chavruta', {
+            p_city: document.getElementById('searchCityInput')?.value || '',
+            p_masechet: bookName,
+            p_name: document.getElementById('searchNameInput')?.value || ''
+        });
+
+        if (error || !remoteUsers) {
+            const { data, error: directError } = await supabaseClient
+                .from('public_profiles')
+                .select('id, display_name, city, masechtot, chat_rating, learned, subscription, last_seen, is_anonymous, email');
+            remoteUsers = data;
+            error = directError;
+        }
         if (error) throw error;
 
         if (modal.style.display === 'none') return;
 
-        const matches = remoteUsers.filter(u => u.email !== currentUser.email);
+        const matches = (remoteUsers || []).filter(u => {
+            const isMe = (u.id === currentUser?.id) ||
+                (u.email && currentUser?.email && u.email === currentUser.email) ||
+                (u.display_name && currentUser?.displayName && u.display_name === currentUser.displayName);
+            return !isMe;
+        });
 
         for (let i = 0; i < steps.length; i++) {
             if (modal.style.display === 'none') return;
@@ -506,18 +549,12 @@ async function findChavruta(bookName) {
 
         matches.forEach(u => {
             u.matchScore = 0;
-            if (u.age && currentUser.age && Math.floor(u.age / 10) === Math.floor(currentUser.age / 10)) u.matchScore += 150;
             if (u.city && u.city.trim().toLowerCase() === myCity && myCity) u.matchScore += 100;
-            const uLocal = globalUsersData.find(gu => gu.email === u.email);
-            if (uLocal) {
-                const uScore = uLocal.learned || 0;
-                if (getRankName(uScore) === myRank) u.matchScore += 50;
-                u.books = uLocal.books || [];
-                if (u.books.includes(bookName)) {
-                    u.matchScore += 30;
-                }
-            } else {
-                u.books = [];
+            const uScore = u.learned || 0;
+            if (getRankName(uScore) === myRank) u.matchScore += 50;
+            const userMasechtot = u.masechtot || '';
+            if (userMasechtot.includes(bookName)) {
+                u.matchScore += 30;
             }
             if (u.display_name && currentUser.displayName && u.display_name[0] === currentUser.displayName[0]) u.matchScore += 10;
         });
@@ -588,7 +625,7 @@ async function showUserDetails(uid) {
     if (!uid) return;
 
     let user;
-    if (uid === 'me') {
+    if (uid === 'me' || uid === currentUser.id) {
         const myActiveBooks = userGoals.filter(g => g.status === 'active').map(g => g.bookName);
         const myCompletedBooks = userGoals.filter(g => g.status === 'completed').map(g => g.bookName);
         const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
@@ -599,15 +636,31 @@ async function showUserDetails(uid) {
             completedBooks: myCompletedBooks,
             id: 'me',
             email: currentUser.email,
-            phone: currentUser.phone,
             city: currentUser.city,
-            address: currentUser.address,
-            age: currentUser.age,
             subscription: currentUser.subscription,
             lastSeen: new Date().toISOString()
         };
     } else {
-        user = globalUsersData.find(u => u.email && u.email.toLowerCase() === uid.toLowerCase());
+        try {
+            const { data, error } = await supabaseClient
+                .from('public_profiles')
+                .select('*')
+                .eq('id', uid)
+                .single();
+
+            if (!error && data) {
+                user = {
+                    ...data,
+                    name: data.display_name || "לומד",
+                    city: data.city || "לא צוין",
+                    books: data.masechtot ? data.masechtot.split(', ') : []
+                };
+            } else {
+                user = globalUsersData.find(u => (u.id && u.id === uid) || (u.email && u.email.toLowerCase() === uid.toLowerCase()));
+            }
+        } catch (e) {
+            user = globalUsersData.find(u => (u.id && u.id === uid) || (u.email && u.email.toLowerCase() === uid.toLowerCase()));
+        }
     }
 
     if (!user) {
@@ -619,9 +672,6 @@ async function showUserDetails(uid) {
             books: [],
             completedBooks: [],
             city: 'לא ידוע',
-            phone: '',
-            address: '',
-            age: null,
             lastSeen: null,
             subscription: { amount: 0, level: 0 },
             isAnonymous: true
@@ -641,7 +691,6 @@ async function showUserDetails(uid) {
     }
 
     document.getElementById('modalUserRank').innerHTML = `<i class="fas fa-medal" style="margin-left: 5px;"></i> דרגה: ${getRankName(user.learned)}`;
-    document.getElementById('modalUserAge').innerText = user.age ? `גיל: ${user.age}` : '';
 
     const subDiv = document.getElementById('modalUserSubscription');
     const avatarDiv = document.getElementById('modalUserAvatar');
@@ -679,32 +728,24 @@ async function showUserDetails(uid) {
             <span>${lastSeenText}</span>
         </div>`;
 
-    if (showFullDetails) {
+
+    const hasEmail = user.email && approvedPartners.has(user.email);
+    if (uid !== 'me' && !hasEmail) {
+        const bookParam = currentSearchBook ? `'${currentSearchBook}'` : 'null';
         contactHtml += `
-            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
-                <i class="fas fa-phone text-green-500"></i>
-                <span class="font-semibold text-gray-800 dark:text-white">טלפון:</span>
-                <a class="text-green-600 font-bold hover:underline" href="tel:${user.phone || ''}">${user.phone || 'לא הוזן'}</a>
-            </div>
-            ${user.address ? `
-            <div class="flex items-center gap-3 text-gray-500 dark:text-slate-400 text-sm">
-                <i class="fas fa-home text-yellow-500"></i>
-                <span class="font-semibold text-gray-800 dark:text-white">כתובת:</span>
-                <span>${user.address}</span>
-            </div>` : ''}
-        `;
-    } else {
-        contactHtml += `
-            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 text-center text-xs text-slate-500">
-                <i class="fas fa-lock"></i> הטלפון והכתובת חסויים.<br>
-                <small>הפרטים ייחשפו לאחר אישור חברותא הדדי.</small>
+            <div class="mt-4">
+                <button class="w-full py-2 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm flex items-center justify-center gap-2" 
+                    onclick="checkAndSendRequest('${user.email}', ${bookParam} || prompt('לאיזה ספר תרצה להציע חברותא?'))">
+                    <i class="fas fa-paper-plane"></i> שלח בקשת חברותא
+                </button>
             </div>
         `;
     }
 
-    if (user.email !== currentUser.email) {
+    const isMe = uid === 'me' || (user.email && user.email === currentUser.email) || (user.id && user.id === currentUser.id);
+    if (!isMe) {
         contactHtml += `
-            <button id="followBtn" class="w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm ${isFollowing ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-yellow-500/90 hover:bg-yellow-500 text-white'}" onclick="toggleFollow('${user.email}')">
+            <button id="followBtn" class="w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm ${isFollowing ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-yellow-500/90 hover:bg-yellow-500 text-white'}" onclick="toggleFollow('${user.id || user.email}')">
                 ${isFollowing ? '<i class="fas fa-user-minus"></i> הסר עוקב' : '<i class="fas fa-user-plus"></i> עקוב'}
             </button>`;
     }
@@ -888,21 +929,20 @@ async function renderFollowsList(type, tabEl) {
     listArea.innerHTML = html;
 }
 
-async function checkAndSendRequest(email, book) {
-    if (!requireAuth()) return;
-    const amILearning = userGoals.some(g => g.bookName === book && g.status === 'active');
-    if (!amILearning) {
-        showToast(`עליך ללמוד את "${book}" כדי לשלוח בקשה.`, "error");
-        return;
-    }
-    sendChavrutaRequest(email, book);
-}
-
 
 async function loadSchedules() {
-    if (!currentUser) return;
+    if (!currentUser || (window.knownMissingTables && window.knownMissingTables.has('schedules'))) return;
     try {
         const { data, error } = await supabaseClient.from('schedules').select('*').eq('user_email', currentUser.email);
+
+        if (error) {
+            if (error.status === 404 || error.code === 'PGRST205') {
+                if (window.knownMissingTables) window.knownMissingTables.add('schedules');
+                return;
+            }
+            throw error;
+        }
+
         if (data && !error) {
             const schedules = {};
             data.forEach(s => {
@@ -916,34 +956,35 @@ async function loadSchedules() {
             });
             localStorage.setItem('chavruta_schedules', JSON.stringify(schedules));
         }
-    } catch (e) { console.error("Error loading schedules", e); }
+    } catch (e) {
+        if (!e.message?.includes('public.schedules')) {
+            console.warn("Could not load schedules:", e.message);
+        }
+    }
 }
 
 async function saveProfile() {
     if (!requireAuth()) return;
     const name = document.getElementById('profileName').value;
-    const phone = document.getElementById('profilePhone').value;
     const city = document.getElementById('profileCity').value;
-    const address = document.getElementById('profileAddress').value;
+    const phone = document.getElementById('profilePhone').value;
     const age = document.getElementById('profileAge').value;
+    const address = document.getElementById('profileAddress').value;
     const isAnon = document.getElementById('anonSwitch').checked;
     const newPass = document.getElementById('profileNewPass').value;
     const secQ = document.getElementById('profileSecQ').value;
-    const secA = document.getElementById('profileSecA').value;
+
 
     if (!validateInput(name, 'name')) {
         return customAlert("השם שהוזן אינו תקין.");
     }
-    if (phone && !validateInput(phone, 'phone')) {
-        return customAlert("מספר הטלפון שהוזן אינו תקין.");
-    }
 
 
     currentUser.displayName = name;
-    currentUser.phone = phone;
     currentUser.city = city;
-    currentUser.address = address;
+    currentUser.phone = phone;
     currentUser.age = age ? parseInt(age) : null;
+    currentUser.address = address;
     currentUser.isAnonymous = isAnon;
 
     localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
@@ -954,20 +995,27 @@ async function saveProfile() {
         globalUsersData[myUserIndex].name = isAnon ? "לומד אנונימי" : (name || "לומד");
         globalUsersData[myUserIndex].city = city;
         globalUsersData[myUserIndex].phone = phone;
+        globalUsersData[myUserIndex].age = currentUser.age;
+        globalUsersData[myUserIndex].address = address;
         globalUsersData[myUserIndex].isAnonymous = isAnon;
     }
 
-    let updateData = {
-        email: currentUser.email,
+    const masechtot = userGoals.filter(g => g.status === 'active').map(g => g.bookName).join(', ');
+
+    const updateData = {
         display_name: name,
-        age: age ? parseInt(age) : null,
         city: city,
-        address: address,
-        phone: phone,
         is_anonymous: isAnon,
-        subscription: currentUser.subscription,
-        last_seen: new Date()
+        phone: phone,
+        masechtot: masechtot,
+        age: age ? parseInt(age) : null,
+        address: address
     };
+
+
+
+    if (currentUser.avatar_color) updateData.avatar_color = currentUser.avatar_color;
+    if (currentUser.initials) updateData.initials = currentUser.initials;
 
     try {
         if (newPass) {
@@ -989,17 +1037,23 @@ async function saveProfile() {
 
         const { error } = await supabaseClient
             .from('users')
-            .upsert(updateData);
+            .update(updateData)
+            .eq('email', currentUser.email);
 
-        if (error) throw error;
+        if (error) {
+            if (error.status === 500 || error.code === 'PGRST301') {
+                showToast("השמירה נכשלה: החשבון חסום לעדכונים או שבוצע ניסיון לעדכן שדות מוגנים.", "error");
+            } else {
+                showToast(error.message || "שגיאה בשמירת הפרופיל", "error");
+            }
+            throw error;
+        }
         showToast('הפרופיל עודכן בהצלחה!', "success");
 
         syncGlobalData();
         switchScreen('dashboard', document.querySelector('.nav-item'));
-
     } catch (e) {
         console.error("שגיאה בשמירה:", e);
-        await customAlert("הנתונים נשמרו במכשיר, אך הייתה שגיאה בשמירה לענן.");
     }
 }
 
@@ -1034,11 +1088,11 @@ function switchScreen(name, el, chatFilter) {
 
         bottomNav.classList.add('nav-hidden');
         if (spacer) spacer.style.display = 'none';
-        headerTitle.innerHTML = 'בית המדרש - <span style="color:#f59e0b;">מצב ניהול</span>';
+        headerTitle.innerHTML = '<span style="color:#f59e0b;">מצב ניהול</span>';
         headerEmail.innerHTML = '<button class="btn" style="padding:4px 10px; font-size:0.8rem; background:#334155;" onclick="switchScreen(\'dashboard\', document.querySelector(\'.nav-item\'))">יציאה מניהול</button>';
     } else {
         isAdminMode = false;
-        headerTitle.innerText = 'בית המדרש';
+        headerTitle.innerHTML = '<span>בית המדרש</span>';
         document.getElementById('bot-mode-indicator').style.display = 'none';
         if (realAdminUser) {
             document.getElementById('bot-mode-indicator').style.display = 'block';
@@ -1079,8 +1133,9 @@ function switchScreen(name, el, chatFilter) {
     if (name === 'chavrutas') renderChavrutas();
     if (name === 'calendar') renderCalendar();
     if (name === 'community') renderCommunity();
-    if (name === 'chats') renderChatList(chatFilter || 'personal');
-    if (name === 'archive') loadChatRating();
+    if (name === 'profile') typeof updateProfileUI === 'function' && updateProfileUI();
+    if (name === 'chats' && typeof renderChatList === 'function') renderChatList(chatFilter || 'personal');
+    if (name === 'archive' && typeof loadChatRating === 'function') loadChatRating();
     if (name === 'shop') renderShop();
     if (name === 'ads') loadAds();
 }
@@ -1600,27 +1655,9 @@ function setDonationType(type) {
     }
 
     const chipsContainer = document.getElementById('quickAmountChips');
-    chipsContainer.innerHTML = '';
-    let amounts = [];
-    if (type === 'sub') {
-        amounts = SUBSCRIPTION_TIERS.map(t => t.price);
-    } else {
-        amounts = ONE_TIME_TIERS.map(t => t.price);
-    }
+    if (chipsContainer) chipsContainer.innerHTML = '';
 
-    amounts.forEach(amt => {
-        const chip = document.createElement('div');
-        chip.className = 'amount-chip';
-        let label = `₪${amt}`;
-        if (type === 'sub') {
-            const t = SUBSCRIPTION_TIERS.find(x => x.price === amt);
-            if (t) label += `<div style="font-size:0.75rem; font-weight:normal; margin-top:2px; opacity:0.9;">${t.name}</div>`;
-        }
-        chip.innerHTML = label;
-
-        chip.onclick = () => { document.getElementById('customDonationAmount').value = amt; document.getElementById('customDonationAmount').dispatchEvent(new Event('input')); };
-        chipsContainer.appendChild(chip);
-    });
+    renderTiers();
 }
 
 function renderTiers() {
@@ -1630,7 +1667,7 @@ function renderTiers() {
     const tiers = currentDonationType === 'sub' ? SUBSCRIPTION_TIERS : ONE_TIME_TIERS;
     tiers.forEach(tier => {
         const div = document.createElement('div');
-        div.id = `goal-card-${goal.id}`;
+        div.id = `tier-card-${tier.price}`;
         div.className = 'tier-card';
         div.onclick = () => selectTier(tier.price, div);
         div.innerHTML = `
@@ -1779,24 +1816,26 @@ function renderChavrutaResultsPage() {
         userCityDisplay.innerText = 'לא מוגדר';
     }
 
-    let filtered = [...currentChavrutaSearchResults];
+    let filtered = currentChavrutaSearchResults.filter(u => {
+        const isMe = (u.id === currentUser?.id) ||
+            (u.email && currentUser?.email && u.email === currentUser.email) ||
+            (u.display_name && currentUser?.displayName && u.display_name === currentUser.displayName);
+        return !isMe;
+    });
 
     if (currentSearchBook) {
-        filtered = filtered.filter(u => u.books && u.books.includes(currentSearchBook));
+        filtered = filtered.filter(u => (u.masechtot && u.masechtot.includes(currentSearchBook)));
     }
 
-    if (activeAgeFilter) {
-        filtered = filtered.filter(u => u.age && u.age >= activeAgeFilter.min && u.age <= activeAgeFilter.max);
-    }
 
     const sameCity = document.getElementById('filterSameCity').checked;
     if (sameCity && currentUser && currentUser.city) {
-        filtered = filtered.filter(u => u.city && u.city.trim() === currentUser.city.trim());
+        filtered = filtered.filter(u => u.id !== currentUser.id && u.city && u.city.trim() === currentUser.city.trim());
     }
 
     const historyFilter = document.getElementById('filterHistory').checked;
     if (historyFilter) {
-        filtered = filtered.filter(u => chavrutaConnections.some(c => c.email === u.email));
+        filtered = filtered.filter(u => u.id !== currentUser.id && chavrutaConnections.some(c => (c.id && c.id === u.id) || (c.email && c.email === u.email)));
     }
 
     countLabel.innerText = `(${filtered.length} חברותות נמצאו)`;
@@ -1808,7 +1847,6 @@ function renderChavrutaResultsPage() {
     }
 
     filtered.forEach(user => {
-        const displayName = user.isAnonymous ? "לומד אנונימי" : (user.display_name || user.name || "לומד");
         const badge = getUserBadgeHtml(user);
         const matchPercent = Math.min(100, Math.round((user.matchScore / 300) * 100));
         const dashOffset = 213.6 - (213.6 * matchPercent) / 100;
@@ -1817,27 +1855,27 @@ function renderChavrutaResultsPage() {
         card.className = "bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow relative overflow-hidden group";
         card.innerHTML = `
             <div class="absolute right-0 top-0 bottom-0 w-1.5 bg-amber-500 rounded-r-full"></div>
-            <div class="flex-shrink-0 flex flex-col items-center cursor-pointer" onclick="showUserDetails('${user.email}')">
+            <div class="flex-shrink-0 flex flex-col items-center cursor-pointer" onclick="showUserDetails('${user.id}')">
                 <div class="relative w-24 h-24 mb-3">
                     <div class="w-full h-full rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-4xl text-slate-400">
-                        ${user.isAnonymous ? '<i class="fas fa-user-secret"></i>' : '<i class="fas fa-user"></i>'}
+                        <i class="fas fa-user"></i>
                     </div>
-                    ${user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000) ?
+                    ${user.last_seen && (new Date() - new Date(user.last_seen) < 5 * 60 * 1000) ?
                 '<div class="absolute -bottom-2 -left-2 bg-green-500 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 shadow-sm"></div>' : ''}
                 </div>
                 <div class="text-center">
-                    <h3 class="font-bold text-lg leading-tight">${displayName} ${badge}</h3>
-                    <p class="text-slate-500 dark:text-slate-400 text-sm">${user.city || 'לא צוין'}</p>
+                    <h3 class="font-bold text-lg leading-tight">${user.display_name} ${badge}</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm">${user.city || 'מיקום חסוי'}</p>
                 </div>
             </div>
             <div class="flex-1 space-y-4">
                 <div class="flex flex-wrap gap-2">
-                    ${user.age ? `<span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">גיל: ${user.age}</span>` : ''}
+                    <!-- ${user.age ? `<span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">גיל: ${user.age}</span>` : ''} -->
                     <span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">לומד: ${currentSearchBook}</span>
-                    <span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">דרגה: ${getRankName(user.learned)}</span>
+                    <span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">דרגה: ${user.rank || getRankName(user.learned || 0)}</span>
                 </div>
                 <p class="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
-                    ${user.isAnonymous ? 'משתמש זה בחר להישאר אנונימי.' : 'מחפש חברותא ללימוד משותף.'}
+                    מחפש חברותא ללימוד משותף.
                 </p>
                 <div class="flex items-center gap-4 pt-2">
                     <button class="bg-amber-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm shadow-amber-500/20" onclick="sendChavrutaRequest('${user.email}', '${currentSearchBook}')">שלח בקשת חברותא</button>
@@ -2333,9 +2371,6 @@ function setupRealtime() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'user_goals' }, () => {
             syncGlobalData();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-            syncGlobalData();
-        })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_goals' }, (payload) => {
 
             if (currentNotesData.goalId && payload.new.book_name === document.getElementById('notesBookTitle').innerText) {
@@ -2402,12 +2437,21 @@ function setupRealtime() {
                 }
             }
         })
-        .subscribe((status) => {
+        .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
-                console.log('מחובר לעדכונים בזמן אמת');
+
                 chatChannel = realtimeSubscription;
             }
-            if (status === 'CHANNEL_ERROR') console.error('שגיאה בחיבור לזמן אמת');
+            if (status === 'CHANNEL_ERROR') {
+                console.warn('חיבור Realtime נכשל.', err);
+                if (err && err.message && err.message.includes("banned")) showToast("החיבור נחסם על ידי השרת", "error");
+            }
+            if (status === 'CLOSED') {
+                console.log('Realtime socket closed. Check network or server status.');
+            }
+            if (status === 'TIMED_OUT') {
+                console.warn('החיבור לזמן אמת התנתק עקב timeout');
+            }
         });
 
     realtimeSubscription.on('broadcast', { event: 'private_message' }, (payload) => {
@@ -2745,7 +2789,7 @@ function renderUserSelectionList() {
 
 function toggleSelectAllUsers(el) {
     const cb = el.querySelector('input');
-    const checked = !cb.checked; 
+    const checked = !cb.checked;
     cb.checked = checked;
     document.querySelectorAll('.user-select-cb').forEach(c => c.checked = checked);
 }
@@ -2872,11 +2916,11 @@ document.addEventListener('click', function (event) {
     const notifContainer = document.querySelector('#notif-container');
     const notifMenu = document.getElementById('notif-dropdown');
     if (notifContainer && !notifContainer.contains(event.target) && notifMenu.style.display === 'block') {
-        toggleNotifications(); 
-        }
+        toggleNotifications();
+    }
 
 
-        
+
 
     const searchContainer = document.querySelector('.header-search-container');
     if (searchContainer && !searchContainer.contains(event.target)) {
@@ -2995,7 +3039,7 @@ async function loadAds() {
         const { data, error } = await supabaseClient.from('settings').select('value').eq('key', 'ads_content').maybeSingle();
         if (error || !data) throw error || new Error("No data");
         container.innerHTML = data.value || '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
-        logAdView(); 
+        logAdView();
     } catch (e) {
         container.innerHTML = '<p style="text-align:center; color:#94a3b8;">אין פרסומות כרגע.</p>';
     }
@@ -3006,7 +3050,7 @@ async function addSiyumReaction(siyumId, btn) {
     try {
         const { error } = await supabaseClient.from('siyum_reactions').insert({ siyum_id: siyumId, reactor_email: currentUser.email });
 
-        if (error && error.code === '23505') { 
+        if (error && error.code === '23505') {
             return showToast("כבר אמרת מזל טוב!", "info");
         }
         if (error) throw error;
@@ -3035,8 +3079,8 @@ function toggleDataWar() {
     if (window.isNetworkMonitorActive) {
         populateNetworkUsers();
     } else {
-        document.getElementById('networkLog').innerHTML = ''; 
-        document.getElementById('user-icons-container').innerHTML = ''; 
+        document.getElementById('networkLog').innerHTML = '';
+        document.getElementById('user-icons-container').innerHTML = '';
     }
 }
 
@@ -3045,7 +3089,7 @@ function populateNetworkUsers() {
     const visualizer = document.getElementById('network-visualizer');
     if (!container || !visualizer) return;
 
-    container.innerHTML = ''; 
+    container.innerHTML = '';
     const onlineUsers = globalUsersData.filter(u => u.lastSeen && (new Date() - new Date(u.lastSeen) < 5 * 60 * 1000));
 
     const width = visualizer.clientWidth;
@@ -3057,7 +3101,7 @@ function populateNetworkUsers() {
     const userCount = onlineUsers.length;
 
     onlineUsers.forEach((user, i) => {
-        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2); 
+        const angle = (i / userCount) * 2 * Math.PI - (Math.PI / 2);
         const x = centerX + radiusX * Math.cos(angle);
         const y = centerY + radiusY * Math.sin(angle);
 
@@ -3067,7 +3111,7 @@ function populateNetworkUsers() {
         userDiv.className = 'net-user';
         userDiv.dataset.id = user.email;
         userDiv.style.left = `${x - 30}px`;
-        userDiv.style.top = `${y - 30}px`; 
+        userDiv.style.top = `${y - 30}px`;
 
         userDiv.innerHTML = `
             <div class="user-icon-emoji">💻</div>
@@ -3174,8 +3218,8 @@ async function populateAllBooks() {
 
     if (select && select.parentNode) {
         select.parentNode.insertBefore(searchContainer, select);
-        select.style.display = 'none'; 
-        select.id = 'bookSelect_hidden'; 
+        select.style.display = 'none';
+        select.id = 'bookSelect_hidden';
     }
 }
 
@@ -3194,7 +3238,7 @@ async function openThread(msgId, text, chatId) {
     container.innerHTML = `<div style="background:#e2e8f0; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;"><strong>הודעת מקור:</strong><br>${text}</div>`;
     container.innerHTML += `<div style="text-align:center; color:#94a3b8;">טוען תגובות...</div>`;
 
- 
+
     setTimeout(() => {
         const input = document.getElementById('thread-input');
         if (input) input.focus();
@@ -3203,7 +3247,7 @@ async function openThread(msgId, text, chatId) {
     const { data: replies } = await supabaseClient
         .from('chat_messages')
         .select('*')
-        .ilike('message', `%ref:${msgId}%`) 
+        .ilike('message', `%ref:${msgId}%`)
         .order('created_at');
 
     const loadingMsg = container.querySelector('div:last-child');
@@ -3419,13 +3463,13 @@ function visualizeNetworkActivity(type, details) {
     const { action, from, to, isBoring, status } = details;
 
     if (isBoring && !isVerboseNetworkLog) {
-        return; 
+        return;
     }
 
     if (action === 'sendMessage') {
-        drawNetworkLine(from, 'cloud', '#60a5fa'); 
+        drawNetworkLine(from, 'cloud', '#60a5fa');
         setTimeout(() => {
-            drawNetworkLine('cloud', to, '#4ade80'); 
+            drawNetworkLine('cloud', to, '#4ade80');
         }, 400);
     } else {
 
@@ -3498,7 +3542,7 @@ document.addEventListener('click', (e) => {
 
 window.onload = async function () {
     try {
-        await init(); 
+        await init();
     } catch (e) {
         console.log("האתר עלה ללא סנכרון ענן");
     }
@@ -3654,7 +3698,7 @@ async function openRoadmapModal() {
 
         currentRoadmapFeatures = features;
 
-        setRoadmapFilter('done'); 
+        setRoadmapFilter('done');
 
     } catch (e) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
@@ -3833,4 +3877,4 @@ function updateChatBadge() {
     } else {
         badge.style.display = 'none';
     }
-}
+}   

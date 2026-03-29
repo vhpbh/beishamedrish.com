@@ -7,17 +7,6 @@ async function renderShop() {
 
     container.innerHTML = '<div class="text-center p-20"><i class="fas fa-circle-notch fa-spin text-4xl text-amber-500"></i><p class="mt-4 text-slate-500">טוען נתונים...</p></div>';
 
-    container.innerHTML = `
-        <div class="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
-            <div class="mb-6 p-6 bg-amber-50 dark:bg-amber-900/20 rounded-full">
-                <i class="fas fa-tools text-5xl text-amber-500"></i>
-            </div>
-            <h2 class="text-2xl font-bold text-slate-800 dark:text-white mb-2">החנות סגורה כרגע</h2>
-            <p class="text-slate-500 dark:text-slate-400">עקב תיקונים ותחזוקה.</p>
-        </div>
-    `;
-    return;
-
     let html = `
     <div class="max-w-7xl mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
@@ -25,7 +14,7 @@ async function renderShop() {
                 <h2 class="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                     <i class="fas fa-store text-amber-500"></i> חנות הזכויות
                 </h2>
-                <p class="text-slate-500 dark:text-slate-400 mt-1">רכוש רקעים ואייקונים של גדולי הדור באמצעות הנקודות שצברת</p>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">רכוש רקעים ואייקונים באמצעות הנקודות שצברת</p>
             </div>
             <div class="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-6 py-3 rounded-2xl font-bold text-xl flex items-center gap-3 shadow-sm border border-amber-100 dark:border-amber-800">
                 <div class="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-md">
@@ -40,22 +29,28 @@ async function renderShop() {
     `;
 
     try {
-        const { data: items, error: itemsError } = await supabaseClient
-            .from('shop_items')
-            .select('*')
-            .eq('is_active', true)
-            .order('price', { ascending: true });
+        if (!window.knownMissingTables.has('shop_items')) {
+            const { data: items, error: itemsError } = await supabaseClient
+                .from('shop_items')
+                .select('*')
+                .eq('is_active', true)
+                .order('price', { ascending: true });
 
-        if (itemsError) throw itemsError;
-        shopItems = items;
+            if (itemsError && (itemsError.status === 404 || itemsError.code === 'PGRST205')) {
+                window.knownMissingTables.add('shop_items');
+            } else if (itemsError) throw itemsError;
+            else shopItems = items || [];
+        }
 
-        if (currentUser) {
+        if (currentUser && !knownMissingTables.has('user_inventory')) {
             const { data: inv, error: invError } = await supabaseClient
                 .from('user_inventory')
                 .select('*')
                 .eq('user_email', currentUser.email);
-            if (invError) throw invError;
-            userInventory = inv;
+            if (invError && (invError.status === 404 || invError.code === 'PGRST205')) {
+                knownMissingTables.add('user_inventory');
+            } else if (invError) throw invError;
+            else userInventory = inv || [];
         }
 
         html += `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">`;
@@ -63,7 +58,7 @@ async function renderShop() {
         if (shopItems.length === 0) {
             html += `<div class="col-span-full text-center text-slate-500 py-20 bg-white dark:bg-slate-800 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
                 <i class="fas fa-store-slash text-4xl mb-4 opacity-50"></i>
-                <p>החנות ריקה כרגע. חזור בקרוב!</p>
+                <p>החנות כרגע בתחזוקה ובשיפוצים</p>
             </div>`;
         } else {
             shopItems.forEach(item => {
@@ -260,36 +255,64 @@ async function equipItem(itemId, type) {
 }
 
 async function applyUserCustomizations() {
-    if (!currentUser) return;
+    if (!currentUser || knownMissingTables.has('user_inventory')) return;
 
-    const { data: inventory, error } = await supabaseClient
-        .from('user_inventory')
-        .select('item_id, shop_items(*)')
-        .eq('user_email', currentUser.email)
-        .eq('is_equipped', true);
+    try {
+        const { data: allInventory, error } = await supabaseClient
+            .from('user_inventory')
+            .select('*')
+            .eq('user_email', currentUser.email);
 
-    if (error || !inventory) return;
-
-    document.body.style.backgroundImage = '';
-
-    inventory.forEach(record => {
-        const item = record.shop_items;
-        if (!item) return;
-
-        if (item.item_type === 'background') {
-            if (item.image_url) {
-                document.body.style.backgroundImage = `url('${item.image_url}')`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundAttachment = 'fixed';
-                document.body.style.backgroundPosition = 'center';
+        if (error) {
+            if (error.status === 404 || error.code === 'PGRST205' || error.status === 400) {
+                knownMissingTables.add('user_inventory');
+                return;
             }
+            throw error;
         }
-        
-        if (item.item_type === 'icon' && item.image_url) {
-            const profileBtn = document.getElementById('headerProfileBtn');
-            if (profileBtn) {
-                profileBtn.innerHTML = `<img src="${item.image_url}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+
+        if (!allInventory || allInventory.length === 0) return;
+
+        const equippedInventory = allInventory.filter(i => i.is_equipped === true);
+
+        if (equippedInventory.length === 0) {
+            document.body.style.backgroundImage = '';
+            return;
+        }
+
+        const itemIds = equippedInventory.map(i => i.item_id);
+        const { data: items } = await supabaseClient
+            .from('shop_items')
+            .select('*')
+            .in('id', itemIds);
+
+        if (!items) return;
+
+        document.body.style.backgroundImage = '';
+
+        equippedInventory.forEach(record => {
+            const item = items.find(i => i.id === record.item_id);
+            if (!item) return;
+
+            if (item.item_type === 'background') {
+                if (item.image_url) {
+                    document.body.style.backgroundImage = `url('${item.image_url}')`;
+                    document.body.style.backgroundSize = 'cover';
+                    document.body.style.backgroundAttachment = 'fixed';
+                    document.body.style.backgroundPosition = 'center';
+                }
             }
+
+            if (item.item_type === 'icon' && item.image_url) {
+                const profileBtn = document.getElementById('headerProfileBtn');
+                if (profileBtn) {
+                    profileBtn.innerHTML = `<img src="${item.image_url}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+                }
+            }
+        });
+    } catch (e) {
+        if (!e.message?.includes('public.user_inventory')) {
+            console.warn("Error applying customizations:", e.message);
         }
-    });
+    }
 }

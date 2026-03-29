@@ -1,10 +1,20 @@
 async function searchChats(query) {
     if (!currentUser) return [];
-    // Using RPC to bypass RLS for chat search
-    const { data, error } = await supabaseClient.rpc('search_my_chats', {
+    
+    let { data, error } = await supabaseClient.rpc('search_my_chats', {
         p_my_email: currentUser.email,
         p_query: query
     });
+
+    if (error) {
+        const { data: directData, error: directError } = await supabaseClient
+            .from('chat_messages')
+            .select('*')
+            .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
+            .ilike('message', `%${query}%`);
+        data = directData;
+        error = directError;
+    }
 
     if (error) {
         console.error("Chat search error:", error);
@@ -13,7 +23,6 @@ async function searchChats(query) {
     return data;
 }
 
-// === מנגנון Polling (גיבוי לצ'אט) ===
 let chatPollTimer = null;
 
 function startChatPolling() {
@@ -33,7 +42,7 @@ async function pollChats() {
         const partnerEmail = win.id.replace('chat-window-', '');
         await checkNewMessagesFor(partnerEmail);
     }
-    chatPollTimer = setTimeout(pollChats, 3000); // שימוש ב-Timeout במקום Interval למניעת חפיפת בקשות
+    chatPollTimer = setTimeout(pollChats, 3000);
 }
 
 function getChatContainer(partnerEmail) {
@@ -46,8 +55,7 @@ async function checkNewMessagesFor(partnerEmail) {
     const container = getChatContainer(partnerEmail);
     if (!container) return;
 
-    // תיקון קריטי: אם הצ'אט עדיין בטעינה ראשונית - לא לבצע בדיקת הודעות חדשות
-    // זה מונע כפילות של טעינת כל ההיסטוריה במקביל ומאיץ משמעותית את הפתיחה
+
     if (container.querySelector('.chat-loading-indicator')) return;
 
     let lastTime = new Date(0).toISOString();
@@ -58,12 +66,22 @@ async function checkNewMessagesFor(partnerEmail) {
     }
 
     try {
-        // Using RPC to bypass RLS for polling new messages
-        const { data, error } = await supabaseClient.rpc('get_new_messages', {
+        let { data, error } = await supabaseClient.rpc('get_new_messages', {
             p_my_email: currentUser.email,
             p_partner_email: partnerEmail,
             p_last_time: lastTime
         });
+
+        if (error) {
+            const { data: directData, error: directError } = await supabaseClient
+                .from('chat_messages')
+                .select('*')
+                .or(`and(sender_email.ilike.${currentUser.email},receiver_email.ilike.${partnerEmail}),and(sender_email.ilike.${partnerEmail},receiver_email.ilike.${currentUser.email})`)
+                .gt('created_at', lastTime);
+            data = directData;
+            error = directError;
+        }
+
         if (error) throw error;
         if (data && data.length > 0) {
             data.forEach(msg => {
@@ -79,8 +97,7 @@ async function checkNewMessagesFor(partnerEmail) {
     } catch (e) { console.error("Polling error", e); }
 }
 
-// === לוגיקת צ'אט ===
-let activeChats = {}; // מעקב אחרי חלונות צ'אט פתוחים
+let activeChats = {}; 
 
 function getCurrentChatEmail() {
     return isAdminMode ? 'admin@system' : currentUser.email;
@@ -92,8 +109,7 @@ function openBookChat(bookName) {
 
 function openChat(partnerEmail, partnerName, startMinimized = false, forceFloating = false) {
     if (!requireAuth()) return;
-    // Don't lowercase book IDs as they might contain case sensitive parts or spaces we want to preserve visually, though ID must be safe.
-    // For simplicity, we keep email lowercase, but book ID we handle carefully.
+
     const isBook = partnerEmail.startsWith('book:');
     if (!isBook) partnerEmail = partnerEmail.toLowerCase();
 
@@ -109,7 +125,6 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     const isUpdates = partnerEmail === 'updates@system';
     const isMentions = partnerEmail === 'mentions@system';
 
-    // If we are in the Chats screen, open it there instead of floating
     if (!forceFloating && document.getElementById('screen-chats').classList.contains('active')) {
         loadChatIntoMainArea(partnerEmail, partnerName);
         return;
@@ -127,7 +142,6 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
         ).length;
     }
 
-    // בדיקה אם החלון כבר קיים
     if (document.getElementById(`chat-window-${partnerEmail}`)) {
         const win = document.getElementById(`chat-window-${partnerEmail}`);
         win.classList.remove('minimized');
@@ -135,7 +149,6 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
         return;
     }
 
-    // איפוס הודעות שלא נקראו
     if (unreadMessages[partnerEmail]) {
         unreadMessages[partnerEmail] = 0;
         localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
@@ -146,7 +159,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     const isBlocked = blockedUsers.includes(partnerEmail);
     const blockClass = isBlocked ? 'blocked' : '';
     const blockIconColor = isBlocked ? '#ef4444' : '#ef4444';
-    const banIconClass = isBlocked ? 'text-red-500' : 'text-red-400'; // Red by default for visibility
+    const banIconClass = isBlocked ? 'text-red-500' : 'text-red-400';
     const isSystem = partnerEmail === 'admin@system';
     const banStyle = (isSystem || isBook || isUpdates) ? 'display:none;' : `color:${blockIconColor}; cursor:pointer;`;
 
@@ -193,14 +206,14 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     `;
 
     document.body.insertAdjacentHTML('beforeend', chatHtml);
-    bringToFront(document.getElementById(`chat-window-${partnerEmail}`)); // הבאה לקדמת המסך
+    bringToFront(document.getElementById(`chat-window-${partnerEmail}`));
     rearrangeMinimizedWindows();
 
-    // בדיקת סטטוס מחובר
     if (!isBook && !isUpdates) {
         const partner = globalUsersData.find(u => u.email === partnerEmail);
         if (partnerEmail === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000))) {
-            document.getElementById(`online-${partnerEmail}`).classList.add('active');
+            const onlineDot = document.getElementById(`online-${partnerEmail}`);
+            if (onlineDot) onlineDot.classList.add('active');
         }
     }
 
@@ -211,13 +224,13 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
 
     if (startMinimized) {
         const win = document.getElementById(`chat-window-${partnerEmail}`);
-        if (win && unreadMessages[partnerEmail] > 0) { // Only flash if there are unread messages
+        if (win && unreadMessages[partnerEmail] > 0) { 
             win.classList.add('minimized');
             win.classList.add('flashing');
             rearrangeMinimizedWindows();
         }
     } else {
-        markAsRead(partnerEmail); // סימון הודעות כנקראות רק אם נפתח מלא
+        markAsRead(partnerEmail);
     }
     startChatPolling();
 }
@@ -230,7 +243,6 @@ function expandChatToScreen(email, name) {
     else if (email.includes('@system')) category = 'other';
     else if (typeof approvedPartners !== 'undefined' && !approvedPartners.has(email)) category = 'archive';
 
-    // מעבר למסך הצ'אטים עם הקטגוריה המתאימה
     const navItem = document.querySelector('.floating-nav-item[onclick*="chats"]');
     switchScreen('chats', navItem, category);
 
@@ -243,7 +255,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     currentChatFilter = filter;
     const cacheKey = `chatListCache_${filter}`;
 
-    // Handle tab UI
     document.querySelectorAll('.chat-tab').forEach(t => t.classList.remove('active'));
     if (tabEl && tabEl.classList.contains('chat-tab')) {
         tabEl.classList.add('active');
@@ -253,7 +264,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         else if (filter === 'public' && tabs[1]) tabs[1].classList.add('active');
         else if (filter === 'other' && tabs[2]) tabs[2].classList.add('active');
     }
-    // If it's archive, no tab is active, and we can show a title
     if (filter === 'archive') {
         const mainArea = document.getElementById('chat-main-area');
         mainArea.innerHTML = `<div style="margin: auto; color: #94a3b8; text-align: center;"><i class="fas fa-archive" style="font-size: 3rem; opacity: 0.3;"></i><p>ארכיון צ'אטים</p></div>`;
@@ -269,10 +279,20 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         }
     }
 
-    // Fetch all messages involving me to find unique partners
-    const { data, error } = await supabaseClient.rpc('get_my_conversations', {
+    let { data, error } = await supabaseClient.rpc('get_my_conversations', {
         p_my_email: currentUser.email
     });
+
+    if (error) {
+        const { data: directData, error: directError } = await supabaseClient
+            .from('chat_messages')
+            .select('*')
+            .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
+            .order('created_at', { ascending: false });
+        data = directData;
+        error = directError;
+    }
+
     if (error) console.error("Error fetching conversations:", error);
 
     const partners = new Set();
@@ -294,7 +314,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
                 } else if (approvedPartners.has(partner)) {
                     category = 'personal';
                 } else {
-                    // This is a chat with a user who is not a book, not system, and not an approved partner.
                     category = 'archive';
                 }
 
@@ -310,7 +329,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         });
     }
 
-    // הוספת צ'אטים של ספרים פעילים לרשימה הציבורית (גם אם לא נשלחה הודעה)
     if (filter === 'public' && typeof userGoals !== 'undefined') {
         userGoals.forEach(goal => {
             if (goal.status === 'active') {
@@ -328,28 +346,24 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         });
     }
 
-    // If viewing 'personal' chats, ensure all approved partners are listed, even without messages.
     if (filter === 'personal') {
         approvedPartners.forEach(partnerEmail => {
-            // Check if this partner is already in the chat list (from the message query)
             if (!partners.has(partnerEmail)) {
-                partners.add(partnerEmail); // Add to the set to avoid duplicates
+                partners.add(partnerEmail);
                 chats.push({
                     email: partnerEmail,
                     lastMsg: 'קבעתם חברותא! התחילו את השיחה.',
-                    time: new Date().toISOString(), // Use current time to appear at the top
+                    time: new Date().toISOString(),
                     unread: false
                 });
             }
         });
     }
 
-    // Sort all chats by time, newest first
     chats.sort((a, b) => new Date(b.time) - new Date(a.time));
 
     let newHTML = '';
 
-    // Add Mazal Tov Board item if filter is 'other'
     if (filter === 'other') {
         newHTML += `
             <div class="chat-list-item" onclick="renderMazalTovInMainArea()">
@@ -364,7 +378,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         `;
     }
 
-    // Ensure system chats are always present in 'other'
     if (filter === 'other') {
         const systemChats = ['admin@system', 'updates@system', 'mentions@system'];
         systemChats.forEach(sysEmail => {
@@ -403,7 +416,7 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
             const isToday = msgDate.toDateString() === now.toDateString();
             const timeDisplay = isToday ? msgDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : msgDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
 
-            const truncatedLastMsg = truncateHtmlText(chat.lastMsg, 60); // קיצור ההודעה ל-60 תווים
+            const truncatedLastMsg = truncateHtmlText(chat.lastMsg, 60);
             const initial = name ? name.charAt(0) : '?';
 
             let iconHtml = initial;
@@ -435,7 +448,6 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         });
     }
 
-    // Update DOM and cache only if changed
     if (newHTML !== localStorage.getItem(cacheKey)) {
         container.innerHTML = newHTML;
         localStorage.setItem(cacheKey, newHTML);
@@ -444,13 +456,12 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
 function loadChatIntoMainArea(email, name, el) {
     if (!email.startsWith('book:')) email = email.toLowerCase();
     const main = document.getElementById('chat-main-area');
-    main.innerHTML = ''; // Clear current
+    main.innerHTML = '';
 
-    // Highlight active chat in sidebar
     document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('bg-slate-100', 'dark:bg-slate-800'));
     if (el) {
         el.classList.add('bg-slate-100', 'dark:bg-slate-800');
-        el.classList.remove('bg-blue-50', 'dark:bg-blue-900/20'); // Remove unread style
+        el.classList.remove('bg-blue-50', 'dark:bg-blue-900/20');
         const dot = el.querySelector('.chat-list-unread-dot');
         if (dot) dot.remove();
     }
@@ -479,7 +490,6 @@ function loadChatIntoMainArea(email, name, el) {
     const partner = globalUsersData.find(u => u.email === email);
     const isOnline = email === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000));
     const statusText = isOnline ? 'מחובר כעת' : 'לא מחובר';
-    // עדכון טקסט סטטוס לצ'אט עדכונים
     const finalStatusText = isBook ? `${bookOnlineCount} לומדים מחוברים` : (isUpdates ? 'ערוץ עדכונים' : (isMentions ? 'מערכת התראות' : statusText));
 
     let statusColorClass = isOnline ? 'text-emerald-500' : 'text-red-500';
@@ -489,7 +499,6 @@ function loadChatIntoMainArea(email, name, el) {
     const statusDotBgClass = isOnline ? 'bg-emerald-400' : 'bg-red-500';
     const avatarInitial = name.charAt(0);
 
-    // Reuse the chat window HTML structure but adapted for full size
     const chatHtml = `
         <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center px-6 justify-between shadow-sm z-20">
             <div class="flex items-center gap-3">
@@ -533,10 +542,8 @@ function loadChatIntoMainArea(email, name, el) {
     `;
     main.innerHTML = chatHtml;
 
-    // Load messages
     loadChatHistory(email);
 
-    // Check online status for main header
     markAsRead(email);
 }
 
@@ -549,9 +556,7 @@ function closeMainChat() {
 }
 
 function minimizeMainChat(email, name) {
-    // Clear main area
     closeMainChat();
-    // Open floating minimized
     openChat(email, name, true, true);
 }
 
@@ -572,7 +577,7 @@ function toggleChatWindow(email) {
     const win = document.getElementById(`chat-window-${email}`);
     if (win) {
         win.classList.toggle('minimized');
-        win.classList.remove('flashing'); // הפסקת הבהוב בעת פתיחה/מזעור
+        win.classList.remove('flashing'); 
 
         if (!win.classList.contains('minimized')) {
             win.style.bottom = '';
@@ -585,20 +590,26 @@ function toggleChatWindow(email) {
 async function loadChatHistory(partnerEmail) {
     const myEmail = getCurrentChatEmail();
 
-    // The logic for fetching chat history, including daily chat resets,
-    // has been moved to a SECURITY DEFINER RPC function `get_chat_history`
-    // to bypass RLS policies which were preventing data from being loaded.
-    const { data, error } = await supabaseClient.rpc('get_chat_history', {
+    let { data, error } = await supabaseClient.rpc('get_chat_history', {
         p_my_email: myEmail,
         p_partner_email: partnerEmail
     });
+
+    if (error) {
+        const { data: directData, error: directError } = await supabaseClient
+            .from('chat_messages')
+            .select('*')
+            .or(`and(sender_email.ilike.${myEmail},receiver_email.ilike.${partnerEmail}),and(sender_email.ilike.${partnerEmail},receiver_email.ilike.${myEmail})`)
+            .order('created_at', { ascending: true });
+        data = directData;
+        error = directError;
+    }
 
     if (error) console.error("שגיאה בטעינת צ'אט:", error);
 
     const container = getChatContainer(partnerEmail);
     if (!container) return;
 
-    // Remove loading indicator if exists
     const loader = container.querySelector('.chat-loading-indicator');
     if (loader) loader.remove();
 
@@ -606,27 +617,21 @@ async function loadChatHistory(partnerEmail) {
         const isBook = partnerEmail.startsWith('book:');
         container.innerHTML = '';
         data.forEach(msg => {
-            // בדיקה אם להודעה זו יש תגובות (שרשור)
-            // אנו בודקים אם קיימת הודעה אחרת ב-data שמכילה ref ל-ID הזה
-            // זה עובד רק אם התגובה נטענה בהיסטוריה הנוכחית. לפתרון מלא צריך שאילתה נפרדת או שדה ב-DB.
-            // כפתרון ביניים יעיל:
+        
             const hasReplies = data.some(m => m.message.includes(`ref:${msg.id}`));
 
             const type = (msg.sender_email.toLowerCase() === myEmail.toLowerCase()) ? 'me' : 'other';
-            // טעינת היסטוריה ללא אנימציה
             const el = appendMessageToWindow(partnerEmail, msg.message, type, msg.id, msg.created_at, msg.is_read, msg.sender_email, false);
 
             if (hasReplies && el) {
                 const indicator = document.createElement('span');
                 indicator.className = 'thread-active-indicator';
                 indicator.title = "יש תגובות בשרשור";
-                // הוספה לבועה
                 const bubble = el.querySelector('.message-bubble') || el;
                 bubble.appendChild(indicator);
             }
         });
 
-        // טעינת מונים של לייקים
         if (isBook && data.length > 0) {
             const msgIds = data.map(m => m.id);
             const { data: allLikes } = await supabaseClient
@@ -648,7 +653,6 @@ async function loadChatHistory(partnerEmail) {
             }
         }
 
-        // טעינת ריאקציות (לייקים) שביצעתי
         if (isBook && data.length > 0) {
             const msgIds = data.map(m => m.id);
             const { data: reactions } = await supabaseClient
@@ -664,15 +668,12 @@ async function loadChatHistory(partnerEmail) {
                         const btn = btnIcon.parentElement;
                         btn.classList.add('active');
                         btn.style.color = r.reaction_type === 'like' ? '#22c55e' : '#ef4444';
-                        // btn.disabled = true; // הסרנו את ה-disabled כדי לאפשר ביטול
-                        // הוספת מידע על סוג הריאקציה לכפתור כדי שנוכל לזהות בלחיצה הבאה
                         btn.dataset.reaction = r.reaction_type;
                     }
                 });
             }
         }
 
-        // גלילה למטה לאחר טעינת ההיסטוריה
         setTimeout(() => {
             container.scrollTop = container.scrollHeight;
         }, 100);
@@ -683,8 +684,6 @@ async function loadChatRating() {
     const display = document.getElementById('chatRatingDisplay');
     if (!currentUser) return;
 
-    // חישוב פשוט: שליפת כל ההודעות שלי וספירת לייקים
-    // Using RPC to bypass RLS
     const { data: messages, error } = await supabaseClient.rpc('get_my_message_ids', {
         p_my_email: currentUser.email
     });
@@ -697,11 +696,9 @@ async function loadChatRating() {
         const rating = count || 0;
         if (display) display.innerText = rating;
 
-        // Update Dashboard Rating
         const dashStat = document.getElementById('stat-rating');
         if (dashStat) dashStat.innerText = rating;
 
-        // Cache rating for immediate load next time
         localStorage.setItem('torahApp_rating', rating);
     } else {
         if (display) display.innerText = 0;
@@ -712,7 +709,6 @@ async function loadChatRating() {
 }
 
 async function doSendMessage(partnerEmail, finalMsg, isHtml) {
-    // Visualize before sending
     visualizeNetworkActivity('request', {
         action: 'sendMessage',
         from: currentUser.email,
@@ -720,14 +716,13 @@ async function doSendMessage(partnerEmail, finalMsg, isHtml) {
         isBoring: false
     });
 
-    // Optimistic UI: Append message immediately
     const tempId = 'temp-' + Date.now() + Math.random();
     const tempEl = appendMessageToWindow(partnerEmail, finalMsg, 'me', tempId, new Date().toISOString(), false, currentUser.email);
-    if (tempEl) tempEl.style.opacity = '0.7'; // Indicate it's pending
+    if (tempEl) tempEl.style.opacity = '0.7';
 
     const sender = getCurrentChatEmail();
     try {
-        const { data, error } = await supabaseClient.rpc('send_message', {
+        let { data, error } = await supabaseClient.rpc('send_message', {
             p_sender_email: sender,
             p_receiver_email: partnerEmail,
             p_message: finalMsg,
@@ -735,15 +730,30 @@ async function doSendMessage(partnerEmail, finalMsg, isHtml) {
         });
 
         if (error) {
-            if (tempEl) tempEl.remove(); // Remove temp message on error
+            const { data: directData, error: directError } = await supabaseClient
+                .from('chat_messages')
+                .insert([{
+                    sender_email: sender,
+                    receiver_email: partnerEmail,
+                    message: finalMsg,
+                    is_html: isHtml
+                }]).select();
+            data = directData;
+            error = directError;
+        }
+
+        if (error) {
+            if (tempEl) tempEl.remove();
             console.error("Supabase RPC Error:", error);
-            if (error.code === "401") {
+            if (error.message) {
+                await showToast(error.message, "error");
+            } else if (error.code === "401") {
                 await customAlert("שגיאת שליחה: אין הרשאה (401).<br>בדוק את מפתח ה-API בקובץ api.js.", true);
             } else {
                 await customAlert("שגיאה בשליחה: " + error.message);
             }
         } else if (data && data[0]) {
-            if (tempEl) tempEl.remove(); // Remove temp message
+            if (tempEl) tempEl.remove();
             const newMsg = data[0];
             if (chatChannel) {
                 chatChannel.send({ type: 'broadcast', event: 'private_message', payload: { message: newMsg } });
@@ -785,32 +795,27 @@ async function sendMessage(partnerEmail) {
     let finalMsg = msg;
     let isHtml = false;
 
-    // New mention parsing logic
     if (input.mentions) {
         finalMsg = msg;
         for (const name in input.mentions) {
             const email = input.mentions[name];
-            // Use negative lookahead to not match parts of words, and be global
             const mentionRegex = new RegExp(`@${name}(?!\\w)`, 'g');
             const mentionHtml = `<span class="mention" data-user-email="${email}">@${name}</span>`;
             finalMsg = finalMsg.replace(mentionRegex, mentionHtml);
         }
         isHtml = true;
-        delete input.mentions; // Clear after use
+        delete input.mentions; 
     }
 
     if (activeReply && activeReply.chatId === partnerEmail) {
         finalMsg = `<div class="chat-quote"><strong>${activeReply.sender}:</strong> ${activeReply.text}</div>${finalMsg}`;
         isHtml = true;
-        // אם אנחנו בתוך שרשור, הציטוט צריך להיות בתוך השרשור
         if (activeThreadId) {
-            // הטיפול בשרשור נעשה ב-sendThreadMessage, אבל אם המשתמש בחר לצטט בתוך שרשור:
-            // activeReply נשמר גלובלית. sendThreadMessage צריך להשתמש בו.
+            
         }
-        cancelReply(partnerEmail); // איפוס הציטוט
+        cancelReply(partnerEmail);
     }
 
-    // Visualize before sending
     visualizeNetworkActivity('request', {
         action: 'sendMessage',
         from: currentUser.email,
@@ -818,7 +823,6 @@ async function sendMessage(partnerEmail) {
         isBoring: false
     });
 
-    // ניקוי שדה הקלט
     input.value = '';
     localStorage.removeItem('chat_draft_' + partnerEmail);
 
@@ -830,27 +834,22 @@ function saveChatDraft(email, val) {
 }
 
 function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead = false, senderEmail = null, shouldAnimate = true) {
-    // Filter out thread replies from main view if they have a ref tag (hidden)
-    // But since we use is_html for threads, we might want to show them or hide them.
-    // הסתרת הודעות שרשור מהצ'אט הראשי
+
     if (text.includes('ref:')) return null;
 
     const container = getChatContainer(partnerEmail);
     if (!container) return null;
 
-    // מניעת כפילויות (חשוב למנגנון ה-Polling)
     if (id && document.getElementById(`msg-${id}`)) return;
 
     const div = document.createElement('div');
-    // div.className = `message-bubble msg-${type}`; // Old class
     if (id) div.id = `msg-${id}`;
     if (timestamp) div.dataset.timestamp = timestamp;
     if (senderEmail) div.dataset.sender = senderEmail;
     div.style.cursor = 'pointer';
 
-    let topLevelElement; // The element to be returned
+    let topLevelElement; 
 
-    // For book chats, show sender name and avatar for EVERYONE (me and others)
     if (partnerEmail.startsWith('book:') && senderEmail) {
         const wrapper = document.createElement('div');
         if (shouldAnimate) wrapper.className = 'new-message-animation';
@@ -860,12 +859,7 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         wrapper.style.marginBottom = '8px';
         wrapper.style.maxWidth = '70%';
 
-        // RTL Logic:
-        // Me (Right side): justify-content: flex-start (Right in RTL), flex-direction: row (Avatar -> Message)
-        // Other (Left side): justify-content: flex-end (Left in RTL), flex-direction: row-reverse (Avatar -> Message)
-        // Me (Left side): justify-content: flex-end (Left in RTL), flex-direction: row-reverse (Avatar -> Message)
-        // Other (Right side): justify-content: flex-start (Right in RTL), flex-direction: row (Avatar -> Message)
-
+       
         if (senderEmail) wrapper.dataset.sender = senderEmail;
         wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
         wrapper.style.flexDirection = type === 'me' ? 'row-reverse' : 'row';
@@ -876,30 +870,25 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         const subTitle = isSubscribed ? `מנוי: ${senderUser.subscription.name}` : '';
 
         const avatar = document.createElement('div');
-        // צבע שונה לי ולאחרים
         const avatarColor = type === 'me' ? '#3b82f6' : '#cbd5e1';
         avatar.innerHTML = `<i class="fas fa-user-circle ${subClass}" style="font-size: 28px; color: ${avatarColor}; cursor: pointer; border-radius:50%;" title="${subTitle}"></i>`;
         avatar.onclick = (e) => { e.stopPropagation(); showUserDetails(senderEmail); };
 
-        wrapper.appendChild(avatar); // Avatar first in DOM
+        wrapper.appendChild(avatar); 
         wrapper.appendChild(div);
         container.appendChild(wrapper);
         topLevelElement = wrapper;
 
-        // Add name inside bubble too
-        const senderName = senderUser ? senderUser.name : senderEmail.split('@')[0];
-        const nameSpan = document.createElement('span');
+        const senderName = senderUser ? senderUser.name : 'לומד'; 
         nameSpan.className = 'msg-sender-name';
         const badgesHtml = senderUser ? getFullUserBadges(senderUser) : '';
         nameSpan.innerHTML = `${senderName} ${badgesHtml}`;
         div.appendChild(nameSpan);
     } else {
-        // For personal chats, we also use a wrapper for robust alignment.
-        // The container is a flex-column, so we use align-self on the wrapper to position it left/right.
         const wrapper = document.createElement('div');
         if (shouldAnimate) wrapper.className = 'new-message-animation';
         wrapper.style.display = 'flex';
-        wrapper.style.maxWidth = '80%'; // Don't take full width
+        wrapper.style.maxWidth = '80%'; 
         wrapper.style.marginBottom = '8px';
         wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
         if (senderEmail) wrapper.dataset.sender = senderEmail;
@@ -908,19 +897,15 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         topLevelElement = wrapper;
     }
 
-    // Apply new Tailwind classes
-    const animClass = ''; // Animation is now on the wrapper element for both personal and book chats.
+    const animClass = '';
     if (type === 'me') {
         div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tr-sm shadow-lg relative`;
-        div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tl-sm shadow-lg relative`; // Fix for RTL
+        div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tl-sm shadow-lg relative`; 
     } else {
         div.className = `message-bubble max-w-md bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 dark:border-slate-700 relative`;
     }
 
-    // Check if the message is HTML
     if (text.includes('<button') || text.includes('chat-quote') || text.includes('<strong>') || text.includes('<b>') || text.includes('<br>') || text.includes('<span')) {
-        // The name span is added before this for book chats.
-        // Using innerHTML = text would overwrite it. We need to append.
         div.insertAdjacentHTML('beforeend', text);
     } else {
         const p = document.createElement('p');
@@ -929,7 +914,6 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         div.appendChild(p);
     }
 
-    // Highlight mentions for me
     const mentions = div.querySelectorAll('.mention');
     mentions.forEach(mention => {
         if (mention.dataset.userEmail === currentUser.email) {
@@ -943,8 +927,6 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
             check.className = 'msg-check';
             check.id = `check-${id}`;
             check.innerText = isRead ? '✓✓' : '✓';
-            // check.style.color = isRead ? '#4ade80' : '#cbd5e1'; // Handled by classes or inline
-            // div.appendChild(check); // Will append in footer
         }
     }
 
@@ -976,16 +958,13 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         div.appendChild(delBtn);
     }
 
-    // Add Reactions/Menu for ALL chats (Personal + Book)
     if (id) {
-        // Extract plain text for quoting - CLEANER VERSION
         let plainText = "";
         const pTag = div.querySelector('p');
         if (pTag) {
             plainText = pTag.innerText;
         } else {
             const clone = div.cloneNode(true);
-            // הסרת אלמנטים מיותרים לפני לקיחת הטקסט
             const toRemove = clone.querySelectorAll('.msg-timestamp, .msg-time-container, .msg-sender-name, .msg-delete-btn, .msg-check, .msg-reactions, .msg-actions-menu');
             toRemove.forEach(el => el.remove());
             plainText = clone.innerText;
@@ -1002,7 +981,6 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         const reactionsDiv = document.createElement('div');
         reactionsDiv.className = 'flex gap-2 mt-2 justify-end';
 
-        // הוספת הוי (Check) בתוך שורת הריאקציות
         if (type === 'me') {
             if ((partnerEmail !== 'admin@system' && !partnerEmail.startsWith('book:')) || isAdminMode) {
                 const check = document.createElement('span');
@@ -1011,8 +989,8 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
                 check.className = "msg-check";
                 check.style.fontWeight = "bold";
                 check.style.fontSize = "12px";
-                check.style.color = isRead ? '#4ade80' : '#cbd5e1'; // Sent: gray, Read: green
-                timeDiv.appendChild(check); // Add check to time div
+                check.style.color = isRead ? '#4ade80' : '#cbd5e1';
+                timeDiv.appendChild(check); 
             }
         }
 
@@ -1039,12 +1017,11 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
                 </div>
             </div>
         `;
-        // reactionsDiv.innerHTML = innerHTML; // Using the more_vert menu instead
         timeDiv.innerHTML += innerHTML;
     }
 
     container.scrollTop = container.scrollHeight;
-    return topLevelElement; // החזרת האלמנט העליון לשימוש חיצוני
+    return topLevelElement;
 }
 
 function replyToMessage(chatId, senderName, text) {
@@ -1067,7 +1044,6 @@ async function editMessage(id) {
     const msgEl = document.getElementById(`msg-${id}`);
     if (!msgEl) return;
 
-    // Clone to extract text safely
     const clone = msgEl.cloneNode(true);
     const quoteEl = clone.querySelector('.chat-quote');
     let quoteHTML = '';
@@ -1076,7 +1052,6 @@ async function editMessage(id) {
         quoteEl.remove();
     }
 
-    // Remove metadata elements to get clean text
     const toRemove = clone.querySelectorAll('.msg-timestamp, .msg-time-container, .msg-sender-name, .msg-delete-btn, .msg-check, .msg-reactions, .msg-actions-menu, .thread-active-indicator, .mention-highlight');
     toRemove.forEach(el => el.remove());
 
@@ -1092,8 +1067,6 @@ async function editMessage(id) {
             finalMessage = quoteHTML + newText;
             isHtml = true;
         }
-        // Check if the final message contains any HTML tags (e.g., mentions)
-        // This is a more robust check than just relying on quoteHTML
         if (!isHtml && /<[a-z][\s\S]*>/i.test(finalMessage)) {
             isHtml = true;
         }
@@ -1105,7 +1078,6 @@ async function editMessage(id) {
                 .eq('id', id);
 
             if (error) throw error;
-            // If no data is returned, it means no rows were updated, possibly due to RLS
             if (!data || data.length === 0) {
                 throw new Error("ההודעה לא עודכנה בבסיס הנתונים. ייתכן שאין לך הרשאה או שההודעה לא קיימת.");
             }
@@ -1172,7 +1144,6 @@ async function deleteMessage(id, element) {
         const { error } = await supabaseClient.from('chat_messages').delete().eq('id', id);
         if (error) throw error;
 
-        // Broadcast deletion to ensure immediate update for others
         if (chatChannel) {
             chatChannel.send({ type: 'broadcast', event: 'delete_message', payload: { id: id } });
         }
@@ -1187,10 +1158,8 @@ async function deleteMessage(id, element) {
 
 async function toggleReaction(msgId, type, btn) {
     if (!requireAuth()) return;
-    // לוגיקה חדשה: ביטול והחלפה
     const isActive = btn.classList.contains('active');
 
-    // בדיקת מגבלת לייקים יומית (15 ביום)
     if (type === 'like' && !isActive) {
         const DAILY_LIKE_LIMIT = 15;
         const today = new Date().toLocaleDateString('en-GB');
@@ -1210,7 +1179,6 @@ async function toggleReaction(msgId, type, btn) {
     const otherType = type === 'like' ? 'dislike' : 'like';
     const otherBtn = container.querySelector(`.reaction-btn i.fa-thumbs-${type === 'like' ? 'down' : 'up'}`).parentElement;
 
-    // עדכון אופטימי של המונה
     const countSpan = btn.querySelector(`span[id^='like-count-']`);
     if (type === 'like' && countSpan) {
         let currentCount = parseInt(countSpan.innerText || '0');
@@ -1225,7 +1193,6 @@ async function toggleReaction(msgId, type, btn) {
 
     try {
         if (isActive) {
-            // ביטול סימון קיים (מחיקה)
             await supabaseClient.from('message_reactions').delete()
                 .eq('message_id', msgId)
                 .eq('user_email', currentUser.email);
@@ -1234,33 +1201,28 @@ async function toggleReaction(msgId, type, btn) {
             btn.style.color = '';
             delete btn.dataset.reaction;
         } else {
-            // סימון חדש או החלפה
             await supabaseClient.from('message_reactions').upsert({
                 message_id: msgId,
                 user_email: currentUser.email,
                 reaction_type: type
             }, { onConflict: 'message_id,user_email' });
 
-            // הפעלת הכפתור הנוכחי
             btn.classList.add('active');
             btn.style.color = type === 'like' ? '#22c55e' : '#ef4444';
             btn.dataset.reaction = type;
 
-            // כיבוי הכפתור השני אם היה פעיל
             if (otherBtn.classList.contains('active')) {
                 otherBtn.classList.remove('active');
                 otherBtn.style.color = '';
                 delete otherBtn.dataset.reaction;
             }
 
-            // Award points for like
             if (type === 'like') {
                 try {
                     const { data: msg } = await supabaseClient.from('chat_messages').select('sender_email, message').eq('id', msgId).single();
                     if (msg && msg.sender_email !== currentUser.email) {
                         await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: 5, user_email: msg.sender_email });
 
-                        // שליחת התראה למחבר ההודעה
                         const cleanMsg = msg.message.replace(/<[^>]*>?/gm, '').substring(0, 30) + (msg.message.length > 30 ? '...' : '');
                         const notifText = `המשתמש ${currentUser.displayName} סימן לייק על ההודעה שלך: "${cleanMsg}"`;
                         await supabaseClient.rpc('send_message', {
@@ -1278,7 +1240,6 @@ async function toggleReaction(msgId, type, btn) {
     } catch (e) {
         console.error("Reaction error", e);
         showToast("שגיאה בעדכון תגובה", "error");
-        // ביטול ספירת הלייק במקרה של שגיאה
         if (type === 'like' && !isActive) {
             const storageKey = 'daily_likes_count_' + currentUser.email;
             let tracker = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -1290,44 +1251,38 @@ async function toggleReaction(msgId, type, btn) {
 
 let typingTimeout = null;
 let lastTypingTime = 0;
-let typingTimers = {}; // Ensure this is defined locally
+let typingTimers = {}; 
 
-// This function is called on every key press in the chat input.
-// To avoid flooding the network, it sends a 'typing' event only once every 2 seconds.
+
 function handleTyping(partnerEmail) {
     const now = Date.now();
     if (now - lastTypingTime > 2000 && chatChannel) {
         lastTypingTime = now;
-        // Send a broadcast event via Supabase Realtime to the specific partner.
         chatChannel.send({ type: 'broadcast', event: 'typing', payload: { from: currentUser.email, to: partnerEmail } });
     }
 }
 
-// This function is called when a 'typing' event is received from another user.
-// It displays the "is typing..." indicator for 3 seconds.
+
 function showTyping(partnerEmail, text) {
     const el = document.getElementById(`typing-${partnerEmail}`);
     if (el) {
         el.innerText = text;
         el.classList.add('active');
-        // Clear any existing timer for this user to reset the 3-second countdown.
         if (typingTimers[partnerEmail]) clearTimeout(typingTimers[partnerEmail]);
         typingTimers[partnerEmail] = setTimeout(() => { el.classList.remove('active'); }, 3000);
     }
 }
 
 async function markAsRead(senderEmail) {
-    // Normalize for local state key
     const emailKey = !senderEmail.startsWith('book:') ? senderEmail.toLowerCase() : senderEmail;
 
-    // עדכון זמן קריאה אחרון למניעת קפיצת התראות חוזרת
     lastReadTimes[emailKey] = Date.now();
     localStorage.setItem('torahApp_lastReadTimes', JSON.stringify(lastReadTimes));
 
     try {
         await supabaseClient.from('chat_messages')
             .update({ is_read: true })
-            .ilike('sender_email', senderEmail) // Use ilike for case-insensitive match
+            .ilike('sender_email', senderEmail) 
             .ilike('receiver_email', getCurrentChatEmail())
             .eq('is_read', false);
 
@@ -1339,7 +1294,6 @@ async function markAsRead(senderEmail) {
     } catch (e) { console.error("Error marking as read:", e); }
 }
 
-// --- MENTION LOGIC ---
 let mentionQuery = null;
 let mentionTriggerIndex = -1;
 let activeMentionPopup = null;
@@ -1443,10 +1397,8 @@ async function populateMentions(chatId, query) {
     activeMentionPopup.innerHTML = '<div class="p-2 text-sm text-slate-500">טוען משתמשים...</div>';
     const bookName = chatId.replace('book:', '');
 
-    // Get users who are learning this book
     const potentialUsers = globalUsersData.filter(u => u.books && u.books.includes(bookName) && u.email !== currentUser.email);
 
-    // Get users who have posted in this chat from the DOM
     const chatContainer = document.getElementById(`msgs-${chatId}`);
     const postedUserEmails = new Set();
     if (chatContainer) {
@@ -1463,7 +1415,6 @@ async function populateMentions(chatId, query) {
         u.email.toLowerCase().includes(lowerQuery)
     );
 
-    // Prioritize users who have posted
     filteredUsers.sort((a, b) => {
         const aPosted = postedUserEmails.has(a.email);
         const bPosted = postedUserEmails.has(b.email);
@@ -1485,7 +1436,7 @@ async function populateMentions(chatId, query) {
                 <div class="mention-avatar">${initial}</div>
                 <div class="flex flex-col overflow-hidden">
                     <span class="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">${user.name}</span>
-                    <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${user.email}</span>
+                    <!-- <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${user.email}</span> -->
                 </div>
             </div>
         `}).join('');
@@ -1532,7 +1483,6 @@ function sendMentionNotification(mentionedEmail, chatId) {
 
 async function updateMessageLikeCount(messageId) {
     if (!messageId) return;
-    // שליפת ספירה עדכנית מהשרת
     const { count, error } = await supabaseClient
         .from('message_reactions')
         .select('*', { count: 'exact', head: true })
