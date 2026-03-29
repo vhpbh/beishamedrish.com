@@ -1,4 +1,5 @@
-async function loginWithGoogle() {
+window.loginWithGoogle = async function loginWithGoogle() {
+    console.log("Google login initiated...");
     try {
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
@@ -14,7 +15,7 @@ async function loginWithGoogle() {
     }
 }
 
-async function checkUserProfile(user) {
+window.checkUserProfile = async function checkUserProfile(user) {
     if (!user) return;
 
     try {
@@ -35,16 +36,16 @@ async function checkUserProfile(user) {
     }
 }
 
-async function handleCompleteProfile(e) {
+window.handleCompleteProfile = async function handleCompleteProfile(e) {
     e.preventDefault();
-    
+
     try {
         const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
         if (userError || !user) throw new Error("משתמש לא מזוהה. אנא התחבר שוב.");
 
         const profileData = {
             id: user.id,
-            full_name: document.getElementById('compFullName').value,
+            full_name: document.getElementById('compFullName').value.trim(),
             age: parseInt(document.getElementById('compAge').value),
             phone: document.getElementById('compPhone').value,
             address: document.getElementById('compAddress').value
@@ -56,11 +57,11 @@ async function handleCompleteProfile(e) {
 
         if (upsertError) throw upsertError;
 
-        await customAlert("הפרופיל עודכן בהצלחה! ברוך הבא לבית המדרש.");
+        showToast("הפרופיל עודכן בהצלחה!", "success");
         window.location.href = 'index.html';
     } catch (e) {
         console.error("Profile update error:", e.message);
-        await customAlert("שגיאה בעדכון הפרטים: " + e.message);
+        showToast("שגיאה בעדכון הפרטים: " + e.message, "error");
     }
 }
 

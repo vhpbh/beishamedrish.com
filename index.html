@@ -656,8 +656,10 @@
                     </button>
                 </div>
                 <div style="margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-                    <button type="button" onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-all shadow-sm hover:shadow-md">
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 18px; height: 18px;">
+                    <button type="button" onclick="loginWithGoogle()"
+                        class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-all shadow-sm hover:shadow-md">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
+                            style="width: 18px; height: 18px;">
                         <span>התחברות מהירה עם Google</span>
                     </button>
                 </div>
@@ -719,8 +721,10 @@
                     </button>
                 </div>
                 <div style="margin-top: 15px; border-top: 1px solid #475569; padding-top: 15px;">
-                    <button type="button" onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 18px; height: 18px;">
+                    <button type="button" onclick="loginWithGoogle()"
+                        class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
+                            style="width: 18px; height: 18px;">
                         <span>הרשמה מהירה עם Google</span>
                     </button>
                 </div>
@@ -1349,101 +1353,108 @@
         <div id="screen-shop" class="screen">
         </div>
         <div id="screen-profile" class="screen">
-            <div class="bg-white dark:bg-slate-800 rounded-xl-plus shadow-2xl p-8 md:p-12 overflow-hidden border border-slate-200 dark:border-slate-700 max-w-3xl mx-auto my-8 transition-all">
-                    <div class="flex items-center gap-3 mb-10 border-b border-gray-50 dark:border-slate-700 pb-6">
-                        <div class="bg-brand-navy/5 dark:bg-slate-700 p-3 rounded-2xl">
-                            <svg class="h-6 w-6 text-brand-navy dark:text-brand-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                                    stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-                            </svg>
-                        </div>
-                        <h2 class="text-2xl font-bold text-brand-navy dark:text-white">הגדרות פרופיל</h2>
+            <div
+                class="bg-white dark:bg-slate-800 rounded-xl-plus shadow-2xl p-8 md:p-12 overflow-hidden border border-slate-200 dark:border-slate-700 max-w-3xl mx-auto my-8 transition-all">
+                <div class="flex items-center gap-3 mb-10 border-b border-gray-50 dark:border-slate-700 pb-6">
+                    <div class="bg-brand-navy/5 dark:bg-slate-700 p-3 rounded-2xl">
+                        <svg class="h-6 w-6 text-brand-navy dark:text-brand-yellow" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                        </svg>
                     </div>
-                    <form class="space-y-8" onsubmit="event.preventDefault();">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="space-y-2">
-                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שם לתצוגה:</label>
-                                <input id="profileName"
-                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                    placeholder="שם לתצוגה" type="text" />
-                            </div>
-                            <div class="space-y-2">
-                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">מספר טלפון (יוצג רק לאחר
-                                    אישור
-                                    חברותא):</label>
-                                <input id="profilePhone"
-                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium text-left"
-                                    dir="ltr" type="tel" placeholder="050-0000000" />
-                            </div>
-                            <div class="space-y-2">
-                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">עיר מגורים:</label>
-                                <input id="profileCity"
-                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                    type="text" placeholder="עיר" list="cities-list" />
-                            </div>
-                            <div class="space-y-2">
-                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">גיל:</label>
-                                <input id="profileAge"
-                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                    type="number" placeholder="גיל" />
-                            </div>
-                            <div class="md:col-span-2 space-y-2">
-                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">כתובת מלאה
-                                    (אופציונלי):</label>
-                                <input id="profileAddress"
-                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                    placeholder="רחוב ומספר" type="text" />
-                            </div>
-                            <div
-                                class="md:col-span-2 flex items-center justify-between bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-                                <span class="text-sm font-bold text-brand-navy dark:text-slate-200">הישאר אנונימי בלוח:</span>
-                                <label class="switch">
-                                    <input type="checkbox" id="anonSwitch" />
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                        <div class="pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
-                            <div class="flex items-center gap-3 mb-6">
-                                <div class="bg-brand-navy/5 dark:bg-slate-700 p-2 rounded-xl">
-                                    <svg class="h-5 w-5 text-brand-navy dark:text-brand-yellow" fill="none" stroke="currentColor"
-                                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                                            stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-                                    </svg>
-                                </div>
-                                <h3 class="text-lg font-bold text-brand-navy dark:text-white">אבטחה וסיסמה</h3>
-                            </div>
-                            <div class="space-y-6">
-                                <div class="space-y-2">
-                                    <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שינוי סיסמה:</label>
-                                    <input id="profileNewPass"
-                                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                        placeholder="הזן סיסמה חדשה (השאר ריק אם אין שינוי)" type="password" />
-                                </div>
-                                <div class="space-y-4">
-                                    <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שאלת שחזור
-                                        סיסמה:</label>
-                                    <input id="profileSecQ"
-                                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium mb-3"
-                                        placeholder="השאלה שלך" type="text" />
-                                    <input id="profileSecA"
-                                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
-                                        placeholder="התשובה שלך" type="text" />
-                                </div>
-                            </div>
-                        </div>
-                        <div class="pt-8">
-                            <button
-                                class="w-full bg-brand-navy text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-opacity-90 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
-                                type="button" onclick="saveProfile()">
-                                שמור הגדרות
-                            </button>
-                        </div>
-                    </form>
+                    <h2 class="text-2xl font-bold text-brand-navy dark:text-white">הגדרות פרופיל</h2>
                 </div>
+                <form class="space-y-8" onsubmit="event.preventDefault();">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-2">
+                            <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שם
+                                לתצוגה:</label>
+                            <input id="profileName"
+                                class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                placeholder="שם לתצוגה" type="text" />
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">מספר טלפון
+                                (יוצג רק לאחר
+                                אישור
+                                חברותא):</label>
+                            <input id="profilePhone"
+                                class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium text-left"
+                                dir="ltr" type="tel" placeholder="050-0000000" />
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">עיר
+                                מגורים:</label>
+                            <input id="profileCity"
+                                class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                type="text" placeholder="עיר" list="cities-list" />
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">גיל:</label>
+                            <input id="profileAge"
+                                class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                type="number" placeholder="גיל" />
+                        </div>
+                        <div class="md:col-span-2 space-y-2">
+                            <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">כתובת מלאה
+                                (אופציונלי):</label>
+                            <input id="profileAddress"
+                                class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                placeholder="רחוב ומספר" type="text" />
+                        </div>
+                        <div
+                            class="md:col-span-2 flex items-center justify-between bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                            <span class="text-sm font-bold text-brand-navy dark:text-slate-200">הישאר אנונימי
+                                בלוח:</span>
+                            <label class="switch">
+                                <input type="checkbox" id="anonSwitch" />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="bg-brand-navy/5 dark:bg-slate-700 p-2 rounded-xl">
+                                <svg class="h-5 w-5 text-brand-navy dark:text-brand-yellow" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                        stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-bold text-brand-navy dark:text-white">אבטחה וסיסמה</h3>
+                        </div>
+                        <div class="space-y-6">
+                            <div class="space-y-2">
+                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שינוי
+                                    סיסמה:</label>
+                                <input id="profileNewPass"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                    placeholder="הזן סיסמה חדשה (השאר ריק אם אין שינוי)" type="password" />
+                            </div>
+                            <div class="space-y-4">
+                                <label class="block text-sm font-bold text-brand-navy dark:text-slate-200 mr-1">שאלת
+                                    שחזור
+                                    סיסמה:</label>
+                                <input id="profileSecQ"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium mb-3"
+                                    placeholder="השאלה שלך" type="text" />
+                                <input id="profileSecA"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 px-4 focus:ring-2 focus:ring-brand-yellow text-brand-navy dark:text-white font-medium"
+                                    placeholder="התשובה שלך" type="text" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-8">
+                        <button
+                            class="w-full bg-brand-navy text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-opacity-90 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                            type="button" onclick="saveProfile()">
+                            שמור הגדרות
+                        </button>
+                    </div>
+                </form>
+            </div>
 
             <div id="screen-admin" class="screen">
                 <div class="card admin-card" style="border-top: 4px solid #f59e0b;">

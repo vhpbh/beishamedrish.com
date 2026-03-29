@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>השלמת פרופיל | בית המדרש</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="api.js"></script>
+    <script src="auth.js"></script>
+    <script src="ui-logic.js"></script>
+</head>
+
+<body class="bg-slate-50 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-100">
+        <div class="text-center mb-8">
+            <img src="logo-remove.png" alt="Logo" class="h-16 mx-auto mb-4">
+            <h1 class="text-2xl font-bold text-slate-800">כמעט סיימנו!</h1>
+            <p class="text-slate-500">נא להשלים כמה פרטים כדי להמשיך לבית המדרש</p>
+        </div>
+
+        <form onsubmit="handleCompleteProfile(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-bold mb-1">שם מלא</label>
+                <input type="text" id="compFullName" class="auth-input w-full p-3 border rounded-xl" required>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-bold mb-1">גיל</label>
+                    <input type="number" id="compAge" class="auth-input w-full p-3 border rounded-xl" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1">טלפון</label>
+                    <input type="tel" id="compPhone" class="auth-input w-full p-3 border rounded-xl" required>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-bold mb-1">כתובת מגורים</label>
+                <input type="text" id="compAddress" class="auth-input w-full p-3 border rounded-xl" required>
+            </div>
+
+            <button type="submit"
+                class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg mt-4">
+                סיום והתחברות
+            </button>
+        </form>
+    </div>
+    <div id="toast-container" class="toast-container"></div>
+    <script>
+        window.onload = async () => {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (user && user.user_metadata && user.user_metadata.full_name) {
+                document.getElementById('compFullName').value = user.user_metadata.full_name;
+            }
+        };
+    </script>
+</body>
+
+</html>
