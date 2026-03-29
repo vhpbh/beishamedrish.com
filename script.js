@@ -53,7 +53,7 @@ async function init() {
                             last_seen: new Date().toISOString()
                         };
 
-                        const { data: createdUser, error: createError } = await supabaseClient.from('users').insert([newUserData]).select().single();
+                        const { data: createdUser, error: createError } = await supabaseClient.from('users').upsert([newUserData], { onConflict: 'id' }).select().single();
                         if (createError) {
                             console.error("Error creating user record from session metadata:", createError);
                             userRecord = { email: session.user.email, display_name: newUserData.display_name, is_anonymous: newUserData.is_anonymous };
@@ -65,6 +65,8 @@ async function init() {
                     if (userRecord) {
                         currentUser = mapUserFromDB(userRecord);
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+
+                        await checkUserProfile(session.user);
 
                         document.getElementById('auth-overlay').style.display = 'none';
                         document.body.style.overflow = '';

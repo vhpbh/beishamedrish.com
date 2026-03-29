@@ -1,3 +1,69 @@
+async function loginWithGoogle() {
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin + '/index.html'
+            }
+        });
+
+        if (error) throw error;
+    } catch (e) {
+        console.error("Google Login Error:", e.message);
+        showToast("שגיאה בהתחברות עם גוגל: " + e.message, "error");
+    }
+}
+
+async function checkUserProfile(user) {
+    if (!user) return;
+
+    try {
+        const { data: profile, error } = await supabaseClient
+            .from('profiles')
+            .select('full_name, age, phone, address')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!profile || !profile.age || !profile.phone || !profile.address) {
+            console.log("Redirecting to complete profile...");
+            window.location.href = 'complete-profile.html';
+        }
+    } catch (e) {
+        console.error("Error checking profile:", e.message);
+    }
+}
+
+async function handleCompleteProfile(e) {
+    e.preventDefault();
+    
+    try {
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("משתמש לא מזוהה. אנא התחבר שוב.");
+
+        const profileData = {
+            id: user.id,
+            full_name: document.getElementById('compFullName').value,
+            age: parseInt(document.getElementById('compAge').value),
+            phone: document.getElementById('compPhone').value,
+            address: document.getElementById('compAddress').value
+        };
+
+        const { error: upsertError } = await supabaseClient
+            .from('profiles')
+            .upsert(profileData);
+
+        if (upsertError) throw upsertError;
+
+        await customAlert("הפרופיל עודכן בהצלחה! ברוך הבא לבית המדרש.");
+        window.location.href = 'index.html';
+    } catch (e) {
+        console.error("Profile update error:", e.message);
+        await customAlert("שגיאה בעדכון הפרטים: " + e.message);
+    }
+}
+
 async function handleSignup(e) {
     e.preventDefault();
     const emailAvailabilityIndicator = document.getElementById('emailAvailabilityIndicator');
@@ -93,12 +159,12 @@ async function handleSignup(e) {
             return;
         }
 
-              
+
         if (data.user) {
             const { error: profileInsertError } = await supabaseClient
                 .from('users')
                 .upsert({
-                    id: data.user.id, 
+                    id: data.user.id,
                     email: email,
                     display_name: name,
                     phone: phone || null,
@@ -109,8 +175,7 @@ async function handleSignup(e) {
                     security_questions: securityQuestions,
                     marketing_consent: marketing,
                     last_seen: new Date().toISOString()
-                }, { onConflict: 'email' });
-
+                }, { onConflict: 'id' });
             if (profileInsertError) {
                 console.error("Error inserting profile data into public.users after signup:", profileInsertError);
             }
@@ -212,11 +277,12 @@ async function handleLogin(e) {
             try {
                 const { data: newUser, error: createError } = await supabaseClient
                     .from('users')
-                    .insert([{
+                    .upsert([{
+                        id: authData.user.id,
                         email: email,
                         display_name: (authData.user && authData.user.user_metadata && authData.user.user_metadata.display_name) ? authData.user.user_metadata.display_name : email.split('@')[0],
-                        last_seen: new Date()
-                    }])
+                        last_seen: new Date().toISOString()
+                    }], { onConflict: 'id' })
                     .select()
                     .single();
 
