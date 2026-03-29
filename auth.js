@@ -20,19 +20,21 @@ window.checkUserProfile = async function checkUserProfile(user) {
 
     try {
         const { data: profile, error } = await supabaseClient
-            .from('profiles')
-            .select('full_name, age, phone, address')
+            .from('users')
+            .select('display_name, age, phone, address')
             .eq('id', user.id)
             .maybeSingle();
 
         if (error) throw error;
 
-        if (!profile || !profile.age || !profile.phone || !profile.address) {
+        if (!profile || !profile.age || !profile.phone || !profile.address || !profile.display_name) {
             console.log("Redirecting to complete profile...");
             window.location.href = 'complete-profile.html';
+            return true;
         }
     } catch (e) {
         console.error("Error checking profile:", e.message);
+        return false;
     }
 }
 
@@ -45,15 +47,15 @@ window.handleCompleteProfile = async function handleCompleteProfile(e) {
 
         const profileData = {
             id: user.id,
-            full_name: document.getElementById('compFullName').value.trim(),
+            display_name: document.getElementById('compFullName').value.trim(),
             age: parseInt(document.getElementById('compAge').value),
             phone: document.getElementById('compPhone').value,
             address: document.getElementById('compAddress').value
         };
 
         const { error: upsertError } = await supabaseClient
-            .from('profiles')
-            .upsert(profileData);
+            .from('users')
+            .upsert(profileData, { onConflict: 'id' });
 
         if (upsertError) throw upsertError;
 

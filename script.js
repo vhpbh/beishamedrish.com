@@ -66,7 +66,8 @@ async function init() {
                         currentUser = mapUserFromDB(userRecord);
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
-                        await checkUserProfile(session.user);
+                        const isRedirecting = await checkUserProfile(session.user);
+                        if (isRedirecting) return;
 
                         document.getElementById('auth-overlay').style.display = 'none';
                         document.body.style.overflow = '';
