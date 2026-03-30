@@ -165,6 +165,7 @@ async function syncGlobalData() {
                     email: user.email,
                     learned: user.learned || 0,
                     masechtot: user.masechtot || "",
+                    books: user.masechtot ? user.masechtot.split(', ') : [],
                     isAnonymous: user.is_anonymous,
                     subscription: user.subscription || { amount: 0, level: 0 },
                     security_questions: user.security_questions || [],

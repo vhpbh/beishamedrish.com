@@ -645,11 +645,11 @@ async function showUserDetails(uid) {
         };
     } else {
         try {
-            const { data, error } = await supabaseClient
-                .from('public_profiles')
-                .select('*')
-                .eq('id', uid)
-                .single();
+            const query = uid.includes('@') ?
+                supabaseClient.from('public_profiles').select('*').eq('email', uid) :
+                supabaseClient.from('public_profiles').select('*').eq('id', uid);
+
+            const { data, error } = await query.maybeSingle();
 
             if (!error && data) {
                 user = {
