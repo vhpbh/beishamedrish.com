@@ -24,6 +24,11 @@ async function init() {
 
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
+            if (currentUser && (!currentUser.id || currentUser.id.includes('@'))) {
+                currentUser.id = session.user.id;
+                localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+            }
+
             if (!currentUser && !localStorage.getItem('torahApp_user')) {
                 try {
                     let { data: userRecord } = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
@@ -402,7 +407,7 @@ function renderLeaderboard() {
         const cityMatch = !cityFilter || (u.city && u.city.toLowerCase().includes(cityFilter));
         const bookMatch = !bookFilter || (u.books && u.books.some(b => b.toLowerCase().includes(bookFilter)));
         const score = currentLeaderboardSort === 'rating' ? (u.chat_rating || 0) : (u.learned || 0);
-        return cityMatch && bookMatch && score > 0;
+        return cityMatch && bookMatch;
     });
 
     let newHTML = '';

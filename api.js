@@ -90,10 +90,10 @@ async function syncGlobalData() {
             }
         }
 
-        if (currentUser && goals.length > 0) {
+        if (currentUser) {
             const localGoalsMap = new Map(userGoals.map(g => [g.id.toString(), g]));
 
-            goals.forEach(cloudG => {
+            (goals || []).forEach(cloudG => {
                 const cloudGoal = {
                     id: cloudG.id.toString(),
                     bookName: cloudG.book_name,
@@ -117,7 +117,7 @@ async function syncGlobalData() {
                 return a.status === 'active' ? -1 : 1;
             });
 
-            if (document.getElementById('screen-dashboard').classList.contains('active')) renderGoals();
+            renderGoals();
         }
 
         if (currentUser) {
@@ -154,14 +154,16 @@ async function syncGlobalData() {
         if (users) {
             globalUsersData = users.map(user => {
                 let booksArray = [];
-                if (Array.isArray(user.masechtot)) {
-                    booksArray = user.masechtot;
-                } else if (typeof user.masechtot === 'string' && user.masechtot.trim() !== '') {
-                    booksArray = user.masechtot.split(',').map(s => s.trim());
+                const rawMasechtot = user.masechtot || user.active_masechtot || "";
+                
+                if (Array.isArray(rawMasechtot)) {
+                    booksArray = rawMasechtot;
+                } else if (typeof rawMasechtot === 'string' && rawMasechtot.trim() !== '') {
+                    booksArray = rawMasechtot.split(',').map(s => s.trim());
                 }
 
-                const learnedScore = parseInt(user.learned) || 0;
-                const masechtotString = Array.isArray(user.masechtot) ? user.masechtot.join(', ') : (user.masechtot || "");
+                const learnedScore = parseInt(user.learned || user.total_learned) || 0;
+                const masechtotString = Array.isArray(rawMasechtot) ? rawMasechtot.join(', ') : rawMasechtot;
 
                 return {
                     id: user.id || user.email,
