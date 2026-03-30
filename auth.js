@@ -4,7 +4,10 @@ window.loginWithGoogle = async function loginWithGoogle() {
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.origin + '/index.html'
+                redirectTo: window.location.origin + '/index.html',
+                queryParams: {
+                    prompt: 'select_account'
+                }
             }
         });
 
@@ -83,10 +86,10 @@ async function handleSignup(e) {
     const marketing = document.getElementById('regMarketing').checked;
     const loginButton = document.getElementById('loginButton');
     const AUTH_JOKES = [
-        "רגע, רגע... המלאכים בודקים אם שמך רשום בספר החיים (של האתר). אנא התחבר.",
+        "רגע, רגע... המלאכים בודקים אם שמך רשום בספר החיים (של האתר). אנא הירשם.",
         "כדי לשמור את הלימוד שלך, צריך קודם לשמור אותך במערכת. בוא נרשם!",
-        "נראה שאתה לומד בעילום שם. כדי שנוכל לעקוב אחריך, אנא התחבר.",
-        "הפעולה שביקשת דורשת ייחוס. אנא התחבר כדי שנדע מי אתה.",
+        "נראה שאתה בעילום שם. בשביל שתוכל להתחיל ללמוד, אנא הירשם.",
+        "הפעולה שביקשת דורשת 'ייחוס'. אנא התחבר כדי שנדע מי אתה.",
         "עצור! רק רשומים יכולים לצבור זכויות. הירשם עכשיו!"
     ];
 
