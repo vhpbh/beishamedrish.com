@@ -1456,7 +1456,7 @@ async function completeGoal(goalId) {
             await supabaseClient
                 .from('user_goals')
                 .update({ status: 'completed' })
-                .eq('user_email', currentUser.email)
+                .eq('user_id', currentUser.id)
                 .eq('book_name', userGoals[goalIndex].bookName);
             syncGlobalData();
         }
@@ -1573,7 +1573,7 @@ async function updateProgress(goalId, change, btnElement = null) {
             await supabaseClient
                 .from('user_goals')
                 .update({ current_unit: goal.currentUnit })
-                .eq('user_email', currentUser.email)
+                .eq('user_id', currentUser.id)
                 .eq('book_name', goal.bookName);
         }
     } catch (e) {
