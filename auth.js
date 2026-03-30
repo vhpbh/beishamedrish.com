@@ -4,7 +4,7 @@ window.loginWithGoogle = async function loginWithGoogle() {
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.origin + '/index.html',
+                redirectTo: window.location.href.split('#')[0],
                 queryParams: {
                     prompt: 'select_account'
                 }
