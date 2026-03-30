@@ -976,11 +976,15 @@ async function saveProfile() {
     const isAnon = document.getElementById('anonSwitch').checked;
     const newPass = document.getElementById('profileNewPass').value;
     const secQ = document.getElementById('profileSecQ').value;
+    const secAInput = document.getElementById('profileSecA');
+    const secA = secAInput ? secAInput.value : '';
 
 
     if (!validateInput(name, 'name')) {
         return customAlert("השם שהוזן אינו תקין.");
     }
+
+    showToast("מעדכן פרטי חשבון...", "info");
 
 
     currentUser.displayName = name;
@@ -1045,13 +1049,14 @@ async function saveProfile() {
 
         if (error) {
             if (error.status === 500 || error.code === 'PGRST301') {
-                showToast("השמירה נכשלה: החשבון חסום לעדכונים או שבוצע ניסיון לעדכן שדות מוגנים.", "error");
+                await customAlert("השמירה נכשלה: החשבון חסום לעדכונים או שבוצע ניסיון לעדכן שדות מוגנים.");
             } else {
-                showToast(error.message || "שגיאה בשמירת הפרופיל", "error");
+                await customAlert("שגיאה בשמירת הפרופיל: " + (error.message || "שגיאה לא ידועה"));
             }
             throw error;
         }
-        showToast('הפרופיל עודכן בהצלחה!', "success");
+        await customAlert("הפרופיל עודכן בהצלחה!");
+        showToast("השינויים נשמרו", "success");
 
         syncGlobalData();
         switchScreen('dashboard', document.querySelector('.nav-item'));

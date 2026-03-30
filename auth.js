@@ -32,8 +32,7 @@ window.checkUserProfile = async function checkUserProfile(user) {
 
         if (!profile || !profile.age || !profile.phone || !profile.address || !profile.display_name) {
             console.log("Redirecting to complete profile...");
-            window.location.href = 'complete-profile.html';
-            return true;
+            return false;
         }
     } catch (e) {
         console.error("Error checking profile:", e.message);
@@ -62,11 +61,11 @@ window.handleCompleteProfile = async function handleCompleteProfile(e) {
 
         if (upsertError) throw upsertError;
 
-        showToast("הפרופיל עודכן בהצלחה!", "success");
+        await customAlert("הפרופיל עודכן בהצלחה!");
         window.location.href = 'index.html';
     } catch (e) {
         console.error("Profile update error:", e.message);
-        showToast("שגיאה בעדכון הפרטים: " + e.message, "error");
+        await customAlert("שגיאה בעדכון הפרטים: " + e.message);
     }
 }
 
