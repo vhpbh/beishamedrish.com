@@ -153,6 +153,16 @@ async function syncGlobalData() {
 
         if (users) {
             globalUsersData = users.map(user => {
+                let booksArray = [];
+                if (Array.isArray(user.masechtot)) {
+                    booksArray = user.masechtot;
+                } else if (typeof user.masechtot === 'string' && user.masechtot.trim() !== '') {
+                    booksArray = user.masechtot.split(',').map(s => s.trim());
+                }
+
+                const learnedScore = parseInt(user.learned) || 0;
+                const masechtotString = Array.isArray(user.masechtot) ? user.masechtot.join(', ') : (user.masechtot || "");
+
                 return {
                     id: user.id || user.email,
                     name: user.display_name || user.masked_name || "לומד",
@@ -163,9 +173,9 @@ async function syncGlobalData() {
                     address: user.address || "",
                     lastSeen: user.last_seen,
                     email: user.email,
-                    learned: user.learned || 0,
-                    masechtot: user.masechtot || "",
-                    books: user.masechtot ? user.masechtot.split(', ') : [],
+                    learned: learnedScore,
+                    masechtot: masechtotString,
+                    books: booksArray,
                     isAnonymous: user.is_anonymous,
                     subscription: user.subscription || { amount: 0, level: 0 },
                     security_questions: user.security_questions || [],
@@ -177,6 +187,16 @@ async function syncGlobalData() {
                     last_streak_date: user.last_streak_date,
                 };
             });
+
+            if (currentUser) {
+                const myCloudData = globalUsersData.find(u => u.email === currentUser.email);
+                if (myCloudData) {
+                    currentUser.reward_points = myCloudData.reward_points;
+                    currentUser.chat_rating = myCloudData.chat_rating;
+                    localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+                }
+            }
+
             hasChanges = true;
             document.querySelectorAll('.chat-window').forEach(win => {
                 const email = win.id.replace('chat-window-', '');

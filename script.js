@@ -652,11 +652,12 @@ async function showUserDetails(uid) {
             const { data, error } = await query.maybeSingle();
 
             if (!error && data) {
+                const booksArray = Array.isArray(data.masechtot) ? data.masechtot : (data.masechtot ? data.masechtot.split(',').map(s => s.trim()) : []);
                 user = {
                     ...data,
                     name: data.display_name || "לומד",
                     city: data.city || "לא צוין",
-                    books: data.masechtot ? data.masechtot.split(', ') : []
+                    books: booksArray
                 };
             } else {
                 user = globalUsersData.find(u => (u.id && u.id === uid) || (u.email && u.email.toLowerCase() === uid.toLowerCase()));
