@@ -55,10 +55,11 @@ async function syncGlobalData() {
         }
 
         let goals = [];
-        if (!window.knownMissingTables.has('user_goals')) {
+        if (currentUser && !window.knownMissingTables.has('user_goals')) {
             let { data, error: goalsError } = await supabaseClient
                 .from('user_goals')
-                .select('*');
+                .select('*')
+                .eq('user_id', currentUser.id);
 
             if (goalsError) {
                 if (goalsError.status === 404 || goalsError.code === 'PGRST205') {
@@ -90,41 +91,33 @@ async function syncGlobalData() {
         }
 
         if (currentUser && goals.length > 0) {
-            const others = goals.filter(g => g.user_email && g.user_email.toLowerCase() !== currentUser.email.toLowerCase());
-            if (others.length === 0 && users.length > 1) {
-                console.warn("⚠️ שים לב: לא התקבלו לימודים של משתמשים אחרים. כנראה שצריך להגדיר ב-Supabase מדיניות RLS שתאפשר SELECT לכולם (public) על הטבלה user_goals.");
-            }
+            const localGoalsMap = new Map(userGoals.map(g => [g.id.toString(), g]));
 
-            if (currentUser) {
-                const myCloudGoals = goals.filter(g => g.user_email === currentUser.email);
-                const localGoalsMap = new Map(userGoals.map(g => [g.id.toString(), g]));
+            goals.forEach(cloudG => {
+                const cloudGoal = {
+                    id: cloudG.id.toString(),
+                    bookName: cloudG.book_name,
+                    totalUnits: cloudG.total_units,
+                    currentUnit: cloudG.current_unit || 0,
+                    status: cloudG.status || 'active',
+                    targetDate: cloudG.target_date || '',
+                    dedication: cloudG.dedication || '',
+                    notes: cloudG.notes || [],
+                    startDate: cloudG.created_at
+                };
+                const localGoal = localGoalsMap.get(cloudGoal.id);
+                if (!localGoal || cloudGoal.currentUnit > localGoal.currentUnit) {
+                    localGoalsMap.set(cloudGoal.id, cloudGoal);
+                }
+            });
 
-                myCloudGoals.forEach(cloudG => {
-                    const cloudGoal = {
-                        id: cloudG.id.toString(),
-                        bookName: cloudG.book_name,
-                        totalUnits: cloudG.total_units,
-                        currentUnit: cloudG.current_unit || 0,
-                        status: cloudG.status || 'active',
-                        targetDate: cloudG.target_date || '',
-                        dedication: cloudG.dedication || '',
-                        notes: cloudG.notes || [],
-                        startDate: cloudG.created_at
-                    };
-                    const localGoal = localGoalsMap.get(cloudGoal.id);
-                    if (!localGoal || cloudGoal.currentUnit > localGoal.currentUnit) {
-                        localGoalsMap.set(cloudGoal.id, cloudGoal);
-                    }
-                });
+            userGoals = Array.from(localGoalsMap.values());
+            userGoals.sort((a, b) => {
+                if (a.status === b.status) return new Date(b.startDate) - new Date(a.startDate);
+                return a.status === 'active' ? -1 : 1;
+            });
 
-                userGoals = Array.from(localGoalsMap.values());
-                userGoals.sort((a, b) => {
-                    if (a.status === b.status) return new Date(b.startDate) - new Date(a.startDate);
-                    return a.status === 'active' ? -1 : 1;
-                });
-
-                if (document.getElementById('screen-dashboard').classList.contains('active')) renderGoals();
-            }
+            if (document.getElementById('screen-dashboard').classList.contains('active')) renderGoals();
         }
 
         if (currentUser) {
@@ -158,18 +151,8 @@ async function syncGlobalData() {
             }
         }
 
-        if (users && goals) {
+        if (users) {
             globalUsersData = users.map(user => {
-                const uEmail = (user.email || "").trim().toLowerCase();
-                const userPersonalGoals = goals.filter(g => (g.user_email || "").trim().toLowerCase() === uEmail && (g.status === 'active' || !g.status));
-                const userCompletedGoals = goals.filter(g => (g.user_email || "").trim().toLowerCase() === uEmail && g.status === 'completed');
-
-                const pagesLearned = goals
-                    .filter(g => (g.user_email || "").trim().toLowerCase() === uEmail)
-                    .reduce((sum, g) => sum + (g.current_unit || 0), 0);
-
-                const totalScore = pagesLearned + (user.reward_points || 0);
-
                 return {
                     id: user.id || user.email,
                     name: user.display_name || user.masked_name || "לומד",
@@ -180,7 +163,7 @@ async function syncGlobalData() {
                     address: user.address || "",
                     lastSeen: user.last_seen,
                     email: user.email,
-                    learned: totalScore,
+                    learned: user.learned || 0,
                     masechtot: user.masechtot || "",
                     isAnonymous: user.is_anonymous,
                     subscription: user.subscription || { amount: 0, level: 0 },

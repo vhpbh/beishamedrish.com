@@ -1007,14 +1007,11 @@ async function saveProfile() {
         globalUsersData[myUserIndex].isAnonymous = isAnon;
     }
 
-    const masechtot = userGoals.filter(g => g.status === 'active').map(g => g.bookName).join(', ');
-
     const updateData = {
         display_name: name,
         city: city,
         is_anonymous: isAnon,
         phone: phone,
-        masechtot: masechtot,
         age: age ? parseInt(age) : null,
         address: address
     };
@@ -1257,10 +1254,10 @@ function renderGoalCard(goal, container, isActive) {
                 </button>
             </div>
             <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
-                <button class="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-slate-600 dark:text-slate-300" onclick="updateProgress(${goal.id}, -1)">
+                <button class="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-slate-600 dark:text-slate-300" onclick="updateProgress('${goal.id}', -1, this)">
                     <i class="fas fa-minus"></i>
                 </button>
-                <button class="w-10 h-10 rounded-xl bg-amber-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" onclick="updateProgress(${goal.id}, 1)">
+                <button class="w-10 h-10 rounded-xl bg-amber-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" onclick="updateProgress('${goal.id}', 1, this)">
                     <i class="fas fa-plus"></i>
                 </button>
             </div>

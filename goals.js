@@ -100,10 +100,10 @@ function renderGoals() {
                                </button>`}
                     </div>
                     <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
-                        <button class="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-slate-600 dark:text-slate-300" onclick="updateProgress(${goal.id}, -1, this)">
+                        <button class="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-slate-600 dark:text-slate-300" onclick="updateProgress('${goal.id}', -1, this)">
                             <i class="fas fa-minus"></i>
                         </button>
-                        <button class="w-10 h-10 rounded-xl bg-amber-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" onclick="updateProgress(${goal.id}, 1, this)">
+                        <button class="w-10 h-10 rounded-xl bg-amber-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" onclick="updateProgress('${goal.id}', 1, this)">
                             <i class="fas fa-plus"></i>
                         </button>
                     </div>
@@ -201,7 +201,7 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
     if (!requireAuth()) return;
 
     const newGoal = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         bookName: name,
         totalUnits: total,
         currentUnit: 0,
@@ -232,8 +232,12 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
+            const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+            if (!authUser) throw new Error("משתמש לא מחובר");
+
             const { data, error } = await supabaseClient.from('user_goals').insert([{
-                user_email: currentUser.email,
+                user_id: authUser.id,
+                user_email: authUser.email,
                 book_name: name,
                 total_units: total,
                 current_unit: 0,
@@ -369,7 +373,7 @@ async function addNewGoal() {
 
 
     const newGoal = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         bookName: bookName,
         totalUnits: totalUnits,
         currentUnit: 0,
@@ -404,8 +408,12 @@ async function addNewGoal() {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && currentUser.email) {
+            const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+            if (!authUser) throw new Error("משתמש לא מחובר");
+
             const { data, error } = await supabaseClient.from('user_goals').insert([{
-                user_email: currentUser.email,
+                user_id: authUser.id,
+                user_email: authUser.email,
                 book_name: bookName,
                 total_units: totalUnits,
                 current_unit: 0,
@@ -413,7 +421,7 @@ async function addNewGoal() {
                 target_date: targetDate || null,
                 dedication: newGoal.dedication
             }]).select();
-            
+
             if (error) throw error;
             if (data && data[0]) {
                 const realId = data[0].id.toString();
@@ -448,7 +456,7 @@ async function loadGoals() {
         const { data: cloudGoals, error } = await supabaseClient
             .from('user_goals')
             .select('*')
-            .eq('user_email', currentUser.email);
+            .eq('user_id', currentUser.id);
 
 
 
@@ -485,7 +493,7 @@ async function deleteGoal(goalId) {
             await supabaseClient
                 .from('user_goals')
                 .delete()
-                .eq('user_email', currentUser.email)
+                .eq('user_id', currentUser.id)
                 .eq('book_name', goalToDelete.bookName);
 
 
@@ -572,9 +580,9 @@ async function selectBookFromSearch(bookName) {
         const scopeSelect = document.getElementById('bookScopeSelect');
         if (scopeSelect) scopeSelect.disabled = false;
 
-        handleScopeChange(); 
+        handleScopeChange();
 
-        let estimatedUnits = 50; 
+        let estimatedUnits = 50;
         if (data.schema && data.schema.sectionNames) {
             const found = BOOKS_DB.find(b => b.name === bookName);
             if (found) estimatedUnits = found.units;
@@ -584,7 +592,7 @@ async function selectBookFromSearch(bookName) {
 
     } catch (e) {
         console.error("Error fetching book structure", e);
-        document.getElementById('calculatedUnits').value = 100; 
+        document.getElementById('calculatedUnits').value = 100;
     }
 }
 
@@ -656,7 +664,7 @@ window.updateGoalNotes = async function (goalId, newNotes) {
 };
 
 async function updateRankProgressBar(score) {
-    return; 
+    return;
     let currentRank = getRankName(score);
 
     if (notificationsEnabled && currentUser && previousRank && currentRank !== previousRank) {
