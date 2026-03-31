@@ -24,12 +24,12 @@ async function init() {
 
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
-            if (currentUser && (!currentUser.id || currentUser.id.includes('@'))) {
+            if (currentUser) {
                 currentUser.id = session.user.id;
                 localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
             }
 
-            if (!currentUser && !localStorage.getItem('torahApp_user')) {
+            if (!currentUser) {
                 try {
                     let { data: userRecord } = await supabaseClient.from('users').select('*').eq('email', session.user.email).maybeSingle();
 

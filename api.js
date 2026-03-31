@@ -55,11 +55,17 @@ async function syncGlobalData() {
         }
 
         let goals = [];
-        if (currentUser && !window.knownMissingTables.has('user_goals')) {
-            let { data, error: goalsError } = await supabaseClient
-                .from('user_goals')
-                .select('*')
-                .eq('user_id', currentUser.id);
+        if (currentUser && currentUser.email && !window.knownMissingTables.has('user_goals')) {
+            const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
+            
+            let query = supabaseClient.from('user_goals').select('*');
+            if (userIdForQuery) {
+                query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+            } else {
+                query = query.eq('user_email', currentUser.email);
+            }
+
+            let { data, error: goalsError } = await query;
 
             if (goalsError) {
                 if (goalsError.status === 404 || goalsError.code === 'PGRST205') {

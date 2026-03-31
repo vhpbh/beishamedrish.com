@@ -452,11 +452,18 @@ async function loadGoals() {
     }
 
     try {
+        if (!currentUser || !currentUser.email) return;
 
-        const { data: cloudGoals, error } = await supabaseClient
-            .from('user_goals')
-            .select('*')
-            .eq('user_id', currentUser.id);
+        const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
+        let query = supabaseClient.from('user_goals').select('*');
+        
+        if (userIdForQuery) {
+            query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+        } else {
+            query = query.eq('user_email', currentUser.email);
+        }
+
+        const { data: cloudGoals, error } = await query;
 
 
 
