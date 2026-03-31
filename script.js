@@ -1462,8 +1462,7 @@ async function completeGoal(goalId) {
             await supabaseClient
                 .from('user_goals')
                 .update({ status: 'completed' })
-                .eq('user_id', currentUser.id)
-                .eq('book_name', userGoals[goalIndex].bookName);
+                .eq('id', goalId);
             syncGlobalData();
         }
     } catch (e) {
@@ -1579,8 +1578,7 @@ async function updateProgress(goalId, change, btnElement = null) {
             await supabaseClient
                 .from('user_goals')
                 .update({ current_unit: goal.currentUnit })
-                .eq('user_id', currentUser.id)
-                .eq('book_name', goal.bookName);
+                .eq('id', goal.id);
         }
     } catch (e) {
         console.log("שגיאת סנכרון (אבל נשמר מקומית):", e);

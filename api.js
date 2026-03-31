@@ -97,7 +97,8 @@ async function syncGlobalData() {
         }
 
         if (currentUser) {
-            const localGoalsMap = new Map(userGoals.map(g => [g.id.toString(), g]));
+            const consolidatedGoalsMap = new Map();
+            userGoals.forEach(g => consolidatedGoalsMap.set(g.bookName, g));
 
             (goals || []).forEach(cloudG => {
                 const cloudGoal = {
@@ -111,13 +112,13 @@ async function syncGlobalData() {
                     notes: cloudG.notes || [],
                     startDate: cloudG.created_at
                 };
-                const localGoal = localGoalsMap.get(cloudGoal.id);
-                if (!localGoal || cloudGoal.currentUnit > localGoal.currentUnit) {
-                    localGoalsMap.set(cloudGoal.id, cloudGoal);
+                const existing = consolidatedGoalsMap.get(cloudGoal.bookName);
+                if (!existing || cloudGoal.currentUnit > (existing.currentUnit || 0) || (existing.id && existing.id.length > 20)) {
+                    consolidatedGoalsMap.set(cloudGoal.bookName, cloudGoal);
                 }
             });
 
-            userGoals = Array.from(localGoalsMap.values());
+            userGoals = Array.from(consolidatedGoalsMap.values());
             userGoals.sort((a, b) => {
                 if (a.status === b.status) return new Date(b.startDate) - new Date(a.startDate);
                 return a.status === 'active' ? -1 : 1;

@@ -497,12 +497,16 @@ async function deleteGoal(goalId) {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && goalToDelete) {
-            await supabaseClient
-                .from('user_goals')
-                .delete()
-                .eq('user_id', currentUser.id)
-                .eq('book_name', goalToDelete.bookName);
+            const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
+            let query = supabaseClient.from('user_goals').delete().eq('book_name', goalToDelete.bookName);
 
+            if (userIdForQuery) {
+                query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+            } else {
+                query = query.eq('user_email', currentUser.email);
+            }
+
+            await query;
 
             await supabaseClient.from('chavruta_requests')
                 .delete()
