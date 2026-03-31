@@ -497,16 +497,25 @@ async function deleteGoal(goalId) {
 
     try {
         if (typeof supabaseClient !== 'undefined' && currentUser && goalToDelete) {
-            const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
+            if (goalToDelete.id && !goalToDelete.id.toString().includes('-')) {
+                await supabaseClient.from('user_goals').delete().eq('id', goalToDelete.id);
+            }
+
+            const userIdForQuery = (currentUser.id && !currentUser.id.toString().includes('@')) ? currentUser.id : null;
+            
             let query = supabaseClient.from('user_goals').delete().eq('book_name', goalToDelete.bookName);
 
             if (userIdForQuery) {
-                query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+                query = query.or(`user_id.eq.${userIdForQuery},user_email.eq.${currentUser.email}`);
             } else {
                 query = query.eq('user_email', currentUser.email);
             }
 
-            await query;
+            const { error: delError } = await query;
+            if (delError) {
+                console.error("שגיאת מחיקה מהענן:", delError);
+                showToast("המחיקה בענן נכשלה. ייתכן שהמסכת תחזור ברענון.", "error");
+            }
 
             await supabaseClient.from('chavruta_requests')
                 .delete()
