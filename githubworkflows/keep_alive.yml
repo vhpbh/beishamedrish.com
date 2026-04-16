@@ -1,0 +1,17 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # מריץ את הסקריפט כל 3 ימים בחצות
+    - cron: '0 0 */3 * *'
+  workflow_dispatch: # מאפשר להריץ ידנית לבדיקה
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase API
+        run: |
+          curl -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/your_table_name?select=*" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
