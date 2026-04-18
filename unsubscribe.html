@@ -54,6 +54,30 @@
             margin-bottom: 1rem;
         }
 
+        .btn-unsubscribe {
+            background-color: var(--error);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-unsubscribe:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-unsubscribe:active {
+            transform: translateY(0);
+        }
+
         .loader {
             border: 4px solid #f3f3f3;
             border-top: 4px solid var(--primary);
@@ -84,23 +108,56 @@
     </div>
 
     <script>
-        // הגדרות Supabase התואמות ל-api.js
         const SUPABASE_URL = 'https://dsaxhbmyvjtdmcbxnnlj.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15vjtdmcbxnnljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15dmp0ZG1jYnhubmxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        async function handleUnsubscribe() {
+        async function checkSubscriptionStatus() {
             const urlParams = new URLSearchParams(window.location.search);
             const email = urlParams.get('email');
             const card = document.getElementById('status-card');
 
             if (!email) {
-                card.innerHTML = `<div class="status-icon">⚠️</div><h1>כתובת לא תקינה</h1><p>לא נמצאה כתובת אימייל בקישור. נא לוודא שהעתקת את הקישור המלא מהמייל שקיבלת.</p>`;
+                card.innerHTML = `<div class="status-icon">⚠️</div><h1>כתובת לא תקינה</h1><p>לא נמצאה כתובת אימייל בקישור. נא לוודא שהעתקת את הקישור המלא מהמייל.</p>`;
                 return;
             }
 
             try {
-                // עדכון עמודת marketing_consent ל-false עבור האימייל הספציפי
+                const { data: user, error } = await supabaseClient
+                    .from('users')
+                    .select('marketing_consent')
+                    .eq('email', email.toLowerCase())
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                if (!user) {
+                    card.innerHTML = `<div class="status-icon">❓</div><h1>משתמש לא נמצא</h1><p>כתובת האימייל <strong>${email}</strong> אינה רשומה במערכת שלנו.</p>`;
+                    return;
+                }
+
+                if (user.marketing_consent === false) {
+                    card.innerHTML = `<div class="status-icon" style="color:var(--success)">✅</div><h1>כבר הוסרת</h1><p>כתובת האימייל <strong>${email}</strong> כבר הוסרה מרשימת התפוצה בעבר.</p><a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold; display:block; margin-top:1.5rem;">חזרה לאתר</a>`;
+                    return;
+                }
+
+                card.innerHTML = `
+                    <div class="status-icon">📩</div>
+                    <h1>הסרה מרשימת תפוצה</h1>
+                    <p>האם אתה בטוח שברצונך להפסיק לקבל עדכונים לכתובת <strong>${email}</strong>?</p>
+                    <button onclick="handleUnsubscribe('${email}')" class="btn-unsubscribe">כן, הסר אותי</button>
+                    <p style="margin-top:1.5rem;"><a href="index.html" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">לא, התחרטתי</a></p>
+                `;
+            } catch (err) {
+                console.error('Check status error:', err);
+                card.innerHTML = `<div class="status-icon" style="color:var(--error)">❌</div><h1>שגיאה בבדיקה</h1><p>אירעה תקלה בעת בדיקת הסטטוס. נא לוודא שאתה מחובר לאינטרנט.</p>`;
+            }
+        }
+
+        async function handleUnsubscribe(email) {
+            const card = document.getElementById('status-card');
+            card.innerHTML = `<div class="loader"></div><h1>מעדכן העדפות...</h1>`;
+            try {
                 const { error } = await supabaseClient
                     .from('users')
                     .update({ marketing_consent: false })
@@ -108,14 +165,14 @@
 
                 if (error) throw error;
 
-                card.innerHTML = `<div class="status-icon" style="color:var(--success)">✅</div><h1>הוסרת בהצלחה</h1><p>כתובת האימייל <strong>${email}</strong> הוסרה מרשימת התפוצה. לא תקבל מאיתנו הודעות שיווקיות נוספות.</p>`;
+                card.innerHTML = `<div class="status-icon" style="color:var(--success)">✅</div><h1>הוסרת בהצלחה</h1><p>כתובת האימייל <strong>${email}</strong> הוסרה מרשימת התפוצה. לא תקבל מאיתנו הודעות שיווקיות נוספות.</p><a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold; display:block; margin-top:1.5rem;">חזרה לאתר</a>`;
             } catch (err) {
                 console.error('Unsubscribe error:', err);
                 card.innerHTML = `<div class="status-icon" style="color:var(--error)">❌</div><h1>שגיאה בעדכון</h1><p>אירעה תקלה בעת ניסיון ההסרה. ניתן לפנות לתמיכה או לנסות שוב מאוחר יותר.</p>`;
             }
         }
 
-        window.onload = handleUnsubscribe;
+        window.onload = checkSubscriptionStatus;
     </script>
 </body>
 
