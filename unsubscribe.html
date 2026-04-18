@@ -78,6 +78,16 @@
             transform: translateY(0);
         }
 
+        .email-input {
+            width: 100%;
+            padding: 0.8rem;
+            margin-top: 1rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
         .loader {
             border: 4px solid #f3f3f3;
             border-top: 4px solid var(--primary);
@@ -102,9 +112,13 @@
 
 <body>
     <div class="card" id="status-card">
-        <div class="loader"></div>
-        <h1>מעבד את בקשתך...</h1>
-        <p>אנא המתן רגע בזמן שאנו מעדכנים את העדפות הדיוור שלך.</p>
+        <div class="status-icon">📩</div>
+        <h1>הסרה מרשימת תפוצה</h1>
+        <p>הזן את כתובת האימייל שלך כדי להפסיק לקבל עדכונים:</p>
+        <input type="email" id="email-input" class="email-input" placeholder="email@example.com">
+        <button onclick="handleManualUnsubscribe()" class="btn-unsubscribe">הסר אותי מהרשימה</button>
+        <p style="margin-top:1.5rem;"><a href="index.html"
+                style="color:var(--muted); text-decoration:none; font-size:0.9rem;">חזרה לאתר</a></p>
     </div>
 
     <script>
@@ -112,15 +126,24 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15dmp0ZG1jYnhubmxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        async function checkSubscriptionStatus() {
+        function initPage() {
             const urlParams = new URLSearchParams(window.location.search);
             const email = urlParams.get('email');
+            if (email) {
+                document.getElementById('email-input').value = email;
+            }
+        }
+
+        async function handleManualUnsubscribe() {
+            const email = document.getElementById('email-input').value.trim();
             const card = document.getElementById('status-card');
 
-            if (!email) {
-                card.innerHTML = `<div class="status-icon">⚠️</div><h1>כתובת לא תקינה</h1><p>לא נמצאה כתובת אימייל בקישור. נא לוודא שהעתקת את הקישור המלא מהמייל.</p>`;
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                alert('נא להזין כתובת אימייל תקינה.');
                 return;
             }
+
+            card.innerHTML = `<div class="loader"></div><h1>בודק נתונים...</h1>`;
 
             try {
                 const { data: user, error } = await supabaseClient
@@ -132,7 +155,7 @@
                 if (error) throw error;
 
                 if (!user) {
-                    card.innerHTML = `<div class="status-icon">❓</div><h1>משתמש לא נמצא</h1><p>כתובת האימייל <strong>${email}</strong> אינה רשומה במערכת שלנו.</p>`;
+                    card.innerHTML = `<div class="status-icon">❓</div><h1>משתמש לא נמצא</h1><p>כתובת האימייל <strong>${email}</strong> אינה רשומה במערכת שלנו.</p><button onclick="location.reload()" class="btn-unsubscribe" style="background-color:var(--primary)">נסה שוב</button>`;
                     return;
                 }
 
@@ -141,13 +164,7 @@
                     return;
                 }
 
-                card.innerHTML = `
-                    <div class="status-icon">📩</div>
-                    <h1>הסרה מרשימת תפוצה</h1>
-                    <p>האם אתה בטוח שברצונך להפסיק לקבל עדכונים לכתובת <strong>${email}</strong>?</p>
-                    <button onclick="handleUnsubscribe('${email}')" class="btn-unsubscribe">כן, הסר אותי</button>
-                    <p style="margin-top:1.5rem;"><a href="index.html" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">לא, התחרטתי</a></p>
-                `;
+                await handleUnsubscribe(email);
             } catch (err) {
                 console.error('Check status error:', err);
                 card.innerHTML = `<div class="status-icon" style="color:var(--error)">❌</div><h1>שגיאה בבדיקה</h1><p>אירעה תקלה בעת בדיקת הסטטוס. נא לוודא שאתה מחובר לאינטרנט.</p>`;
@@ -172,7 +189,7 @@
             }
         }
 
-        window.onload = checkSubscriptionStatus;
+        window.onload = initPage;
     </script>
 </body>
 
