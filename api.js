@@ -46,7 +46,7 @@ async function syncGlobalData() {
         const banner = document.getElementById('admin-maint-banner');
         if (banner) banner.remove();
 
-        const { data: users, error: usersError } = await supabaseClient.from('public_profiles').select('*');
+        const { data: users, error: usersError } = await supabaseClient.from('users').select('*');
 
         if (usersError) {
             console.error("Supabase Users Error:", usersError);

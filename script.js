@@ -525,7 +525,7 @@ async function findChavruta(bookName) {
 
         if (error || !remoteUsers) {
             const { data, error: directError } = await supabaseClient
-                .from('public_profiles')
+                    .from('users')
                 .select('id, display_name, city, masechtot, chat_rating, learned, subscription, last_seen, is_anonymous, email');
             remoteUsers = data;
             error = directError;
@@ -651,8 +651,8 @@ async function showUserDetails(uid) {
     } else {
         try {
             const query = uid.includes('@') ?
-                supabaseClient.from('public_profiles').select('*').eq('email', uid) :
-                supabaseClient.from('public_profiles').select('*').eq('id', uid);
+                supabaseClient.from('users').select('*').eq('email', uid) :
+                supabaseClient.from('users').select('*').eq('id', uid);
 
             const { data, error } = await query.maybeSingle();
 
@@ -738,13 +738,15 @@ async function showUserDetails(uid) {
         </div>`;
 
 
-    const hasEmail = user.email && approvedPartners.has(user.email);
+    const userEmail = (user.email || globalUsersData.find(u => u.id === user.id || u.id === uid || u.email === uid)?.email || '').toString();
+    const hasEmail = userEmail && approvedPartners.has(userEmail);
+
     if (uid !== 'me' && !hasEmail) {
         const bookParam = currentSearchBook ? `'${currentSearchBook}'` : 'null';
         contactHtml += `
             <div class="mt-4">
                 <button class="w-full py-2 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm flex items-center justify-center gap-2" 
-                    onclick="checkAndSendRequest('${user.email}', ${bookParam} || prompt('לאיזה ספר תרצה להציע חברותא?'))">
+                    onclick="if('${userEmail}') { checkAndSendRequest('${userEmail}', ${bookParam} || prompt('לאיזה ספר תרצה להציע חברותא?')) } else { alert('שגיאה: לא נמצאה כתובת אימייל עבור משתמש זה.'); }">
                     <i class="fas fa-paper-plane"></i> שלח בקשת חברותא
                 </button>
             </div>
@@ -782,7 +784,7 @@ async function showUserDetails(uid) {
                     statusHtml = `<span class="text-xs text-orange-500">(בקשה נשלחה)</span>`;
                 } else {
                     statusHtml = `
-                     <button class="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-md flex items-center gap-1 hover:bg-blue-100" onclick="checkAndSendRequest('${user.email}', '${b}', this)">
+                     <button class="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-md flex items-center gap-1 hover:bg-blue-100" onclick="checkAndSendRequest('${userEmail}', '${b}', this)">
                         <i class="fas fa-paper-plane" style="font-size: 0.65rem;"></i> שלח בקשה
                      </button>`;
                 }
@@ -1857,6 +1859,8 @@ function renderChavrutaResultsPage() {
 
     filtered.forEach(user => {
         const badge = getUserBadgeHtml(user);
+        const userEmail = user.email || (globalUsersData.find(u => u.id === user.id)?.email) || '';
+
         const matchPercent = Math.min(100, Math.round((user.matchScore / 300) * 100));
         const dashOffset = 213.6 - (213.6 * matchPercent) / 100;
 
@@ -1887,7 +1891,7 @@ function renderChavrutaResultsPage() {
                     מחפש חברותא ללימוד משותף.
                 </p>
                 <div class="flex items-center gap-4 pt-2">
-                    <button class="bg-amber-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm shadow-amber-500/20" onclick="sendChavrutaRequest('${user.email}', '${currentSearchBook}')">שלח בקשת חברותא</button>
+                    <button class="bg-amber-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-sm shadow-amber-500/20" onclick="if('${userEmail}') { sendChavrutaRequest('${userEmail}', '${currentSearchBook}') } else { alert('שגיאה: לא נמצאה כתובת אימייל עבור משתמש זה.'); }">שלח בקשת חברותא</button>
                 </div>
             </div>
             <div class="flex-shrink-0 flex flex-col items-center justify-center px-4 border-r border-slate-100 dark:border-slate-700">

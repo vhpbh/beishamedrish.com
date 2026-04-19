@@ -8,6 +8,11 @@ async function sendChavrutaRequest(receiverEmail, bookName) {
         return false;
     }
 
+    if (!receiverEmail || receiverEmail === 'undefined') {
+        console.error("Missing receiver email:", { receiverEmail, bookName });
+        return false;
+    }
+
     try {
         console.log("שולח בקשה:", { receiverEmail, bookName });
         const { error } = await supabaseClient
