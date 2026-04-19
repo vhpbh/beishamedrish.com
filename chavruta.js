@@ -41,7 +41,7 @@ async function respondToRequest(reqId, action) {
     try {
         const { error } = await supabaseClient
             .from('chavruta_requests')
-            .update({ status: action }) 
+            .update({ status: action })
             .eq('id', reqId);
 
         if (error) throw error;

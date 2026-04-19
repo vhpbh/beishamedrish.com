@@ -57,7 +57,7 @@ async function syncGlobalData() {
         let goals = [];
         if (currentUser && currentUser.email && !window.knownMissingTables.has('user_goals')) {
             const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
-            
+
             let query = supabaseClient.from('user_goals').select('*');
             if (userIdForQuery) {
                 query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
@@ -162,7 +162,7 @@ async function syncGlobalData() {
             globalUsersData = users.map(user => {
                 let booksArray = [];
                 const rawMasechtot = user.masechtot || user.active_masechtot || "";
-                
+
                 if (Array.isArray(rawMasechtot)) {
                     booksArray = rawMasechtot;
                 } else if (typeof rawMasechtot === 'string' && rawMasechtot.trim() !== '') {
@@ -249,6 +249,34 @@ async function syncGlobalData() {
         }
     }
     checkIncomingRequests()
+}
+
+
+async function updateUserPoints(newPoints) {
+    try {
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+
+        if (authError || !user) {
+            throw new Error("Authentication session not found.");
+        }
+
+        const { data, error: updateError } = await supabaseClient
+            .from('users')
+            .update({ reward_points: newPoints })
+            .eq('email', user.email)
+            .select();
+
+        if (updateError) throw updateError;
+
+        if (!data || data.length === 0) {
+            throw new Error("Update failed: No rows modified. Verify RLS policies.");
+        }
+
+        return "Points updated successfully!";
+    } catch (error) {
+        console.error("Error in updateUserPoints:", error.message);
+        return `Update failed: ${error.message}`;
+    }
 }
 
 async function syncUnreadMessages() {

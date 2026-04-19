@@ -269,7 +269,6 @@ async function updateDailyStreak() {
 
             if (needsUpdate) {
                 if (pointsToAdd > 0) {
-                    await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
                     const { error: rpcError } = await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAdd, user_email: currentUser.email });
 
                     if (!rpcError) {
@@ -377,6 +376,10 @@ function renderLeaderboard() {
     const listContainer = document.getElementById('leaderboardList');
     const meContainer = document.getElementById('leaderboardMeContainer');
     if (!listContainer || !meContainer) return;
+
+    listContainer.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-main); font-weight:bold; background:var(--card-bg); border-radius:15px; margin-top:20px; border: 1px solid var(--border-color);">ישנה בעיה זמנית במערכת הניקוד, ולכן לוח המובילים אינו מוצג כרגע. אנו פועלים לתיקון הבעיה בהקדם.</div>';
+    meContainer.innerHTML = '';
+    return;
 
     const cityFilter = document.getElementById('leaderboardCityFilter') ? document.getElementById('leaderboardCityFilter').value.toLowerCase() : '';
     const bookFilter = document.getElementById('leaderboardBookFilter') ? document.getElementById('leaderboardBookFilter').value.toLowerCase() : '';
@@ -525,7 +528,7 @@ async function findChavruta(bookName) {
 
         if (error || !remoteUsers) {
             const { data, error: directError } = await supabaseClient
-                    .from('users')
+                .from('users')
                 .select('id, display_name, city, masechtot, chat_rating, learned, subscription, last_seen, is_anonymous, email');
             remoteUsers = data;
             error = directError;
