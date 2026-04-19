@@ -3,6 +3,9 @@ function setupInterfaceChanges() {
     if (headerTitle) {
         headerTitle.style.cursor = 'pointer';
         headerTitle.onclick = () => switchScreen('dashboard', document.querySelector('.floating-nav-item'));
+        if (!headerTitle.querySelector('.logo-wrapper')) {
+            headerTitle.innerHTML = '<div class="logo-wrapper"><i class="fas fa-book-open"></i><span>בית המדרש</span></div>';
+        }
     }
 
     if (!document.getElementById('screen-ads')) {
@@ -115,6 +118,27 @@ function setupInterfaceChanges() {
             .result-item, .search-tag, .inbox-item, .profile-menu-item, .chat-list-item, .lb-card, .siyum-card, .tier-card, .amount-chip, .user-select-item {
                 cursor: pointer;
             }
+
+            /* עיצוב הלוגו */
+            .logo-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                font-family: 'Secular One', sans-serif;
+                font-weight: 900;
+                font-size: 1.4rem;
+                color: var(--text-main);
+                transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+            .logo-wrapper i {
+                color: var(--accent);
+                font-size: 1.7rem;
+                filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.3));
+            }
+            .logo-wrapper:hover {
+                transform: scale(1.05);
+            }
+            .admin-logo i { color: #f59e0b; }
 
             /* 1. אנימציה להופעת הודעות בצ'אט */
             @keyframes floatIn {
