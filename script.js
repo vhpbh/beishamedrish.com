@@ -327,7 +327,7 @@ function checkDailyReminders() {
     if (activeTasks.length > 0) {
         new Notification("תזכורת לימוד יומי", {
             body: `יש לך ${activeTasks.length} משימות לימוד פתוחות להיום. בהצלחה!`,
-            icon: "https://cdn-icons-png.flaticon.com/512/3004/3004453.png"
+            icon: "https://cdn-icons-png.flaticon.com/512/2997/2997295.png"
         });
     }
 }
@@ -344,7 +344,7 @@ function checkChavrutaReminders() {
         if (sched.days.includes(currentDay.toString()) && sched.time === currentTime) {
             const lastNotif = sessionStorage.getItem('last_notif_' + key);
             if (lastNotif !== currentTime) {
-                new Notification("תזכורת חברותא", { body: `הגיע הזמן ללמוד ${sched.book} עם ${sched.partnerName}!`, icon: "https://cdn-icons-png.flaticon.com/512/3004/3004453.png" });
+                new Notification("תזכורת חברותא", { body: `הגיע הזמן ללמוד ${sched.book} עם ${sched.partnerName}!`, icon: "https://cdn-icons-png.flaticon.com/512/2997/2997295.png" });
                 sessionStorage.setItem('last_notif_' + key, currentTime);
             }
         }
@@ -1099,11 +1099,11 @@ function switchScreen(name, el, chatFilter) {
 
         bottomNav.classList.add('nav-hidden');
         if (spacer) spacer.style.display = 'none';
-        headerTitle.innerHTML = '<div class="logo-wrapper admin-logo"><i class="fas fa-user-shield"></i><span>מצב ניהול</span></div>';
+        headerTitle.innerHTML = '<span style="color:#f59e0b;">מצב ניהול</span>';
         headerEmail.innerHTML = '<button class="btn" style="padding:4px 10px; font-size:0.8rem; background:#334155;" onclick="switchScreen(\'dashboard\', document.querySelector(\'.nav-item\'))">יציאה מניהול</button>';
     } else {
         isAdminMode = false;
-        headerTitle.innerHTML = '<div class="logo-wrapper"><i class="fas fa-book-open"></i><span>בית המדרש</span></div>';
+        headerTitle.innerHTML = '<span>בית המדרש</span>';
         document.getElementById('bot-mode-indicator').style.display = 'none';
         if (realAdminUser) {
             document.getElementById('bot-mode-indicator').style.display = 'block';
@@ -2545,7 +2545,7 @@ function handleRealtimeMessage(payload) {
                 updateChatBadge();
                 if (Notification.permission === "granted") {
                     const plainMsg = newMsg.message.replace(/<[^>]*>?/gm, '');
-                    new Notification(`הודעה חדשה מ-${senderDisplayName}`, { body: plainMsg, icon: "https://cdn-icons-png.flaticon.com/512/3004/3004453.png" });
+                    new Notification(`הודעה חדשה מ-${senderDisplayName}`, { body: plainMsg, icon: "https://cdn-icons-png.flaticon.com/512/2997/2997295.png" });
                 }
                 addNotification(`הודעה חדשה מ-${senderDisplayName}`, `msg-${newMsg.id}`);
                 if (document.getElementById('screen-chavrutas').classList.contains('active')) renderChavrutas();
