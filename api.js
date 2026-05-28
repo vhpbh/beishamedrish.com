@@ -1,5 +1,5 @@
-const SUPABASE_URL = 'https://dsaxhbmyvjtdmcbxnnlj.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15dmp0ZG1jYnhubmxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
+const SUPABASE_URL = 'https://afihonprbwaoiokowsty.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_nAMFWiuTDObLLVoofQurSw_VSbSXxRT';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let syncInterval = null;
@@ -25,6 +25,7 @@ let unreadMessages = JSON.parse(localStorage.getItem('torahApp_unread') || "{}")
 let lastReadTimes = JSON.parse(localStorage.getItem('torahApp_lastReadTimes') || "{}");
 let isAdminMode = false;
 let previousRank = null;
+let announcedRanks = new Set();
 let realAdminUser = null;
 let adminChartInstance = null;
 let globalZIndex = 10000;
@@ -35,18 +36,23 @@ let lastChatListHash = '';
 async function syncGlobalData() {
     try {
         let hasChanges = false;
-        const { data: maintSettings } = await supabaseClient
-            .from('settings')
-            .select('value')
-            .eq('key', 'site_maintenance_mode')
-            .maybeSingle();
 
-        const overlay = document.getElementById('maintenance-overlay');
-        if (overlay) overlay.remove();
-        const banner = document.getElementById('admin-maint-banner');
-        if (banner) banner.remove();
+let { data: users, error: usersError } = await supabaseClient
+            .from('safe_profiles')
+            .select('id, email, display_name, city, rank_score, chat_rating, last_seen, is_anonymous')
+            .order('rank_score', { ascending: false })
+            .limit(100);
 
-        const { data: users, error: usersError } = await supabaseClient.from('users').select('*');
+        if (usersError && usersError.code === '42703') {
+            
+            const fb = await supabaseClient
+                .from('safe_profiles')
+                .select('id, email, display_name, city, rank_score, last_seen, is_anonymous')
+                .order('rank_score', { ascending: false })
+                .limit(100);
+            users = fb.data;
+            usersError = fb.error;
+        }
 
         if (usersError) {
             console.error("Supabase Users Error:", usersError);
@@ -60,9 +66,10 @@ async function syncGlobalData() {
 
             let query = supabaseClient.from('user_goals').select('*');
             if (userIdForQuery) {
-                query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+                query = query.eq('user_id', userIdForQuery); 
             } else {
-                query = query.eq('user_email', currentUser.email);
+
+console.warn("Querying user_goals without valid UUID");
             }
 
             let { data, error: goalsError } = await query;
@@ -77,23 +84,22 @@ async function syncGlobalData() {
             }
         }
 
-        const { data: campaignSettings } = await supabaseClient
-            .from('settings')
-            .select('value')
-            .eq('key', 'campaign_progress')
-            .maybeSingle();
+const { data: donations } = await supabaseClient.from('donations').select('amount');
+        const totalDonated = donations ? donations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0) : 0;
 
-        if (campaignSettings) {
-            localStorage.setItem('torahApp_campaign_progress', campaignSettings.value);
-            const progressText = document.getElementById('campaignProgressText');
-            const progressBar = document.getElementById('campaignProgressBar');
-            if (progressText && progressBar) {
-                const percentage = parseFloat(campaignSettings.value) || 0;
-                const goalAmount = 6500;
-                const currentAmount = Math.round((percentage / 100) * goalAmount);
-                progressText.innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
-                progressBar.style.width = campaignSettings.value + '%';
-            }
+const progressOverride = null;
+        const goalAmount = 6500;
+
+const percentage = progressOverride ? parseFloat(progressOverride) : Math.min(100, Math.round((totalDonated / goalAmount) * 100));
+        const currentAmount = progressOverride ? Math.round((percentage / 100) * goalAmount) : totalDonated;
+
+        localStorage.setItem('torahApp_campaign_progress', percentage);
+
+        const progressText = document.getElementById('campaignProgressText');
+        const progressBar = document.getElementById('campaignProgressBar');
+        if (progressText && progressBar) {
+            progressText.innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
+            progressBar.style.width = percentage + '%';
         }
 
         if (currentUser) {
@@ -104,11 +110,10 @@ async function syncGlobalData() {
                 const cloudGoal = {
                     id: cloudG.id.toString(),
                     bookName: cloudG.book_name,
-                    totalUnits: cloudG.total_units,
-                    currentUnit: cloudG.current_unit || 0,
+                    totalUnits: cloudG.total_pages,
+                    currentUnit: cloudG.current_page || 0,
                     status: cloudG.status || 'active',
                     targetDate: cloudG.target_date || '',
-                    dedication: cloudG.dedication || '',
                     notes: cloudG.notes || [],
                     startDate: cloudG.created_at
                 };
@@ -127,11 +132,11 @@ async function syncGlobalData() {
             renderGoals();
         }
 
-        if (currentUser) {
+        if (currentUser && currentUser.id && !currentUser.id.includes('@')) {
             const { data: requests, error: reqError } = await supabaseClient
-                .from('chavruta_requests')
-                .select('*')
-                .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`);
+                .from('chavruta_connections') 
+                .select('*').or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`);
+
             if (reqError && reqError.status !== 404 && reqError.code !== 'PGRST205') {
                 console.error("Chavruta requests fetch error:", reqError);
             }
@@ -140,20 +145,45 @@ async function syncGlobalData() {
             chavrutaConnections = [];
             pendingSentRequests = [];
             if (requests) {
-                requests.forEach(r => {
-                    if (r.status === 'approved') {
-                        const partnerEmail = r.sender_email === currentUser.email ? r.receiver_email : r.sender_email;
-                        approvedPartners.add(partnerEmail);
-                        let pName = partnerEmail;
-                        if (users) {
-                            const u = users.find(u => u.email === partnerEmail);
-                            if (u) pName = u.display_name || u.email;
+                for (const r of requests) {
+                    if (r.status === 'accepted' || r.status === 'approved') {
+                        const partnerId = r.sender_id === currentUser.id ? r.receiver_id : r.sender_id;
+                        
+                        const partnerData = users ? users.find(u => u.id === partnerId) : null;
+                        let partnerEmail = partnerData?.email || null;
+                        let pName;
+
+                        if (partnerData) {
+                            pName = partnerData.display_name || partnerData.email || partnerId;
+                        } else {
+                            
+                            const fromGlobal = globalUsersData.find(u => u.id === partnerId);
+                            if (fromGlobal) {
+                                pName = fromGlobal.name;
+                                if (!partnerEmail) partnerEmail = fromGlobal.email || null;
+                            } else {
+                                
+                                try {
+                                    const { data: dp } = await supabaseClient
+                                        .from('profiles_public')
+                                        .select('display_name, email')
+                                        .eq('id', partnerId)
+                                        .maybeSingle();
+                                    pName = dp?.display_name || dp?.email || partnerId;
+                                    if (!partnerEmail && dp?.email) partnerEmail = dp.email;
+                                } catch(e) {
+                                    pName = partnerId;
+                                }
+                            }
                         }
-                        chavrutaConnections.push({ email: partnerEmail, book: r.book_name, name: pName });
-                    } else if (r.status === 'pending' && r.sender_email === currentUser.email) {
-                        pendingSentRequests.push({ receiver: r.receiver_email, book: r.book_name, created_at: r.created_at });
+
+                        approvedPartners.add(partnerId);
+                        if (partnerEmail) approvedPartners.add(partnerEmail);
+                        chavrutaConnections.push({ id: r.id, partnerId, email: partnerEmail, book: r.book_name, name: pName });
+                    } else if (r.status === 'pending' && r.sender_id === currentUser.id) {
+                        pendingSentRequests.push({ receiver: r.receiver_id, book: r.book_name, created_at: r.created_at });
                     }
-                });
+                }
                 localStorage.setItem('torahApp_chavrutas', JSON.stringify(chavrutaConnections));
             }
         }
@@ -169,13 +199,17 @@ async function syncGlobalData() {
                     booksArray = rawMasechtot.split(',').map(s => s.trim());
                 }
 
-                const learnedScore = parseInt(user.learned || user.total_learned) || 0;
+                const learnedScore = parseInt(user.rank_score || user.learned || user.total_learned) || 0;
                 const masechtotString = Array.isArray(rawMasechtot) ? rawMasechtot.join(', ') : rawMasechtot;
 
+const rawName = user.display_name;
+                const isPlaceholder = !rawName || rawName === 'User Name' || rawName === 'user' || rawName === 'User';
+                const displayName = isPlaceholder ? (user.email ? user.email.split('@')[0] : "לומד") : rawName;
+                const subTier = user.subscription_tier || (user.subscription?.level) || 0;
                 return {
                     id: user.id || user.email,
-                    name: user.display_name || user.masked_name || "לומד",
-                    original_name: user.display_name || user.masked_name,
+                    name: displayName,
+                    original_name: user.is_anonymous ? null : displayName,
                     city: user.city || "",
                     phone: user.phone || "",
                     age: user.age || null,
@@ -186,24 +220,105 @@ async function syncGlobalData() {
                     masechtot: masechtotString,
                     books: booksArray,
                     isAnonymous: user.is_anonymous,
-                    subscription: user.subscription || { amount: 0, level: 0 },
+                    subscription: { amount: 0, level: subTier },
                     security_questions: user.security_questions || [],
-                    password: user.password || '***',
                     reward_points: user.reward_points || 0,
                     chat_rating: user.chat_rating || 0,
                     isBot: user.is_bot || false,
-                    current_streak: user.current_streak || 0,
-                    last_streak_date: user.last_streak_date,
+                    isBanned: user.is_banned || false,
+                    avatar_url: user.avatar_url || null,
+                    background_url: user.background_url || null
                 };
             });
 
-            if (currentUser) {
-                const myCloudData = globalUsersData.find(u => u.email === currentUser.email);
-                if (myCloudData) {
-                    currentUser.reward_points = myCloudData.reward_points;
-                    currentUser.chat_rating = myCloudData.chat_rating;
-                    localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+try {
+                const { data: bannedRows } = await supabaseClient
+                    .from('profiles_public')
+                    .select('id, is_banned')
+                    .eq('is_banned', true);
+                if (bannedRows && bannedRows.length > 0) {
+                    const bannedIds = new Set(bannedRows.map(r => r.id));
+                    globalUsersData.forEach(u => { if (bannedIds.has(u.id)) u.isBanned = true; });
                 }
+            } catch (e) {  }
+
+if (!window._avatarUrlsLoaded) {
+                window._avatarUrlsLoaded = true;
+                try {
+                    const ids = globalUsersData.map(u => u.id).filter(Boolean);
+                    if (ids.length > 0) {
+                        const { data: avatarRows } = await supabaseClient
+                            .from('profiles_public').select('id, avatar_url, user_icon, background_url').in('id', ids);
+                        if (avatarRows) {
+                            const avatarMap = {}, iconMap = {}, bgMap = {};
+                            avatarRows.forEach(r => {
+                                if (r.avatar_url) avatarMap[r.id] = r.avatar_url;
+                                if (r.user_icon) iconMap[r.id] = r.user_icon;
+                                if (r.background_url) bgMap[r.id] = r.background_url;
+                            });
+                            globalUsersData.forEach(u => {
+                                if (avatarMap[u.id]) u.avatar_url = avatarMap[u.id];
+                                if (iconMap[u.id]) u.user_icon = iconMap[u.id];
+                                if (bgMap[u.id]) u.background_url = bgMap[u.id];
+                            });
+                        }
+                    }
+                } catch (e) {  }
+            }
+
+try {
+                const { data: tags } = await supabaseClient.from('user_tags').select('user_id, tag_text, tag_color');
+                if (tags && tags.length > 0) {
+                    const tagMap = {};
+                    tags.forEach(t => { tagMap[t.user_id] = { text: t.tag_text, color: t.tag_color }; });
+                    globalUsersData.forEach(u => { u.tag = tagMap[u.id] || null; });
+                }
+            } catch (e) {  }
+
+if (window._publicActiveBooksOk !== false) {
+                try {
+                    const { data: activeBooks, error: abErr } = await supabaseClient.from('public_active_books').select('user_id, book_name');
+                    if (abErr) {
+                        window._publicActiveBooksOk = false; 
+                    } else {
+                        window._publicActiveBooksOk = true;
+                        if (activeBooks && activeBooks.length > 0) {
+                            const booksMap = {};
+                            activeBooks.forEach(row => {
+                                if (!booksMap[row.user_id]) booksMap[row.user_id] = [];
+                                booksMap[row.user_id].push(row.book_name);
+                            });
+                            globalUsersData.forEach(u => { if (booksMap[u.id]) u.books = booksMap[u.id]; });
+                        }
+                    }
+                } catch (e) { window._publicActiveBooksOk = false; }
+            }
+
+if (window._publicActiveBooksOk === false) {
+                try {
+                    const { data: goalBooks, error: gbErr } = await supabaseClient
+                        .from('user_goals')
+                        .select('user_id, book_name')
+                        .eq('status', 'active');
+                    if (!gbErr && goalBooks && goalBooks.length > 0) {
+                        const booksMap = {};
+                        goalBooks.forEach(row => {
+                            if (!booksMap[row.user_id]) booksMap[row.user_id] = [];
+                            if (!booksMap[row.user_id].includes(row.book_name)) booksMap[row.user_id].push(row.book_name);
+                        });
+                        globalUsersData.forEach(u => { if (booksMap[u.id]) u.books = booksMap[u.id]; });
+                    }
+                } catch (e) { console.warn("Could not fetch books from user_goals:", e); }
+            }
+
+            if (currentUser && currentUser.id) {
+                localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+
+try {
+                    await supabaseClient.from('activity_log')
+                        .upsert({ user_id: currentUser.id, activity_date: new Date().toISOString().slice(0, 10) },
+                            { onConflict: 'user_id,activity_date', ignoreDuplicates: true });
+                } catch (e) {  }
             }
 
             hasChanges = true;
@@ -243,14 +358,10 @@ async function syncGlobalData() {
             }
         }
     } catch (e) {
-        console.error("שגיאה בסנכרון נתונים:", e.message);
-        if (e.message && (e.message.includes("Failed to fetch") || e.message.includes("NetworkError"))) {
-            console.warn("⚠️ תקלה בתקשורת עם השרת (502/CORS). ייתכן שהפרויקט ב-Supabase במצב Paused או שיש חסימת רשת.");
-        }
+        console.error("Full DB Error (Sync Global Data):", e.message, e.details || e);
     }
     checkIncomingRequests()
 }
-
 
 async function updateUserPoints(newPoints) {
     try {
@@ -261,9 +372,9 @@ async function updateUserPoints(newPoints) {
         }
 
         const { data, error: updateError } = await supabaseClient
-            .from('users')
+            .from('profiles_public')
             .update({ reward_points: newPoints })
-            .eq('email', user.email)
+            .eq('id', user.id)
             .select();
 
         if (updateError) throw updateError;
@@ -274,101 +385,175 @@ async function updateUserPoints(newPoints) {
 
         return "Points updated successfully!";
     } catch (error) {
-        console.error("Error in updateUserPoints:", error.message);
+        console.error("Full DB Error (Update User Points):", error.message, error.details || error);
         return `Update failed: ${error.message}`;
     }
 }
 
 async function syncUnreadMessages() {
     if (!currentUser) return;
-
     try {
-        let { data: unreadChats, error: chatError } = await supabaseClient.rpc('get_my_unread_messages', {
-            p_my_email: currentUser.email
+        const connIds = typeof chavrutaConnections !== 'undefined'
+            ? chavrutaConnections.filter(c => c.id).map(c => c.id)
+            : [];
+        if (connIds.length === 0) return;
+
+        const { data } = await supabaseClient
+            .from('chat_private')
+            .select('connection_id, sender_id')
+            .in('connection_id', connIds)
+            .neq('sender_id', currentUser.id)
+            .eq('is_read', false);
+
+        if (!data) return;
+
+        const newUnread = {};
+        data.forEach(msg => {
+            const conn = chavrutaConnections.find(c => c.id === msg.connection_id);
+            if (conn?.email) {
+                const emailKey = conn.email.startsWith('book:') ? conn.email : conn.email.toLowerCase();
+                const lastRead = (typeof lastReadTimes !== 'undefined' && lastReadTimes[emailKey]) || 0;
+                if (Date.now() - lastRead < 30000 && !unreadMessages[emailKey]) return;
+                newUnread[emailKey] = (newUnread[emailKey] || 0) + 1;
+            }
         });
 
-        if (chatError) {
-            const { data, error } = await supabaseClient
-                .from('chat_messages')
-                .select('*')
-                .ilike('receiver_email', currentUser.email)
-                .eq('is_read', false);
-            unreadChats = data;
-            chatError = error;
-        }
-
-        if (chatError) {
-            console.error("Unread sync error:", chatError);
-            return;
-        }
-
-        if (unreadChats) {
-            const counts = {};
-            unreadChats.forEach(msg => {
-                let sEmail = msg.sender_email || '';
-                if (!sEmail.startsWith('book:')) {
-                    sEmail = sEmail.toLowerCase();
-                }
-
-                const msgTime = new Date(msg.created_at).getTime();
-                const lastRead = lastReadTimes[sEmail] || 0;
-                if (msgTime <= lastRead) return;
-                const floating = document.getElementById(`chat-window-${sEmail}`);
-                const mainWin = document.getElementById(`msgs-${sEmail}`);
-                const isMainActive = mainWin && document.getElementById('screen-chats').classList.contains('active');
-                const isOpen = (floating && !floating.classList.contains('minimized')) || isMainActive;
-
-                if (!isOpen) {
-                    counts[sEmail] = (counts[sEmail] || 0) + 1;
-                }
-            });
-            unreadMessages = counts;
-            localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
-            if (typeof updateChatBadge === 'function') updateChatBadge();
-        }
-
-        if (unreadChats && unreadChats.length > 0) {
-            unreadChats.forEach(msg => {
-                if (!document.getElementById(`chat-window-${msg.sender_email.toLowerCase()}`)) {
-                    if (msg.sender_email === 'admin@system' && msg.message.includes('הודעת מערכת')) return;
-                }
-            });
-        }
+        unreadMessages = newUnread;
+        localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
+        if (typeof updateChatBadge === 'function') updateChatBadge();
+        if (typeof renderChavrutas === 'function' && document.getElementById('screen-chavrutas')?.classList.contains('active')) renderChavrutas();
     } catch (e) {
-        console.error("Error in syncUnreadMessages:", e);
+        console.error('syncUnreadMessages error:', e);
     }
 }
 async function sendHeartbeat() {
-    if (!currentUser) return;
+    if (!currentUser || !currentUser.id) return;
     try {
-        const { error } = await supabaseClient.from('users').update({ last_seen: new Date() }).eq('email', currentUser.email);
+        const now = new Date().toISOString();
+        const { error } = await supabaseClient
+            .from('profiles_public')
+            .update({ last_seen: now })
+            .eq('id', currentUser.id);
 
         if (error) {
             if (error.status === 500 || error.code === 'PGRST301') {
                 console.warn("Heartbeat blocked by server (RLS/Trigger). User might be restricted.");
             } else {
-                console.warn("Heartbeat update failed", error.message);
+                console.warn("Full DB Error (Heartbeat):", error.message, error.details || error);
             }
         }
-    } catch (e) { console.error("Heartbeat error", e); }
+
+const today = now.split('T')[0];
+        await supabaseClient
+            .from('activity_log')
+            .upsert({ user_id: currentUser.id, activity_date: today, visit_count: 1 }, { onConflict: 'user_id,activity_date', ignoreDuplicates: false })
+            .then(({ error: logErr }) => {
+                if (logErr && logErr.code !== '23505') {
+                    
+                    supabaseClient.rpc('increment_activity', { p_user_id: currentUser.id, p_date: today }).catch(() => {});
+                }
+            });
+    } catch (e) { console.error("Full DB Error (Heartbeat Catch):", e.message, e.details || e); }
+}
+
+async function trackPageView(pageName) {
+    if (!pageName) return;
+    try {
+        await supabaseClient.from('page_views').insert({
+            user_id: currentUser?.id || null,
+            page_name: pageName,
+            viewed_at: new Date().toISOString()
+        });
+    } catch (e) {  }
 }
 
 window.toggleMaintenanceMode = async function () {
-    if (!currentUser || (currentUser.email !== 'admin@system' && (!currentUser.badges || !currentUser.badges.includes('מנהל')))) {
-        if (confirm("האם אתה מנהל? אנא התחבר כדי לשנות הגדרות.")) {
-            if (typeof showAuthOverlay === 'function') showAuthOverlay();
-        }
-        return;
-    }
-
-    try {
-        const { data: current } = await supabaseClient.from('settings').select('value').eq('key', 'site_maintenance_mode').maybeSingle();
-        const newVal = (current && current.value === 'true') ? 'false' : 'true';
-
-        const { error } = await supabaseClient.from('settings').upsert({ key: 'site_maintenance_mode', value: newVal }, { onConflict: 'key' });
-        if (error) throw error;
-
-        alert(`מצב תחזוקה ${newVal === 'true' ? 'הופעל' : 'כובה'} בהצלחה.`);
-        location.reload();
-    } catch (e) { console.error(e); alert("שגיאה בשינוי ההגדרה: " + e.message); }
+    
+    alert("ניהול מצב תחזוקה אינו זמין כרגע (טבלת settings חסרה).");
 };
+
+async function loadParnasBanner() {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data, error } = await supabaseClient
+            .from('parnas_log')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        const banner = document.getElementById('parnas-banner');
+        if (!banner) return;
+
+        if (error || !data || !data.length) {
+            banner.style.display = 'none';
+            updateBannersRowLayout();
+            return;
+        }
+
+        let dayShown = false, monthShown = false;
+
+        for (const p of data) {
+            if (p.type === 'day' && !dayShown) {
+                if (p.start_date === today) {
+                    const card = document.getElementById('parnas-day-card');
+                    const textEl = document.getElementById('parnas-day-text');
+                    const dedEl  = document.getElementById('parnas-day-dedication');
+                    if (card && textEl) {
+                        textEl.textContent = p.sponsor_name;
+                        if (p.dedicated_to && dedEl) {
+                            dedEl.textContent = `${p.dedication_type || 'לזכות'} ${p.dedicated_to}`;
+                        }
+                        card.style.display = 'block';
+                        dayShown = true;
+                    }
+                }
+            } else if (p.type === 'month' && !monthShown) {
+                const start = p.start_date;
+                const end   = p.end_date || p.start_date;
+                if (today >= start && today <= end) {
+                    const card = document.getElementById('parnas-month-card');
+                    const textEl = document.getElementById('parnas-month-text');
+                    const dedEl  = document.getElementById('parnas-month-dedication');
+                    if (card && textEl) {
+                        textEl.textContent = p.sponsor_name;
+                        if (p.dedicated_to && dedEl) {
+                            dedEl.textContent = `${p.dedication_type || 'לזכות'} ${p.dedicated_to}`;
+                        }
+                        card.style.display = 'block';
+                        monthShown = true;
+                    }
+                }
+            }
+            if (dayShown && monthShown) break;
+        }
+
+        const skeleton = document.getElementById('parnas-skeleton');
+        if (dayShown || monthShown) {
+            if (skeleton) skeleton.style.display = 'none';
+            banner.style.display = 'flex';
+        } else {
+            banner.style.display = 'none';
+        }
+        updateBannersRowLayout();
+    } catch (e) {
+        console.warn('loadParnasBanner error:', e.message);
+    }
+}
+
+function updateBannersRowLayout() {
+    const row = document.getElementById('banners-row');
+    const parnas = document.getElementById('parnas-banner');
+    const dafYomi = document.getElementById('daf-yomi-banner');
+    if (!row) return;
+    const parnasVisible = !!parnas && parnas.style.display !== 'none';
+    const dafVisible = !!dafYomi && dafYomi.style.display !== 'none';
+    if (parnasVisible && dafVisible) {
+        row.style.display = 'flex';
+    } else if (parnasVisible || dafVisible) {
+        row.style.display = 'flex';
+        if (parnas) parnas.style.flex = parnasVisible ? '1' : '';
+        if (dafYomi) dafYomi.style.flex = dafVisible ? '1' : '';
+    } else {
+        row.style.display = 'none';
+    }
+}

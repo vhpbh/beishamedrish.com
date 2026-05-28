@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,6 +16,7 @@
             --card-bg: #ffffff;
             --text-main: #334155;
         }
+
         body {
             font-family: 'Heebo', sans-serif;
             background-color: var(--bg);
@@ -22,19 +24,23 @@
             margin: 0;
             padding: 15px;
         }
+
         .followers-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
             gap: 20px;
             text-align: center;
         }
+
         .follower-item {
             cursor: pointer;
             transition: transform 0.2s;
         }
+
         .follower-item:hover {
             transform: translateY(-5px);
         }
+
         .follower-avatar {
             width: 80px;
             height: 80px;
@@ -47,19 +53,37 @@
             font-size: 2.5rem;
             margin-bottom: 8px;
             border: 3px solid var(--card-bg);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
+
         .follower-name {
             font-weight: bold;
             font-size: 0.9rem;
         }
 
-        .aura-lvl-3 { box-shadow: 0 0 15px rgba(205, 127, 50, 0.4); border: 2px solid #cd7f32; }
-        .aura-lvl-4 { box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(255, 215, 0, 0.2); border: 2px solid #ffd700; }
-        .aura-lvl-5, .aura-lvl-6 { box-shadow: 0 0 15px rgba(59, 130, 246, 0.5), 0 0 30px rgba(59, 130, 246, 0.3); border: 2px solid #3b82f6; }
-        .aura-lvl-7 { box-shadow: 0 0 20px rgba(139, 92, 246, 0.6); border: 2px solid #8b5cf6; }
+        .aura-lvl-3 {
+            box-shadow: 0 0 15px rgba(205, 127, 50, 0.4);
+            border: 2px solid #cd7f32;
+        }
+
+        .aura-lvl-4 {
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(255, 215, 0, 0.2);
+            border: 2px solid #ffd700;
+        }
+
+        .aura-lvl-5,
+        .aura-lvl-6 {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5), 0 0 30px rgba(59, 130, 246, 0.3);
+            border: 2px solid #3b82f6;
+        }
+
+        .aura-lvl-7 {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.6);
+            border: 2px solid #8b5cf6;
+        }
     </style>
 </head>
+
 <body>
     <h3 style="margin-top:0;">העוקבים שלי</h3>
     <div id="followers-container" class="followers-grid">
@@ -67,8 +91,8 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://dsaxhbmyvjtdmcbxnnlj.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_TjOpGB31wmbuVN8FZXDH_Q_tLmC10_7';
+        const SUPABASE_URL = 'https://afihonprbwaoiokowsty.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_nAMFWiuTDObLLVoofQurSw_VSbSXxRT';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function loadFollowers() {
@@ -93,14 +117,14 @@
 
             const followerEmails = followers.map(f => f.follower_email);
             const { data: users, error: usersError } = await supabaseClient
-                .from('users')
-                .select('display_name, email, subscription')
+                .from('profiles_public')
+                .select('display_name, email, subscription_tier')
                 .in('email', followerEmails);
 
             container.innerHTML = '';
             if (users) {
                 users.forEach(u => {
-                    const subLevel = u.subscription?.level || 0;
+                    const subLevel = u.subscription_tier || 0;
                     const auraClass = subLevel > 0 ? `aura-lvl-${subLevel}` : '';
                     container.innerHTML += `
                         <div class="follower-item" onclick="window.parent.showUserDetails('${u.email}'); window.parent.closeModal();">
@@ -114,4 +138,5 @@
         window.onload = loadFollowers;
     </script>
 </body>
+
 </html>

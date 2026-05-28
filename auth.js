@@ -1,38 +1,65 @@
-window.loginWithGoogle = async function loginWithGoogle() {
+window.loginWithGoogle = async function loginWithGoogle(btnEl) {
     console.log("Google login initiated...");
+
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl._origHtml = btnEl.innerHTML;
+        btnEl.innerHTML = `<div style="width:20px;height:20px;border-radius:50%;border:2px solid rgba(0,0,0,0.12);border-top-color:#4285f4;animation:spin 0.7s linear infinite;flex-shrink:0;"></div><span>מתחבר...</span>`;
+    }
     try {
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.href.split('#')[0],
+                redirectTo: window.location.origin + window.location.pathname,
                 queryParams: {
                     prompt: 'select_account'
                 }
             }
         });
 
-        if (error) throw error;
+        if (error) {
+            if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = btnEl._origHtml || 'Google'; }
+            throw error;
+        }
+
     } catch (e) {
+        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = btnEl._origHtml || 'Google'; }
         console.error("Google Login Error:", e.message);
         showToast("שגיאה בהתחברות עם גוגל: " + e.message, "error");
     }
 }
+
+document.addEventListener('DOMContentLoaded', function checkOAuthReturn() {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    if (hash.includes('access_token') || params.get('code') || (hash.includes('error') && hash.includes('oauth'))) {
+        const overlay = document.getElementById('google-loading-overlay');
+        if (overlay) overlay.style.display = 'flex';
+    }
+});
 
 window.checkUserProfile = async function checkUserProfile(user) {
     if (!user) return;
 
     try {
         const { data: profile, error } = await supabaseClient
-            .from('users')
-            .select('display_name, age, phone, address')
+            .from('profiles_public')
+            .select('display_name')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        const { data: privateData } = await supabaseClient
+            .from('profiles_private')
+            .select('phone, full_address, age')
             .eq('id', user.id)
             .maybeSingle();
 
         if (error) throw error;
 
-        if (!profile || !profile.age || !profile.phone || !profile.address || !profile.display_name) {
+        if (!profile || !privateData?.age || !privateData?.phone || !privateData?.full_address || !profile.display_name) {
             console.log("Redirecting to complete profile...");
-            return false;
+            window.location.href = 'complete-profile.html';
+            return true;
         }
     } catch (e) {
         console.error("Error checking profile:", e.message);
@@ -52,14 +79,27 @@ window.handleCompleteProfile = async function handleCompleteProfile(e) {
             display_name: document.getElementById('compFullName').value.trim(),
             age: parseInt(document.getElementById('compAge').value),
             phone: document.getElementById('compPhone').value,
-            address: document.getElementById('compAddress').value
+            address: document.getElementById('compAddress').value,
+            id: user.id
         };
 
-        const { error: upsertError } = await supabaseClient
-            .from('users')
-            .upsert(profileData, { onConflict: 'id' });
+const { error: pubError } = await supabaseClient
+            .from('profiles_public')
+            .upsert({
+                id: user.id,
+                display_name: profileData.display_name,
+            });
 
-        if (upsertError) throw upsertError;
+        const { error: privError } = await supabaseClient
+            .from('profiles_private')
+            .upsert({
+                id: user.id,
+                phone: profileData.phone,
+                full_address: profileData.address,
+                age: profileData.age,
+            });
+
+        if (pubError || privError) throw (pubError || privError);
 
         await customAlert("הפרופיל עודכן בהצלחה!");
         window.location.href = 'index.html';
@@ -108,9 +148,7 @@ async function handleSignup(e) {
         return customAlert("שם המשתמש שבחרת כבר קיים במערכת. אנא בחר שם אחר.");
     }
 
-
-
-    if (globalUsersData.some(u => u.email === email)) {
+if (globalUsersData.some(u => u.email === email)) {
         console.warn("Orphan record detected for:", email);
         return customAlert("כתובת האימייל הזו כבר קיימת במאגר הנתונים הציבורי.<br>אם אינך מצליח להתחבר, יש לפנות למנהל לניקוי הנתונים.");
     }
@@ -119,8 +157,7 @@ async function handleSignup(e) {
 
         const securityQuestions = [{ q: q1, a: a1 }];
 
-
-        const handleAuthError = async (errorMessage) => {
+const handleAuthError = async (errorMessage) => {
             console.error("Signup Error:", errorMessage);
             showToast("שגיאה בהרשמה: " + errorMessage, "error");
         };
@@ -129,7 +166,7 @@ async function handleSignup(e) {
             email: email,
             password: pass,
             options: {
-                emailRedirectTo: window.location.href.split('#')[0],
+                emailRedirectTo: window.location.origin + window.location.pathname,
                 data: {
                     display_name: name,
                     phone: phone || null,
@@ -164,25 +201,20 @@ async function handleSignup(e) {
             return;
         }
 
+if (data.user) {
+            
+            const { data: existingProfile } = await supabaseClient
+                .from('profiles_public')
+                .select('id')
+                .eq('id', data.user.id)
+                .maybeSingle();
 
-        if (data.user) {
-            const { error: profileInsertError } = await supabaseClient
-                .from('users')
-                .upsert({
+            if (!existingProfile) {
+                await supabaseClient.from('profiles_public').upsert([{
                     id: data.user.id,
                     email: email,
                     display_name: name,
-                    phone: phone || null,
-                    city: city || null,
-                    age: age ? parseInt(age) : null,
-                    address: address || null,
-                    is_anonymous: false,
-                    security_questions: securityQuestions,
-                    marketing_consent: marketing,
-                    last_seen: new Date().toISOString()
-                }, { onConflict: 'id' });
-            if (profileInsertError) {
-                console.error("Error inserting profile data into public.users after signup:", profileInsertError);
+                }], { onConflict: 'id' });
             }
         }
 
@@ -230,7 +262,6 @@ async function handleSignup(e) {
     }
 }
 
-
 async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('emailInput').value.trim().toLowerCase();
@@ -264,10 +295,20 @@ async function handleLogin(e) {
             return;
         }
 
+if (!authData.user.email_confirmed_at) {
+            await supabaseClient.auth.signOut();
+            if (loginButton) loginButton.disabled = false;
+            await customAlert(
+                'האימייל שלך טרם אומת.<br>יש לאמת את כתובת המייל לפני ההתחברות.<br><br>' +
+                `<button class="btn" style="margin-top:8px;" onclick="resendVerificationEmailTo('${email}')">שלח שוב מייל אימות</button>`
+            );
+            return;
+        }
+
         let { data: user, error: userError } = await supabaseClient
-            .from('users')
-            .select('*')
-            .eq('email', email)
+            .from('profiles_public')
+            .select('id, email, display_name, city, rank_score, chat_rating, is_anonymous, last_seen, is_banned, reward_points')
+            .eq('id', authData.user.id)
             .maybeSingle();
 
         if (userError) {
@@ -277,16 +318,15 @@ async function handleLogin(e) {
         }
 
         if (!user) {
-            console.warn("User record missing in public table for:", email);
+            console.warn("User record missing in users table for:", email);
 
             try {
                 const { data: newUser, error: createError } = await supabaseClient
-                    .from('users')
+                    .from('profiles_public')
                     .upsert([{
                         id: authData.user.id,
-                        email: email,
-                        display_name: (authData.user && authData.user.user_metadata && authData.user.user_metadata.display_name) ? authData.user.user_metadata.display_name : email.split('@')[0],
-                        last_seen: new Date().toISOString()
+                        email: authData.user.email,
+                        display_name: (authData.user.user_metadata?.display_name) || authData.user.email.split('@')[0]
                     }], { onConflict: 'id' })
                     .select()
                     .single();
@@ -300,17 +340,28 @@ async function handleLogin(e) {
             }
         }
 
+if (!user.email) user.email = authData.user.email;
+
+if (user.is_banned) {
+            await supabaseClient.auth.signOut();
+            sessionStorage.setItem('banned_email', email);
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.getElementById('banned-overlay').style.display = 'flex';
+            if (loginButton) loginButton.disabled = false;
+            return;
+        }
 
         showToast("התחברות הצליחה", "success");
-
 
         const prevUserStr = localStorage.getItem('torahApp_user');
         const prevUser = prevUserStr ? JSON.parse(prevUserStr) : null;
 
         currentUser = mapUserFromDB(user);
+        
+        currentUser.email = authData.user.email;
 
-        if (prevUser && prevUser.email !== currentUser.email) {
-            console.log("User switch detected (ID mismatch). Clearing local data.");
+        if (prevUser && prevUser.email && prevUser.email !== currentUser.email) {
+            console.log("User switch detected. Clearing local data.");
             clearLocalUserData();
         }
 
@@ -344,7 +395,7 @@ async function handleLogin(e) {
 
         if (typeof applyUserCustomizations === 'function') await applyUserCustomizations();
 
-        switchScreen('dashboard', document.querySelector('.nav-item'));
+        switchScreen('dashboard', document.querySelector('.floating-nav-item'));
         showToast("התחברת בהצלחה! ברוכים הבאים.", "success");
         addNotification("ברוך הבא לבית המדרש! בהצלחה בלימוד.");
 
@@ -364,12 +415,46 @@ async function handleForgotPassword() {
 
     try {
         showToast("בודק שאלות אבטחה...", "info");
-        const { data: questionData, error: qError } = await supabaseClient.rpc('get_user_security_question', { p_email: email.toLowerCase() });
 
-        if (qError) throw qError;
+let questionData = null;
+        try {
+            const { data, error: qError } = await supabaseClient.rpc('get_user_security_question', { p_email: email.toLowerCase() });
+            if (!qError) questionData = data;
+        } catch (_) {}
+
+if (!questionData || !questionData.q) {
+            try {
+                const { data: pubUser } = await supabaseClient
+                    .from('profiles_public')
+                    .select('id')
+                    .eq('email', email.toLowerCase())
+                    .maybeSingle();
+                if (pubUser?.id) {
+                    const { data: privUser } = await supabaseClient
+                        .from('profiles_private')
+                        .select('recovery_question')
+                        .eq('id', pubUser.id)
+                        .maybeSingle();
+                    if (privUser?.recovery_question) {
+                        questionData = { q: privUser.recovery_question };
+                    }
+                }
+            } catch (_) {}
+        }
 
         if (!questionData || !questionData.q) {
-            await customAlert("משתמש לא נמצא או שלא הוגדרו לו שאלות אבטחה.");
+            
+            const confirmed = await customConfirm(
+                "לא הוגדרה שאלת אבטחה לחשבון זה.<br>האם לשלוח קישור לאיפוס סיסמה לכתובת המייל?", true
+            );
+            if (confirmed) {
+                const { error: resetErr } = await supabaseClient.auth.resetPasswordForEmail(
+                    email.toLowerCase(),
+                    { redirectTo: window.location.origin + window.location.pathname }
+                );
+                if (resetErr) throw resetErr;
+                await customAlert("נשלח קישור לאיפוס סיסמה לכתובת המייל שלך. בדוק את תיבת הדואר.");
+            }
             return;
         }
 
@@ -383,23 +468,77 @@ async function handleForgotPassword() {
         }
 
         showToast("מעדכן סיסמה...", "info");
-        const { data: success, error: resetError } = await supabaseClient.rpc('reset_user_password', {
-            p_email: email.toLowerCase(),
-            p_answer: userAnswer,
-            p_new_password: newPassword
-        });
+        let success = false;
+        let resetError = null;
+        try {
+            const result = await supabaseClient.rpc('reset_user_password', {
+                p_email: email.toLowerCase(),
+                p_answer: userAnswer,
+                p_new_password: newPassword
+            });
+            success = result.data;
+            resetError = result.error;
+        } catch (e) { resetError = e; }
 
-        if (resetError) throw resetError;
+        if (resetError) {
+            
+            if (resetError.code === 'PGRST202' || (resetError.message && resetError.message.includes('not found'))) {
+                const confirmed = await customConfirm(
+                    "שחזור הסיסמה ע\"י שאלת אבטחה אינו זמין כרגע.<br>האם לשלוח קישור איפוס למייל?", true
+                );
+                if (confirmed) {
+                    const { error: resetErr } = await supabaseClient.auth.resetPasswordForEmail(
+                        email.toLowerCase(),
+                        { redirectTo: window.location.origin + window.location.pathname }
+                    );
+                    if (resetErr) throw resetErr;
+                    await customAlert("נשלח קישור לאיפוס סיסמה לכתובת המייל שלך.");
+                }
+                return;
+            }
+            throw resetError;
+        }
 
         if (success) {
             await customAlert("הסיסמה שונתה בהצלחה! כעת ניתן להתחבר.");
             toggleAuthMode('login');
         } else {
-            await customAlert("תשובה שגויה.");
+            await customAlert("התשובה לשאלת האבטחה שגויה.");
         }
     } catch (e) {
         console.error("Forgot Password Error:", e);
         await customAlert("שגיאה בתהליך השחזור: " + e.message);
+    }
+}
+
+window.resendVerificationEmailTo = async function(email) {
+    if (!email) return;
+    try {
+        const { error } = await supabaseClient.auth.resend({ type: 'signup', email });
+        if (error) showToast('שגיאה בשליחת המייל: ' + error.message, 'error');
+        else showToast('מייל אימות נשלח שוב לכתובת ' + email, 'success');
+    } catch (e) {
+        showToast('שגיאה: ' + e.message, 'error');
+    }
+}
+
+async function loadUserPermissions() {
+    if (!currentUser?.id) return;
+    try {
+        const { data } = await supabaseClient
+            .from('user_tags')
+            .select('tag_permissions, permissions')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+        if (data) {
+            
+            const perms = data.permissions || data.tag_permissions || {};
+            currentUserPermissions = (typeof perms === 'string') ? JSON.parse(perms) : (perms || {});
+        } else {
+            currentUserPermissions = {};
+        }
+    } catch (e) {
+        currentUserPermissions = {};
     }
 }
 
@@ -410,20 +549,32 @@ async function loadUserProfile() {
 
         if (userData) {
             currentUser.displayName = userData.name || currentUser.displayName;
-            currentUser.phone = userData.phone || '';
             currentUser.city = userData.city || '';
-            currentUser.address = userData.address || '';
-            currentUser.age = userData.age || null;
             currentUser.isAnonymous = userData.isAnonymous || false;
-            currentUser.subscription = userData.subscription || currentUser.subscription;
-            currentUser.reward_points = userData.reward_points || 0;
-            currentUser.chat_rating = userData.chat_rating || 0;
-            currentUser.marketing_consent = userData.marketing_consent || false;
             currentUser.masechtot = userData.masechtot || '';
+            if (userData.chat_rating !== undefined) currentUser.chat_rating = userData.chat_rating;
 
             localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
         }
+
+        if (currentUser.id) {
+            const { data: privateProfile } = await supabaseClient
+                .from('profiles_private')
+                .select('phone, full_address, age, recovery_question, recovery_answer')
+                .eq('id', currentUser.id)
+                .maybeSingle();
+            if (privateProfile) {
+                currentUser.phone = privateProfile.phone || '';
+                currentUser.address = privateProfile.full_address || '';
+                currentUser.age = privateProfile.age || null;
+                currentUser.recovery_question = privateProfile.recovery_question || '';
+                currentUser.recovery_answer = privateProfile.recovery_answer || '';
+                localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+            }
+        }
+
         updateProfileUI();
+        await loadUserPermissions();
     } catch (e) {
         console.error("שגיאה בטעינת פרופיל:", e);
     }
@@ -447,9 +598,10 @@ function updateProfileUI() {
     if (addressInput) addressInput.value = currentUser.address || '';
     if (anonSwitch) anonSwitch.checked = currentUser.isAnonymous || false;
 
-    const hasQuestions = currentUser.security_questions && currentUser.security_questions.length > 0;
-    if (secQInput) secQInput.value = hasQuestions ? (currentUser.security_questions[0].q || '') : '';
-    if (secAInput) secAInput.value = hasQuestions ? (currentUser.security_questions[0].a || '') : '';
+    if (secQInput) secQInput.value = currentUser.recovery_question || '';
+    if (secAInput) secAInput.value = currentUser.recovery_answer || '';
+
+    if (typeof checkNewsletterStatus === 'function') checkNewsletterStatus();
 }
 
 function toggleAuthMode(mode) {
@@ -464,7 +616,7 @@ function mapUserFromDB(user) {
     return {
         id: user.id || user.email,
         email: user.email,
-        displayName: user.display_name || user.email.split('@')[0],
+        displayName: (user.display_name && user.display_name !== 'User Name' && user.display_name !== 'User') ? user.display_name : (user.email ? user.email.split('@')[0] : 'משתמש'),
         isAnonymous: user.is_anonymous,
         phone: user.phone || '',
         city: user.city || '',
@@ -524,7 +676,10 @@ function restoreAuthenticatedHeader() {
     }
 }
 
-function logout() {
+async function logout() {
+    try {
+        await supabaseClient.auth.signOut({ scope: 'global' });
+    } catch (e) { }
     clearLocalUserData();
     localStorage.removeItem('torahApp_user');
     location.reload();
@@ -546,6 +701,20 @@ function checkBanStatus() {
         document.getElementById('auth-overlay').style.display = 'none';
         document.getElementById('banned-overlay').style.display = 'flex';
     }
+}
+
+async function checkBanStatusFromDB(userId, email) {
+    try {
+        const { data } = await supabaseClient.from('profiles_public').select('is_banned').eq('id', userId).maybeSingle();
+        if (data && data.is_banned) {
+            await supabaseClient.auth.signOut();
+            sessionStorage.setItem('banned_email', email || '');
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.getElementById('banned-overlay').style.display = 'flex';
+            return true;
+        }
+    } catch (e) { console.warn('Ban check failed:', e); }
+    return false;
 }
 
 function requireAuth() {
@@ -581,6 +750,11 @@ function setupGuestHeader() {
         notifContainer.onclick = toggleGuestNotifications;
         if (document.getElementById('notif-badge')) document.getElementById('notif-badge').style.display = 'none';
     }
+
+    ['stat-books', 'stat-pages', 'stat-completed', 'stat-rating'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '—';
+    });
 }
 
 function toggleGuestNotifications() {
@@ -780,7 +954,6 @@ function setupRealtimeValidation() {
         }
     });
 }
-
 
 document.addEventListener('DOMContentLoaded', () => {
     const regNameInput = document.getElementById('regName');

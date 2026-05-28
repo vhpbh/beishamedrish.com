@@ -2,24 +2,49 @@ let chavrutaConnections = JSON.parse(localStorage.getItem('torahApp_chavrutas') 
 let approvedPartners = new Set(chavrutaConnections.map(c => c.email));
 let pendingSentRequests = [];
 
-async function sendChavrutaRequest(receiverEmail, bookName) {
+async function sendChavrutaRequest(receiverIdOrEmail, bookName) {
     if (!currentUser) {
         await customAlert("עליך להיות מחובר כדי לשלוח בקשת חברותא");
         return false;
     }
 
-    if (!receiverEmail || receiverEmail === 'undefined') {
-        console.error("Missing receiver email:", { receiverEmail, bookName });
+    if (!receiverIdOrEmail || receiverIdOrEmail === 'undefined') {
+        console.error("Missing receiver:", { receiverIdOrEmail, bookName });
         return false;
     }
+
+let receiverUser = null;
+    const isEmail = receiverIdOrEmail.includes('@');
+
+    if (isEmail) {
+        receiverUser = globalUsersData.find(u => u.email === receiverIdOrEmail);
+        if (!receiverUser) {
+            const { data } = await supabaseClient.from('profiles_public').select('id, email, display_name').eq('email', receiverIdOrEmail).maybeSingle();
+            if (data) receiverUser = { id: data.id, email: data.email, name: data.display_name };
+        }
+    } else {
+        
+        receiverUser = globalUsersData.find(u => u.id === receiverIdOrEmail);
+        if (!receiverUser) {
+            const { data } = await supabaseClient.from('profiles_public').select('id, email, display_name').eq('id', receiverIdOrEmail).maybeSingle();
+            if (data) receiverUser = { id: data.id, email: data.email, name: data.display_name };
+        }
+    }
+
+    if (!receiverUser || !receiverUser.id) {
+        await customAlert("שגיאה: לא ניתן למצוא את פרטי המשתמש המקבל.");
+        return false;
+    }
+
+    const receiverEmail = receiverUser.email || '';
 
     try {
         console.log("שולח בקשה:", { receiverEmail, bookName });
         const { error } = await supabaseClient
-            .from('chavruta_requests')
+            .from('chavruta_connections')
             .insert([{
-                sender_email: currentUser.email,
-                receiver_email: receiverEmail,
+                sender_id: currentUser.id,
+                receiver_id: receiverUser.id,
                 book_name: bookName,
                 status: 'pending'
             }]);
@@ -37,42 +62,61 @@ async function sendChavrutaRequest(receiverEmail, bookName) {
 
 async function respondToRequest(reqId, action) {
     if (!requireAuth()) return;
+    if (!reqId || reqId === 'undefined') return;
 
     try {
         const { error } = await supabaseClient
-            .from('chavruta_requests')
+            .from('chavruta_connections')
             .update({ status: action })
             .eq('id', reqId);
 
         if (error) throw error;
 
-        showToast(action === 'approved' ? "הבקשה אושרה! כעת ניתן לראות פרטי קשר." : "הבקשה נדחתה.", action === 'approved' ? "success" : "info");
+        showToast(action === 'accepted' || action === 'approved' ? "הבקשה אושרה! כעת ניתן לראות פרטי קשר." : "הבקשה נדחתה.", action === 'accepted' || action === 'approved' ? "success" : "info");
 
-        if (action === 'approved') {
+        if (action === 'accepted' || action === 'approved') {
             try {
-                const { data: req } = await supabaseClient.from('chavruta_requests').select('sender_email, receiver_email').eq('id', reqId).single();
+                const { data: req } = await supabaseClient.from('chavruta_connections').select('sender_id, receiver_id').eq('id', reqId).single();
                 if (req) {
-                    const pointsToAward = 50;
-                    await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAward, user_email: req.sender_email });
-                    await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: pointsToAward, user_email: req.receiver_email });
-                    showToast(`שניכם קיבלתם ${pointsToAward} זוזים על קביעת החברותא!`, 'success');
+                    const pointsToAward = 15;
+                    const [{ data: senderCur }, { data: receiverCur }] = await Promise.all([
+                        supabaseClient.from('profiles_public').select('reward_points').eq('id', req.sender_id).maybeSingle(),
+                        supabaseClient.from('profiles_public').select('reward_points').eq('id', req.receiver_id).maybeSingle()
+                    ]);
+                    await Promise.all([
+                        supabaseClient.from('profiles_public').update({ reward_points: (senderCur?.reward_points || 0) + pointsToAward }).eq('id', req.sender_id),
+                        supabaseClient.from('profiles_public').update({ reward_points: (receiverCur?.reward_points || 0) + pointsToAward }).eq('id', req.receiver_id)
+                    ]);
+                    if (currentUser?.id === req.sender_id) {
+                        currentUser.reward_points = (senderCur?.reward_points || 0) + pointsToAward;
+                        localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+                    } else if (currentUser?.id === req.receiver_id) {
+                        currentUser.reward_points = (receiverCur?.reward_points || 0) + pointsToAward;
+                        localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
+                    }
+                    showToast(`שניכם קיבלתם ${pointsToAward} זוזים על קביעת החברותא! 🎉`, 'success');
                 }
             } catch (e) {
                 console.error("Error awarding points for chavruta", e);
             }
-            const { data: reqData } = await supabaseClient.from('chavruta_requests').select('*').eq('id', reqId).single();
+            const { data: reqData } = await supabaseClient.from('chavruta_connections').select('*').eq('id', reqId).single();
             if (reqData) {
                 const exists = userGoals.some(g => g.bookName === reqData.book_name && g.status === 'active');
                 if (!exists) {
-                    await createGoal(reqData.book_name, 100, null, "לימוד עם חברותא");
+                    const bookUnits = (typeof BOOKS_DB !== 'undefined' && BOOKS_DB.find(b => b.name === reqData.book_name)?.units) || 50;
+                    await createGoal(reqData.book_name, bookUnits, null, "לימוד עם חברותא");
                     showToast(`הספר ${reqData.book_name} נוסף לרשימת הלימוד שלך`, "success");
                 }
 
-                const partnerEmail = reqData.sender_email === currentUser.email ? reqData.receiver_email : reqData.sender_email;
-                approvedPartners.add(partnerEmail);
-                chavrutaConnections.push({ email: partnerEmail, book: reqData.book_name });
-                const partnerUser = globalUsersData.find(u => u.email === partnerEmail);
-                const partnerName = partnerUser ? partnerUser.name : partnerEmail.split('@')[0];
+                const partnerId = reqData.sender_id === currentUser.id ? reqData.receiver_id : reqData.sender_id;
+                let partnerEmail = reqData.sender_email === currentUser.email ? null : reqData.sender_email;
+                let partnerUser = partnerEmail ? globalUsersData.find(u => u.email === partnerEmail) : globalUsersData.find(u => u.id === partnerId);
+                if (!partnerUser && partnerId) {
+                    const { data: pp } = await supabaseClient.from('profiles_public').select('id, email, display_name').eq('id', partnerId).maybeSingle();
+                    if (pp) { partnerUser = { id: pp.id, email: pp.email, name: pp.display_name }; partnerEmail = pp.email; }
+                }
+                if (!partnerEmail && partnerUser) partnerEmail = partnerUser.email;
+                const partnerName = partnerUser ? partnerUser.name : (partnerEmail ? partnerEmail.split('@')[0] : 'חברותא');
 
                 switchScreen('chats', document.querySelector('.floating-nav-item[onclick*="chats"]'));
                 if (typeof openChat === 'function') {
@@ -81,6 +125,9 @@ async function respondToRequest(reqId, action) {
             }
         }
 
+        const seenIds = JSON.parse(localStorage.getItem('torahApp_seenChavrutaRequests') || '[]');
+        const filtered = seenIds.filter(id => id !== reqId);
+        localStorage.setItem('torahApp_seenChavrutaRequests', JSON.stringify(filtered));
         document.getElementById('notif-list').innerHTML = '<p style="color:#999; text-align:center;">אין הודעות חדשות</p>';
         document.getElementById('notif-badge').style.display = 'none';
         syncGlobalData();
@@ -91,38 +138,39 @@ async function respondToRequest(reqId, action) {
 }
 
 async function checkIncomingRequests() {
-    if (!currentUser) return;
+    if (!currentUser || !currentUser.id || currentUser.id === 'undefined') return;
     try {
         const { data: requests, error } = await supabaseClient
-            .from('chavruta_requests')
+            .from('chavruta_connections')
             .select('*')
-            .eq('receiver_email', currentUser.email)
+            .eq('receiver_id', currentUser.id)
             .eq('status', 'pending');
 
         if (error) throw error;
 
         if (requests && requests.length > 0) {
+            const seenIds = JSON.parse(localStorage.getItem('torahApp_seenChavrutaRequests') || '[]');
             requests.forEach(req => {
-                const senderUser = globalUsersData ? globalUsersData.find(u => u.email === req.sender_email) : null;
-                const senderName = senderUser ? senderUser.name : req.sender_email;
+                const senderUser = globalUsersData ? globalUsersData.find(u => u.id === req.sender_id) : null;
+                const senderName = senderUser ? senderUser.name : 'לומד';
 
                 const htmlContent = `
-                    <div style="font-weight:bold; font-size:0.9rem; margin-bottom:5px;">בקשת חברותא חדשה!</div>
-                    <div style="font-size:0.85rem; margin-bottom:10px;">
-                        המשתמש <strong>${senderName}</strong> רוצה ללמוד איתך את <em>${req.book_name}</em>.
+                    <div style="font-weight:bold; font-size:0.82rem; margin-bottom:3px;">בקשת חברותא חדשה!</div>
+                    <div style="font-size:0.8rem; margin-bottom:6px; line-height:1.3;">
+                        <strong>${senderName}</strong> — <em>${req.book_name}</em>
                     </div>
-                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                        <button class="btn" style="background:#3b82f6; font-size:0.8rem; padding:6px; flex:1; border:none; border-radius:4px; color:white; cursor:pointer;" 
-                            onclick="showUserDetails('${req.sender_email}')">צפה בפרופיל</button>
-                        <button class="btn" style="background:#16a34a; font-size:0.8rem; padding:6px; flex:1; border:none; border-radius:4px; color:white; cursor:pointer;" 
-                            onclick="respondToRequest('${req.id}', 'approved')">אשר</button>
-                        <button class="btn" style="background:#ef4444; font-size:0.8rem; padding:6px; flex:1; border:none; border-radius:4px; color:white; cursor:pointer;" 
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn" style="background:#3b82f6; font-size:0.75rem; padding:4px 6px; border:none; border-radius:4px; color:white; cursor:pointer; white-space:nowrap;"
+                            onclick="showUserDetails('${req.sender_id}')">פרופיל</button>
+                        <button class="btn" style="background:#16a34a; font-size:0.75rem; padding:4px 8px; border:none; border-radius:4px; color:white; cursor:pointer;"
+                            onclick="respondToRequest('${req.id}', 'accepted')">אשר</button>
+                        <button class="btn" style="background:#ef4444; font-size:0.75rem; padding:4px 8px; border:none; border-radius:4px; color:white; cursor:pointer;"
                             onclick="respondToRequest('${req.id}', 'rejected')">דחה</button>
                     </div>
                 `;
 
                 if (typeof addNotification === 'function') {
-                    addNotification(htmlContent, `req-${req.id}`, true);
+                    addNotification(htmlContent, `req-${req.id}`, true, seenIds.includes(req.id));
                 }
             });
         }
@@ -131,17 +179,28 @@ async function checkIncomingRequests() {
     }
 }
 
-async function updateFollowersCount() {
-    if (!requireAuth()) return;
+async function updateFollowersCount(targetUserId = null) {
+    
+    const userId = targetUserId || (currentUser ? currentUser.id : null);
 
-    const cached = localStorage.getItem('torahApp_followersCount');
+    if (!userId || userId === 'undefined' || userId === 'me') return;
+
+    const cached = localStorage.getItem('torahApp_followersCount_' + userId);
     const badge = document.getElementById('followersCountBadge');
     if (badge && cached) badge.innerText = cached;
 
-    const { count } = await supabaseClient.from('user_followers').select('*', { count: 'exact', head: true }).eq('following_email', currentUser.email);
+    const { count, error } = await supabaseClient
+        .from('user_followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', userId);
+
+    if (error) {
+        console.error("Error fetching followers count:", error);
+        return;
+    }
 
     if (badge) badge.innerText = count || 0;
-    localStorage.setItem('torahApp_followersCount', count || 0);
+    localStorage.setItem('torahApp_followersCount_' + userId, count || 0);
 }
 
 function renderChavrutas() {
@@ -154,7 +213,6 @@ function renderChavrutas() {
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div class="flex flex-col gap-2">
                 <div class="flex items-center gap-3 text-primary" style="color: var(--accent);">
-                    <i class="fas fa-users text-3xl"></i>
                     <h2 class="text-3xl font-black tracking-tight text-text-main">החברותות שלי</h2>
                 </div>
                 <p class="text-text-muted text-lg" style="color: #64748b;">נהל את קשרי הלימוד והחברותות הפעילות שלך במקום אחד</p>
@@ -166,7 +224,9 @@ function renderChavrutas() {
         </div>
     `;
 
-    if (approvedPartners.size === 0 && pendingSentRequests.length === 0) {
+    const uniquePartnersCheck = new Map();
+    chavrutaConnections.forEach(conn => { if (!uniquePartnersCheck.has(conn.partnerId)) uniquePartnersCheck.set(conn.partnerId, conn); });
+    if (uniquePartnersCheck.size === 0 && pendingSentRequests.length === 0) {
         html += `
         <div class="text-center p-10 border border-dashed rounded-xl mt-10" style="border-color: #cbd5e1;">
             <i class="fas fa-users text-6xl text-slate-300" style="opacity: 0.5;"></i>
@@ -178,29 +238,37 @@ function renderChavrutas() {
         return;
     }
 
-    if (approvedPartners.size > 0) {
+const uniquePartners = new Map();
+    chavrutaConnections.forEach(conn => {
+        if (!uniquePartners.has(conn.partnerId)) uniquePartners.set(conn.partnerId, conn);
+    });
+
+    if (uniquePartners.size > 0) {
         html += `
         <section class="flex flex-col gap-6">
             <div class="flex items-center justify-between border-b border-neutral-soft pb-4">
-                <h3 class="text-xl font-bold flex items-center gap-2">
-                    <i class="fas fa-user-check text-primary" style="color: var(--accent);"></i>
+                <h3 class="text-xl font-bold">
                     חברותות פעילות
                 </h3>
-                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-bold" style="background-color: #dcfce7; color: #166534;">${approvedPartners.size} פעילות</span>
+                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-bold" style="background-color: #dcfce7; color: #166534;">${uniquePartners.size} פעילות</span>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         `;
 
-        approvedPartners.forEach(email => {
-            let user = globalUsersData.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+        uniquePartners.forEach((conn, partnerId) => {
+            
+            let user = globalUsersData.find(u => u.id === partnerId);
+            if (!user && conn.email) user = globalUsersData.find(u => u.email === conn.email);
             if (!user) {
-                user = { name: email.split('@')[0], email: email, city: 'לא זמין', lastSeen: null, subscription: { level: 0 } };
+                user = { name: conn.name || 'לומד', email: conn.email || '', id: partnerId, city: 'לא צוין', phone: '', lastSeen: null, subscription: { level: 0 } };
             }
 
-            const sharedBooks = chavrutaConnections.filter(c => c.email === email).map(c => c.book);
-            const unreadCount = unreadMessages[email] || 0;
+            const sharedBooks = chavrutaConnections.filter(c => c.partnerId === partnerId).map(c => c.book);
+            const chatEmail = user.email || conn.email || '';
+            const unreadCount = unreadMessages[chatEmail] || 0;
             const unreadBadge = unreadCount > 0 ? `<span class="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">${unreadCount}</span>` : '';
             const safeName = (user.name || '').replace(/'/g, "\\'");
+            const safeChatEmail = chatEmail.replace(/'/g, "\\'");
             const safeBook = sharedBooks.length > 0 ? sharedBooks[0].replace(/'/g, "\\'") : '';
             const badge = getUserBadgeHtml(user);
 
@@ -222,35 +290,32 @@ function renderChavrutas() {
                 <div class="p-6 pt-10 flex flex-col gap-4 flex-1">
                     <div>
                         <h4 class="text-xl font-bold flex items-center gap-2">
-                            ${user.name}
-                            ${badge}
+                            <span>${user.name}</span>${badge}
                         </h4>
                         <div class="flex flex-col gap-1 mt-2">
                             <div class="flex items-center gap-2 text-text-muted text-sm">
                                 <i class="fas fa-map-marker-alt text-base w-4 text-center"></i>
                                 <span>${user.city || 'לא צוין'}</span>
                             </div>
-                            <div class="flex items-center gap-2 text-text-muted text-sm">
-                            <div class="flex items-center gap-2 text-text-muted text-sm">
+                            ${user.phone ? `<div class="flex items-center gap-2 text-text-muted text-sm">
                                 <i class="fas fa-phone text-base w-4 text-center"></i>
-                                <a href="tel:${user.phone}">${user.phone || 'לא הוזן'}</a>
-                            </div>
-                            </div>
+                                <a href="tel:${user.phone}">${user.phone}</a>
+                            </div>` : ''}
                         </div>
                     </div>
                     <div class="grid grid-cols-4 gap-2 border-y border-neutral-soft py-4 my-auto">
-                        <button class="flex flex-col items-center gap-1 group/btn" onclick="showUserDetails('${user.email}')">
+                        <button class="flex flex-col items-center gap-1 group/btn" onclick="showUserDetails('${partnerId}')">
                             <div class="p-2 bg-neutral-soft rounded-lg text-text-main group-hover/btn:bg-primary transition-colors"><i class="fas fa-user"></i></div>
                             <span class="text-[10px] font-bold">פרופיל</span>
                         </button>
-                        <button class="flex flex-col items-center gap-1 group/btn relative" onclick="openChat('${user.email}', '${safeName}')">
+                        <button class="flex flex-col items-center gap-1 group/btn relative" onclick="openChat('${safeChatEmail}', '${safeName}')">
                             <div class="p-2 bg-neutral-soft rounded-lg text-text-main group-hover/btn:bg-primary transition-colors">
                                 <i class="fas fa-comments"></i>
                                 ${unreadBadge}
                             </div>
                             <span class="text-[10px] font-bold">צ'אט</span>
                         </button>
-                        <button class="flex flex-col items-center gap-1 group/btn" onclick="openScheduleModal('${user.email}', '${safeBook}', '${safeName}')">
+                        <button class="flex flex-col items-center gap-1 group/btn" onclick="openScheduleModal('${safeChatEmail}', '${safeBook}', '${safeName}')">
                             <div class="p-2 bg-neutral-soft rounded-lg text-text-main group-hover/btn:bg-primary transition-colors"><i class="fas fa-calendar-alt"></i></div>
                             <span class="text-[10px] font-bold">זמנים</span>
                         </button>
@@ -259,7 +324,7 @@ function renderChavrutas() {
                             <span class="text-[10px] font-bold">ספר</span>
                         </button>
                     </div>
-                    <button class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 font-bold hover:bg-red-50 transition-colors text-sm flex items-center justify-center gap-2" onclick="cancelChavruta('${user.email}')">
+                    <button class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 font-bold hover:bg-red-50 transition-colors text-sm flex items-center justify-center gap-2" onclick="cancelChavruta('${partnerId}')">
                         <i class="fas fa-times-circle text-base"></i>
                         ביטול חברותא
                     </button>
@@ -284,8 +349,8 @@ function renderChavrutas() {
         `;
 
         pendingSentRequests.forEach(req => {
-            const user = globalUsersData.find(u => u.email === req.receiver);
-            const name = user ? user.name : req.receiver;
+            const user = globalUsersData.find(u => u.id === req.receiver || u.email === req.receiver);
+            const name = user ? (user.name || user.display_name || 'לומד') : 'לומד';
             const time = timeAgo(req.created_at);
 
             html += `

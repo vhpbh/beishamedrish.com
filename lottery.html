@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>הגרלה חיה | בית המדרש</title>
+<link rel="icon" type="image/png" href="logo-remove.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+<style>
+*{font-family:'Heebo',sans-serif;box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#060d1a;color:#e2e8f0;overflow:hidden;}
+
+/* ── PHASE: WAITING ─────────────────────────────────────────── */
+#phase-waiting{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:1.5rem;text-align:center;padding:2rem;
+}
+.waiting-logo{font-size:4rem;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.waiting-title{font-size:2rem;font-weight:900;color:#fbbf24;}
+.waiting-sub{color:#64748b;font-size:1rem;max-width:340px;line-height:1.6}
+
+/* ── PHASE: COUNTDOWN ───────────────────────────────────────── */
+#phase-countdown{
+  position:fixed;inset:0;display:none;flex-direction:column;
+  background:radial-gradient(ellipse at top,#1e1040 0%,#060d1a 70%);
+}
+.countdown-header{
+  padding:1.2rem 2rem;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid #1e2a42;background:rgba(6,13,26,.8);backdrop-filter:blur(10px);
+  position:relative;z-index:10;
+}
+.countdown-logo{display:flex;align-items:center;gap:.7rem;font-weight:900;font-size:1.1rem;color:#fbbf24;}
+.live-pill{background:#ef4444;color:#fff;font-size:.72rem;font-weight:700;padding:3px 10px;
+  border-radius:999px;animation:liveblink 1.2s ease-in-out infinite;letter-spacing:.05em;}
+@keyframes liveblink{0%,100%{opacity:1}50%{opacity:.5}}
+
+.countdown-body{flex:1;display:flex;gap:1.5rem;padding:1.5rem;overflow:hidden;}
+
+.video-col{flex:1.4;display:flex;flex-direction:column;gap:1rem;min-width:0;}
+#lottery-video-frame{
+  flex:1;border-radius:1rem;overflow:hidden;background:#0a1020;
+  border:2px solid #1e3a5f;min-height:200px;
+}
+#lottery-video-frame iframe,#lottery-video-frame video{width:100%;height:100%;border:none;}
+.no-video-placeholder{
+  width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:.8rem;color:#334155;
+}
+
+.timer-col{
+  width:220px;display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:1.5rem 1rem;
+}
+#timer-circle{
+  width:160px;height:160px;position:relative;
+}
+#timer-circle svg{transform:rotate(-90deg);}
+#timer-track{fill:none;stroke:#1e2a42;stroke-width:10;}
+#timer-arc{fill:none;stroke:#fbbf24;stroke-width:10;stroke-linecap:round;
+  transition:stroke-dashoffset .9s linear,stroke .5s;}
+#timer-text{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;
+}
+#timer-mm{font-size:2.4rem;font-weight:900;color:#fbbf24;line-height:1;}
+#timer-ss-label{font-size:.7rem;color:#64748b;margin-top:2px;}
+
+.participants-box{
+  width:100%;background:#0a1020;border:1px solid #1e2a42;border-radius:.75rem;
+  padding:1rem;text-align:center;
+}
+.participants-count{font-size:2rem;font-weight:900;color:#4ade80;}
+.participants-label{font-size:.72rem;color:#64748b;margin-top:2px;}
+
+.lottery-title-box{
+  background:linear-gradient(135deg,#1e3a5f,#0a1020);
+  border:1px solid #1e3a5f;border-radius:.75rem;padding:.8rem 1rem;
+  text-align:center;width:100%;
+}
+.lottery-title-box .lt-name{font-size:1rem;font-weight:800;color:#fff;}
+.lottery-title-box .lt-sub{font-size:.72rem;color:#64748b;margin-top:3px;}
+
+/* ── PHASE: DRAW ────────────────────────────────────────────── */
+#phase-draw{
+  position:fixed;inset:0;display:none;flex-direction:column;align-items:center;
+  justify-content:center;background:#060d1a;padding:2rem;
+  background:radial-gradient(ellipse at center,#0c1a2e 0%,#060d1a 70%);
+}
+.draw-title{font-size:1.5rem;font-weight:900;color:#fbbf24;margin-bottom:2rem;text-align:center;}
+
+/* Gumball machine */
+.gumball-machine{position:relative;width:320px;user-select:none;}
+.gm-glass{
+  width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.12),rgba(255,255,255,.03));
+  border:4px solid #2d4a6e;margin:0 auto;position:relative;overflow:hidden;
+  box-shadow:0 0 40px rgba(59,130,246,.2);
+}
+.gm-balls-area{
+  position:absolute;inset:10px;display:flex;flex-wrap:wrap;
+  align-content:flex-start;gap:4px;padding:10px;overflow:hidden;
+}
+.gm-ball{
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:.65rem;font-weight:700;color:#fff;
+  flex-shrink:0;transition:all .3s;cursor:default;
+  box-shadow:inset -3px -3px 6px rgba(0,0,0,.3),inset 2px 2px 4px rgba(255,255,255,.15);
+  animation:ball-idle 3s ease-in-out infinite;
+}
+@keyframes ball-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.gm-ball.selected{
+  transform:scale(1.5) translateY(-60px)!important;
+  animation:none!important;
+  box-shadow:0 0 30px rgba(251,191,36,.8)!important;
+  z-index:10;
+}
+.gm-neck{
+  width:48px;height:40px;background:linear-gradient(to bottom,#1e3a5f,#0a1020);
+  margin:0 auto;border:3px solid #2d4a6e;border-top:none;border-radius:0 0 8px 8px;
+  position:relative;display:flex;align-items:center;justify-content:center;
+}
+.gm-slot{width:24px;height:14px;background:#060d1a;border-radius:4px;border:2px solid #2d4a6e;}
+.gm-base{
+  height:50px;background:linear-gradient(to bottom,#1e3a5f,#0a1020);
+  border:3px solid #2d4a6e;border-radius:.75rem;display:flex;align-items:center;
+  justify-content:center;padding:.5rem 1.5rem;margin-top:-2px;
+}
+.gm-coin-slot{
+  width:40px;height:8px;background:#060d1a;border-radius:4px;
+  border:2px solid #2d4a6e;
+}
+
+/* Winner note that comes out */
+#winner-note{
+  position:absolute;bottom:40px;left:50%;transform:translateX(-50%) translateY(100px);
+  background:linear-gradient(135deg,#fef9c3,#fef08a);
+  color:#1e293b;border-radius:.5rem;padding:1rem 1.5rem;
+  font-weight:900;font-size:1.1rem;text-align:center;
+  box-shadow:0 10px 40px rgba(251,191,36,.5);
+  transition:transform .8s cubic-bezier(.34,1.56,.64,1),opacity .8s;
+  opacity:0;min-width:180px;white-space:nowrap;z-index:20;
+  border:2px solid #fbbf24;
+}
+#winner-note.revealed{transform:translateX(-50%) translateY(0);opacity:1;}
+#winner-note .note-icon{font-size:1.5rem;display:block;margin-bottom:.3rem;}
+#winner-note .note-name{font-size:1.2rem;}
+#winner-note .note-sub{font-size:.8rem;color:#64748b;font-weight:400;margin-top:.2rem;}
+
+.draw-close-btn{
+  margin-top:2rem;background:#1e293b;color:#94a3b8;
+  border:1px solid #334155;border-radius:.75rem;
+  padding:.7rem 2rem;font-size:.95rem;font-weight:700;cursor:pointer;
+  transition:all .2s;display:none;
+}
+.draw-close-btn:hover{background:#334155;color:#fff;}
+
+/* ── DECORATIVE stars ───────────────────────────────────────── */
+.star-field{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;}
+.star{position:absolute;background:#fff;border-radius:50%;
+  animation:twinkle var(--d) ease-in-out infinite var(--delay);}
+@keyframes twinkle{0%,100%{opacity:.1;transform:scale(1)}50%{opacity:.9;transform:scale(1.3)}}
+</style>
+</head>
+<body>
+
+<!-- Stars -->
+<div class="star-field" id="star-field"></div>
+
+<!-- ── PHASE: WAITING ── -->
+<div id="phase-waiting" style="z-index:10;position:relative;">
+  <div class="waiting-logo"><i class="fas fa-ticket-alt" style="color:#fbbf24;"></i></div>
+  <div class="waiting-title">ממתין להגרלה...</div>
+  <div class="waiting-sub">ברגע שמנהל יפעיל את ההגרלה, המסך יעדכן אוטומטית לשידור חי.</div>
+  <div style="margin-top:1rem;color:#334155;font-size:.8rem;">
+    <i class="fas fa-satellite-dish" style="margin-left:4px;animation:liveblink 1.5s infinite;"></i>
+    מחובר לשרת בזמן אמת
+  </div>
+</div>
+
+<!-- ── PHASE: COUNTDOWN ── -->
+<div id="phase-countdown" style="z-index:10;position:relative;">
+  <div class="countdown-header">
+    <div class="countdown-logo">
+      <i class="fas fa-ticket-alt"></i>
+      <span id="cd-lottery-name">הגרלה</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:.8rem;">
+      <span id="cd-participants" style="font-size:.8rem;color:#64748b;"></span>
+      <span class="live-pill"><i class="fas fa-circle" style="font-size:.5rem;margin-left:3px;"></i>שידור חי</span>
+    </div>
+  </div>
+
+  <div class="countdown-body">
+    <!-- Video -->
+    <div class="video-col">
+      <div id="lottery-video-frame">
+        <div class="no-video-placeholder">
+          <i class="fas fa-film" style="font-size:3rem;"></i>
+          <div style="font-size:.9rem;">אין וידאו</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timer + info -->
+    <div class="timer-col">
+      <div id="timer-circle">
+        <svg width="160" height="160" viewBox="0 0 160 160">
+          <circle id="timer-track" cx="80" cy="80" r="70"/>
+          <circle id="timer-arc"   cx="80" cy="80" r="70"
+            stroke-dasharray="439.82" stroke-dashoffset="0"/>
+        </svg>
+        <div id="timer-text">
+          <span id="timer-mm">3:00</span>
+          <span id="timer-ss-label">ספירה לאחור</span>
+        </div>
+      </div>
+
+      <div class="lottery-title-box">
+        <div class="lt-name" id="cd-item-title">טוען...</div>
+        <div class="lt-sub">השתמש בזוזים שלך לרכישת כרטיס!</div>
+      </div>
+
+      <div class="participants-box">
+        <div class="participants-count" id="cd-count">0</div>
+        <div class="participants-label">כרטיסים נמכרו</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PHASE: DRAW (Gumball) ── -->
+<div id="phase-draw" style="z-index:10;position:relative;">
+  <div class="draw-title">
+    <i class="fas fa-trophy" style="color:#fbbf24;margin-left:.4rem;"></i>
+    מגרילים את הזוכה!
+  </div>
+
+  <div class="gumball-machine" id="gumball-machine" style="position:relative;">
+    <div class="gm-glass">
+      <div class="gm-balls-area" id="gm-balls"></div>
+    </div>
+    <div class="gm-neck"><div class="gm-slot"></div></div>
+    <div class="gm-base"><div class="gm-coin-slot"></div></div>
+
+    <div id="winner-note">
+      <span class="note-icon"><i class="fas fa-trophy"></i></span>
+      <div class="note-name" id="winner-note-name"></div>
+      <div class="note-sub" id="winner-note-sub"></div>
+    </div>
+  </div>
+
+  <button class="draw-close-btn" id="draw-close-btn" onclick="window.close()">
+    <i class="fas fa-times" style="margin-left:.4rem;"></i>סגור
+  </button>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── STAR FIELD ──────────────────────────────────────────────
+(function() {
+  const sf = document.getElementById('star-field');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    const size = Math.random() * 2 + 1;
+    s.className = 'star';
+    s.style.cssText = `width:${size}px;height:${size}px;top:${Math.random()*100}%;left:${Math.random()*100}%;
+      --d:${2+Math.random()*4}s;--delay:-${Math.random()*4}s;`;
+    sf.appendChild(s);
+  }
+})();
+
+// ── STATE ───────────────────────────────────────────────────
+let currentLotteryId = null;
+let countdownInterval = null;
+let totalDuration = 180;
+let endTime = null;
+
+// ── PHASES ──────────────────────────────────────────────────
+function showPhase(name) {
+  ['waiting','countdown','draw'].forEach(p => {
+    const el = document.getElementById('phase-'+p);
+    if (el) el.style.display = (p === name) ? 'flex' : 'none';
+  });
+}
+
+// ── SUPABASE REALTIME ────────────────────────────────────────
+async function init() {
+  // Check for active lottery right now
+  const { data } = await sb.from('system_announcements')
+    .select('*').eq('target_type','lottery_start').maybeSingle();
+  if (data) handleLotteryStart(data);
+
+  // Listen for changes
+  sb.channel('lottery-live')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'system_announcements', filter: "target_type=eq.lottery_start" },
+      payload => handleLotteryStart(payload.new)
+    )
+    .on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'system_announcements', filter: "target_type=eq.lottery_start" },
+      () => { stopCountdown(); showPhase('waiting'); }
+    )
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'system_announcements', filter: "target_type=eq.lottery_result" },
+      payload => handleLotteryResult(payload.new)
+    )
+    .subscribe();
+}
+
+// ── LOTTERY START ────────────────────────────────────────────
+async function handleLotteryStart(row) {
+  let info = {};
+  try { info = JSON.parse(row.content || '{}'); } catch(e) {}
+
+  currentLotteryId = info.lottery_id;
+  totalDuration = info.duration || 180;
+  endTime = info.start_time ? new Date(new Date(info.start_time).getTime() + totalDuration * 1000) : new Date(Date.now() + totalDuration * 1000);
+
+  // Setup video
+  const videoUrl = (info.video_url || '').trim();
+  const videoFrame = document.getElementById('lottery-video-frame');
+  if (videoUrl) {
+    const embedUrl = convertToEmbed(videoUrl);
+    if (embedUrl) {
+      videoFrame.innerHTML = `<iframe src="${embedUrl}" allow="autoplay;fullscreen" allowfullscreen></iframe>`;
+    } else {
+      videoFrame.innerHTML = `<video src="${videoUrl}" autoplay muted loop controls style="width:100%;height:100%;object-fit:contain;border-radius:.75rem;"></video>`;
+    }
+  } else {
+    videoFrame.innerHTML = `<div class="no-video-placeholder"><i class="fas fa-film" style="font-size:3rem;"></i><div>אין וידאו</div></div>`;
+  }
+
+  // Load item details
+  if (currentLotteryId) {
+    const { data: item } = await sb.from('shop_items').select('title').eq('id', currentLotteryId).maybeSingle();
+    const title = item?.title || 'הגרלה';
+    document.getElementById('cd-lottery-name').textContent = title;
+    document.getElementById('cd-item-title').textContent = title;
+
+    // Participant count
+    refreshParticipants();
+    setInterval(refreshParticipants, 10000);
+  }
+
+  showPhase('countdown');
+  startCountdown();
+}
+
+function convertToEmbed(url) {
+  if (!url) return null;
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  if (yt) return `https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&mute=0`;
+  const drive = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (drive) return `https://drive.google.com/file/d/${drive[1]}/preview`;
+  return null;
+}
+
+async function refreshParticipants() {
+  if (!currentLotteryId) return;
+  const { data } = await sb.from('shop_orders').select('id', { count: 'exact', head: true })
+    .eq('item_id', currentLotteryId).eq('order_type','lottery_entry');
+  const count = data?.count ?? 0;
+  document.getElementById('cd-count').textContent = count;
+  document.getElementById('cd-participants').textContent = `${count} כרטיסים`;
+}
+
+// ── COUNTDOWN ───────────────────────────────────────────────
+function startCountdown() {
+  stopCountdown();
+  const arc = document.getElementById('timer-arc');
+  const circumference = 439.82;
+  arc.style.stroke = '#fbbf24';
+
+  countdownInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    document.getElementById('timer-mm').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+
+    const fraction = remaining / totalDuration;
+    arc.style.strokeDashoffset = circumference * (1 - fraction);
+    if (fraction < 0.25) arc.style.stroke = '#ef4444';
+    else if (fraction < 0.5) arc.style.stroke = '#f97316';
+    else arc.style.stroke = '#fbbf24';
+
+    if (remaining <= 0) {
+      stopCountdown();
+      startDraw();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+
+// ── DRAW (Gumball machine) ───────────────────────────────────
+async function startDraw() {
+  showPhase('draw');
+
+  // Load participants weighted by tickets
+  let winnerName = '?';
+  let winnerId = null;
+  if (currentLotteryId) {
+    const { data: entries } = await sb.from('shop_orders').select('user_id')
+      .eq('item_id', currentLotteryId).eq('order_type','lottery_entry');
+
+    if (entries && entries.length) {
+      const idx = Math.floor(Math.random() * entries.length);
+      winnerId = entries[idx].user_id;
+      const { data: profile } = await sb.from('profiles_public').select('display_name').eq('id', winnerId).maybeSingle();
+      winnerName = profile?.display_name || 'הזוכה';
+    }
+  }
+
+  // Build balls
+  const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  const ballsArea = document.getElementById('gm-balls');
+  const ballCount = 16;
+  const balls = [];
+  for (let i = 0; i < ballCount; i++) {
+    const b = document.createElement('div');
+    b.className = 'gm-ball';
+    b.style.background = colors[i % colors.length];
+    b.style.animationDelay = `${i * 0.18}s`;
+    b.textContent = (i + 1).toString();
+    balls.push(b);
+    ballsArea.appendChild(b);
+  }
+
+  // Animate: shake machine → one ball rises → winner note
+  const machine = document.getElementById('gumball-machine');
+  machine.style.animation = 'none';
+
+  // Shake
+  let shakeCount = 0;
+  const shakeInterval = setInterval(() => {
+    const x = (Math.random() - .5) * 12;
+    const y = (Math.random() - .5) * 8;
+    machine.style.transform = `translate(${x}px,${y}px)`;
+    if (++shakeCount >= 20) {
+      clearInterval(shakeInterval);
+      machine.style.transform = '';
+      // Pick a random ball to highlight
+      const picked = balls[Math.floor(Math.random() * balls.length)];
+      picked.classList.add('selected');
+      setTimeout(() => revealWinner(winnerName, picked), 900);
+    }
+  }, 80);
+}
+
+function revealWinner(name, ball) {
+  const noteEl = document.getElementById('winner-note');
+  const nameEl = document.getElementById('winner-note-name');
+  const subEl  = document.getElementById('winner-note-sub');
+
+  nameEl.textContent = name;
+  subEl.textContent  = 'מזל טוב!';
+  noteEl.classList.add('revealed');
+
+  // Confetti
+  confetti({ particleCount: 180, spread: 80, origin: { y: .7 }, colors: ['#fbbf24','#f97316','#4ade80','#60a5fa'] });
+  setTimeout(() => confetti({ particleCount: 100, angle: 60, spread: 55, origin: { x: 0 } }), 400);
+  setTimeout(() => confetti({ particleCount: 100, angle: 120, spread: 55, origin: { x: 1 } }), 600);
+
+  document.getElementById('draw-close-btn').style.display = 'inline-flex';
+
+  // Also broadcast back to main site via system_announcements insert (admin side does this normally)
+}
+
+// ── HANDLE RESULT FROM ADMIN ─────────────────────────────────
+function handleLotteryResult(row) {
+  const winnerName = row.content || 'הזוכה';
+  showPhase('draw');
+  // Build a simple ball reveal
+  const ballsArea = document.getElementById('gm-balls');
+  ballsArea.innerHTML = '';
+  const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899'];
+  for (let i = 0; i < 14; i++) {
+    const b = document.createElement('div');
+    b.className = 'gm-ball';
+    b.style.background = colors[i % colors.length];
+    b.style.animationDelay = `${i * 0.18}s`;
+    ballsArea.appendChild(b);
+  }
+  setTimeout(() => revealWinner(winnerName, null), 1000);
+}
+
+// ── BOOT ────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

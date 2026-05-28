@@ -248,7 +248,9 @@
             <div style="margin-bottom:15px;">
                 <label style="font-size:0.85rem; font-weight:bold; color:#334155;">הוסף שותף:</label>
                 <div style="display:flex; gap:5px; margin-top:5px;">
-                    <input type="text" id="newCollabEmail" placeholder="אימייל..." style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9rem;">
+                    <select id="newCollabChavrutaSelect" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9rem; background:white; direction:rtl;">
+                        <option value="">בחר חברותא...</option>
+                    </select>
                     <select id="newCollabPerm" style="padding:2px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
                         <option value="view">צפייה</option>
                         <option value="edit">עריכה</option>
@@ -258,7 +260,7 @@
             </div>
             <div id="collaboratorsList" style="max-height:150px; overflow-y:auto; margin-bottom:15px;"></div>
             <div style="text-align:left;">
-                <button onclick="closeShareModal()" style="background:#e2e8f0; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; color:#334155;">סגור</button>
+                <button onclick="closeShareModal()" style="background:#e2e8f0; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; color:#334155;">ביטול</button>
             </div>
         </div>
     </div>
@@ -554,10 +556,8 @@
 
             document.getElementById('shareModal').style.display = 'flex';
             document.getElementById('shareNoteTitle').innerText = `שיתוף: ${note.title}`;
-            
-            const partnerEmail = getPartnerEmail();
-            if (partnerEmail) document.getElementById('newCollabEmail').value = partnerEmail;
 
+            populateChavrutaSelect();
             loadCollaborators(note.id);
         }
 
@@ -590,11 +590,12 @@
         }
 
         async function addCollaborator() {
-            const email = document.getElementById('newCollabEmail').value.trim();
+            const sel = document.getElementById('newCollabChavrutaSelect');
+            const email = (sel.value || '').trim();
             const perm = document.getElementById('newCollabPerm').value;
             const note = notes.find(n => n.id === activeNoteId);
 
-            if (!email) return;
+            if (!email) { alert('יש לבחור חברותא'); return; }
             if (!currentUser) return;
 
             const { error } = await supabase.from('note_collaborators').insert({
@@ -608,8 +609,8 @@
                 alert('שגיאה בהוספה (אולי המשתמש כבר קיים?)');
             } else {
                 loadCollaborators(note.id);
-                document.getElementById('newCollabEmail').value = '';
-                note.is_shared = true; 
+                sel.selectedIndex = 0;
+                note.is_shared = true;
                 renderList();
             }
         }
@@ -624,6 +625,44 @@
             const newPerm = current === 'view' ? 'edit' : 'view';
             await supabase.from('note_collaborators').update({ permission_level: newPerm }).eq('id', id);
             loadCollaborators(activeNoteId);
+        }
+
+        async function populateChavrutaSelect() {
+            const sel = document.getElementById('newCollabChavrutaSelect');
+            sel.innerHTML = '<option value="">טוען...</option>';
+
+            if (!supabase || !currentUser) {
+                sel.innerHTML = '<option value="">לא מחובר</option>';
+                return;
+            }
+
+            const { data: conns } = await supabase
+                .from('chavruta_connections')
+                .select('sender_id, receiver_id')
+                .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                .eq('status', 'approved');
+
+            const usersData = (window.parent && window.parent.globalUsersData) || [];
+            const bookPartnerEmail = getPartnerEmail();
+
+            sel.innerHTML = '<option value="">בחר חברותא...</option>';
+
+            if (conns && conns.length > 0) {
+                conns.forEach(c => {
+                    const partnerId = c.sender_id === currentUser.id ? c.receiver_id : c.sender_id;
+                    const partnerUser = usersData.find(u => u.id === partnerId);
+                    if (!partnerUser || !partnerUser.email) return;
+                    const opt = document.createElement('option');
+                    opt.value = partnerUser.email;
+                    opt.textContent = partnerUser.displayName || partnerUser.display_name || partnerUser.email;
+                    if (partnerUser.email === bookPartnerEmail) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            }
+
+            if (sel.options.length === 1) {
+                sel.innerHTML = '<option value="">אין חברותות פעילות</option>';
+            }
         }
 
         function closeShareModal() {

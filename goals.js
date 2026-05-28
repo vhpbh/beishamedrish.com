@@ -1,5 +1,7 @@
 let userGoals = [];
 let nextActionAfterGoalCreation = null;
+let _goalsRenderHash = '';
+let _goalsFirstRender = true;
 
 function incDailyProgress(goalId, amount) {
     const current = getDailyProgress(goalId);
@@ -14,6 +16,12 @@ function renderGoals() {
 
     if (!list) return;
 
+    const newHash = JSON.stringify(userGoals.map(g => `${g.id}|${g.status}|${g.currentUnit}|${g.bookName}|${g.totalUnits}`));
+    if (newHash === _goalsRenderHash) return;
+    _goalsRenderHash = newHash;
+    const isFirstRender = _goalsFirstRender;
+    _goalsFirstRender = false;
+
     list.innerHTML = '';
     if (tasksList) tasksList.innerHTML = '';
     if (archiveList) archiveList.innerHTML = '';
@@ -21,8 +29,7 @@ function renderGoals() {
     let hasTasks = false;
     let totalLearned = 0;
 
-
-    const activeGoals = userGoals.filter(g => g.status === 'active');
+const activeGoals = userGoals.filter(g => g.status === 'active');
     if (activeGoals.length === 0) {
     }
 
@@ -31,8 +38,7 @@ function renderGoals() {
         const percent = Math.min(100, Math.round((goal.currentUnit / goal.totalUnits) * 100));
         totalLearned += goal.currentUnit;
 
-
-        const connection = chavrutaConnections.find(c => c.book === goal.bookName && c.email);
+const connection = chavrutaConnections.find(c => c.book === goal.bookName && c.email);
         const partner = connection ? globalUsersData.find(u => u.email === connection.email) : null;
         const partnerName = partner ? partner.name : (connection ? connection.email : '');
 
@@ -40,7 +46,7 @@ function renderGoals() {
 
             const div = document.createElement('div');
             div.id = `goal-card-${goal.id}`;
-            div.className = 'glass rounded-super p-6 transition-all hover:shadow-2xl hover:translate-y-[-2px] border border-white/50 dark:border-slate-700/40 mb-4';
+            div.className = `glass rounded-super p-6 transition-all hover:shadow-2xl hover:translate-y-[-2px] border border-white/50 dark:border-slate-700/40 mb-4${isFirstRender ? ' goal-card-in' : ''}`;
 
             if (window.newGoalId === goal.id.toString()) {
 
@@ -50,8 +56,7 @@ function renderGoals() {
                 }
             }
 
-
-            if (window.justCompletedDailyGoal === goal.id) {
+if (window.justCompletedDailyGoal === goal.id) {
 
             }
 
@@ -68,6 +73,7 @@ function renderGoals() {
                                 ${connection ? `<i class="fas fa-user-friends" style="color: var(--success); font-size: 1rem;" title="בחברותא עם ${partnerName}"></i>` : ''}
                             </h3>
                             <p class="text-sm text-slate-500 dark:text-slate-400">${unitToDafString(goal)}</p>
+                            ${goal.dedication ? `<p class="text-xs text-amber-600 dark:text-amber-400 italic mt-1"><i class="fas fa-feather-alt" style="margin-left:3px;"></i>${goal.dedication}</p>` : ''}
                         </div>
                     </div>
                     <div class="mt-4">
@@ -91,8 +97,14 @@ function renderGoals() {
                         <button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="openBookChat('${goal.bookName}')" title="צ'אט">
                             <i class="fas fa-comment"></i>
                         </button>
+                        <button class="w-10 h-10 rounded-full glass hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all flex items-center justify-center text-amber-500 dark:text-amber-400" onclick="openScheduleModal('${(connection?.email||'').replace(/'/g,"\\'")}','${goal.bookName.replace(/'/g,"\\'")}','${(partnerName||'').replace(/'/g,"\\'")}');" title="קביעת זמנים">
+                            <i class="fas fa-clock"></i>
+                        </button>
+                        <button class="w-10 h-10 rounded-full glass hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all flex items-center justify-center text-blue-500 dark:text-blue-400" onclick="openBookInSefaria('${goal.bookName.replace(/'/g,"\\'")}', ${goal.currentUnit})" title="פתח ספר">
+                            <i class="fas fa-book-open"></i>
+                        </button>
                         ${connection
-                    ? `<button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-green-500 dark:text-green-400" onclick="showUserDetails('${connection.email}')" title="לומד בחברותא עם ${partnerName}">
+                    ? `<button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-green-500 dark:text-green-400" onclick="showChavrutaOptions('${(connection.email||'').replace(/'/g,"\\'")}','${(partnerName||'').replace(/'/g,"\\'")}','${(connection.partnerId||'').replace(/'/g,"\\'")}', event)" title="לומד בחברותא עם ${partnerName}">
                                    <i class="fas fa-user-friends"></i>
                                </button>`
                     : `<button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="openChavrutaSearch('${goal.bookName}')" title="מצא חברותא">
@@ -111,8 +123,7 @@ function renderGoals() {
             </div>`;
             list.appendChild(div);
 
-
-            if (goal.targetDate && tasksList) {
+if (goal.targetDate && tasksList) {
                 const diffTime = new Date(goal.targetDate) - new Date();
                 const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
                 const unitsLeft = goal.totalUnits - goal.currentUnit;
@@ -120,8 +131,7 @@ function renderGoals() {
                     hasTasks = true;
                     const dailyTarget = (unitsLeft / diffDays).toFixed(1);
 
-
-                    const doneToday = getDailyProgress(goal.id);
+const doneToday = getDailyProgress(goal.id);
                     const dailyPercent = Math.min(100, (doneToday / Math.ceil(dailyTarget)) * 100);
                     const isDailyDone = doneToday >= Math.ceil(dailyTarget);
 
@@ -133,9 +143,12 @@ function renderGoals() {
                         taskDiv.classList.add('daily-goal-reached');
                     }
 
-                    let statusHtml = `<span class="task-highlight">יעד יומי: ${dailyTarget}</span>`;
+                    let statusHtml;
                     if (isDailyDone) {
-                        statusHtml = `<span style="color:#16a34a; font-weight:bold; font-size:0.9rem;"><i class="fas fa-check"></i> הושלם</span>`;
+                        statusHtml = `<span style="color:#16a34a; font-weight:bold; font-size:0.9rem;"><i class="fas fa-check-circle"></i> השלמת את הלימוד היומי</span>`;
+                    } else {
+                        statusHtml = `<span class="task-highlight">יעד יומי: ${dailyTarget}</span>
+                        <button onclick="markDailyGoalDone('${goal.id}')" style="background:#22c55e; color:#fff; border:none; border-radius:0.5rem; padding:3px 10px; font-size:0.8rem; font-weight:600; cursor:pointer; margin-right:6px; white-space:nowrap;"><i class="fas fa-check"></i> למדתי היום</button>`;
                     }
 
                     taskDiv.innerHTML = `<div><strong>${goal.bookName}</strong></div><div style="text-align:left;">${statusHtml}
@@ -160,8 +173,7 @@ function renderGoals() {
         }
     });
 
-
-    updateRankProgressBar(totalLearned);
+updateRankProgressBar(totalLearned);
     document.getElementById('dailyTasksContainer').style.display = hasTasks ? 'block' : 'none';
 
     const activeBooksCount = userGoals.filter(g => g.status === 'active').length;
@@ -187,32 +199,36 @@ function renderGoals() {
         if (completedEl) completedEl.innerText = completedBooksCount;
     }
 
-
-
-    const stats = { books: activeBooksCount, pages: totalScore, completed: completedBooksCount };
+const stats = { books: activeBooksCount, pages: totalScore, completed: completedBooksCount };
     localStorage.setItem('torahApp_stats', JSON.stringify(stats));
 
-
-    window.justCompletedDailyGoal = null;
+window.justCompletedDailyGoal = null;
     window.newGoalId = null;
 }
 
 async function createGoal(name, total, targetDate, dedication, startPage = 2) {
     if (!requireAuth()) return;
 
+    
+    let initialUnit = 0;
+    const bavliBook = typeof BOOKS_DB !== 'undefined' && BOOKS_DB.find(b => b.name === name && b.category === 'תלמוד בבלי');
+    if (bavliBook) {
+        const trackerDafim = parseInt(localStorage.getItem(`dafYomiTracker_${name}`) || '0');
+        if (trackerDafim > 0) initialUnit = Math.min(trackerDafim * 2, total);
+    }
+
     const newGoal = {
         id: crypto.randomUUID(),
         bookName: name,
         totalUnits: total,
-        currentUnit: 0,
+        currentUnit: initialUnit,
         targetDate: targetDate || '',
         status: 'active',
         dedication: dedication || '',
         startPage: startPage
     };
 
-
-    userGoals.unshift(newGoal);
+userGoals.unshift(newGoal);
     saveGoals();
 
     window.newGoalId = newGoal.id;
@@ -229,21 +245,18 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
         switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
     }
 
-
-    try {
+try {
         if (typeof supabaseClient !== 'undefined' && currentUser) {
             const { data: { user: authUser } } = await supabaseClient.auth.getUser();
             if (!authUser) throw new Error("משתמש לא מחובר");
 
             const { data, error } = await supabaseClient.from('user_goals').insert([{
                 user_id: authUser.id,
-                user_email: authUser.email,
                 book_name: name,
-                total_units: total,
-                current_unit: 0,
+                total_pages: total,
+                current_page: initialUnit || 0,
                 status: 'active',
-                target_date: targetDate || null,
-                dedication: dedication || null
+                target_date: targetDate || null
             }]).select();
 
             if (error) throw error;
@@ -274,10 +287,6 @@ async function createGoal(name, total, targetDate, dedication, startPage = 2) {
     showToast("הצטרפת בהצלחה!", "success");
 }
 
-
-
-
-
 async function addNewGoal() {
     if (!requireAuth()) return;
 
@@ -285,8 +294,7 @@ async function addNewGoal() {
     const customNameEl = document.getElementById('customNameInput');
     const customAmountEl = document.getElementById('customAmountInput');
 
-
-    const dateEl = document.getElementById('targetDateInput');
+const dateEl = document.getElementById('targetDateInput');
     const dedicationEl = document.getElementById('dedicationInput');
     const quickTypeEl = document.getElementById('quickType');
     const quickAmountEl = document.getElementById('quickAmount');
@@ -297,8 +305,7 @@ async function addNewGoal() {
     let targetDate = "";
     let startPage = 2;
 
-
-    if (quickAmountEl && quickAmountEl.value) {
+if (quickAmountEl && quickAmountEl.value) {
         bookName = quickTypeEl.value;
         totalUnits = parseInt(quickAmountEl.value);
         if (document.getElementById('quickDedication').value) {
@@ -315,8 +322,7 @@ async function addNewGoal() {
                 const chapterSelect = document.getElementById('chapterSelect');
                 const selectedChapterName = chapterSelect.options[chapterSelect.selectedIndex].text;
 
-
-                const detailedBook = (typeof ALL_PRAKIM_DATA !== 'undefined') ? ALL_PRAKIM_DATA.find(b => b.name === bookName) : null;
+const detailedBook = (typeof ALL_PRAKIM_DATA !== 'undefined') ? ALL_PRAKIM_DATA.find(b => b.name === bookName) : null;
                 if (detailedBook) {
                     const chapterData = detailedBook.chapters.find(c => c.name === selectedChapterName || `פרק ${c.name}` === selectedChapterName);
                     if (chapterData) {
@@ -337,7 +343,10 @@ async function addNewGoal() {
                 const calcVal = document.getElementById('calculatedUnits')?.value;
                 if (calcVal) totalUnits = parseInt(calcVal);
             }
-            if (!totalUnits) totalUnits = 50;
+            if (!totalUnits) {
+                const bookEntry = (typeof BOOKS_DB !== 'undefined') ? BOOKS_DB.find(b => b.name === bookName) : null;
+                totalUnits = bookEntry ? bookEntry.units : 0;
+            }
         } else if (bookSelectEl && bookSelectEl.value && (!newBookSearchEl || bookSelectEl.style.display !== 'none')) {
 
             try {
@@ -365,18 +374,24 @@ async function addNewGoal() {
         return;
     }
 
-
-    if (!bookName || !totalUnits || totalUnits <= 0) {
+if (!bookName || !totalUnits || totalUnits <= 0) {
         await customAlert("נא לוודא שנבחר ספר/הוזן שם וכמות יחידות תקינה");
         return;
     }
 
+    
+    let initialUnit = 0;
+    const bavliMatch = typeof BOOKS_DB !== 'undefined' && BOOKS_DB.find(b => b.name === bookName && b.category === 'תלמוד בבלי');
+    if (bavliMatch) {
+        const trackerDafim = parseInt(localStorage.getItem(`dafYomiTracker_${bookName}`) || '0');
+        if (trackerDafim > 0) initialUnit = Math.min(trackerDafim * 2, totalUnits);
+    }
 
     const newGoal = {
         id: crypto.randomUUID(),
         bookName: bookName,
         totalUnits: totalUnits,
-        currentUnit: 0,
+        currentUnit: initialUnit,
         status: 'active',
         startDate: new Date().toISOString(),
         targetDate: targetDate,
@@ -384,42 +399,35 @@ async function addNewGoal() {
         startPage: startPage
     };
 
-
-    userGoals.unshift(newGoal);
+userGoals.unshift(newGoal);
     localStorage.setItem('torahApp_goals', JSON.stringify(userGoals));
     saveGoals();
 
-
-    window.newGoalId = newGoal.id;
+window.newGoalId = newGoal.id;
     window.isNewGoalAnimation = true;
 
     renderGoals();
 
-
-    if (customNameEl) customNameEl.value = '';
+if (customNameEl) customNameEl.value = '';
     if (customAmountEl) customAmountEl.value = '';
 
     if (quickAmountEl) quickAmountEl.value = '';
     showToast("הלימוד נוסף בהצלחה!", "success");
 
+switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
 
-    switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
-
-
-    try {
+try {
         if (typeof supabaseClient !== 'undefined' && currentUser && currentUser.email) {
             const { data: { user: authUser } } = await supabaseClient.auth.getUser();
             if (!authUser) throw new Error("משתמש לא מחובר");
 
             const { data, error } = await supabaseClient.from('user_goals').insert([{
                 user_id: authUser.id,
-                user_email: authUser.email,
                 book_name: bookName,
-                total_units: totalUnits,
-                current_unit: 0,
+                total_pages: totalUnits,
+                current_page: initialUnit || 0,
                 status: 'active',
-                target_date: targetDate || null,
-                dedication: newGoal.dedication
+                target_date: targetDate || null
             }]).select();
 
             if (error) throw error;
@@ -440,8 +448,37 @@ async function addNewGoal() {
     }
 }
 
-async function loadGoals() {
+function showGoalsSkeleton() {
+    const list = document.getElementById('goalsList');
+    if (!list) return;
+    _goalsRenderHash = '';
+    _goalsFirstRender = true;
+    const sk = (w, h, r = '6px', extra = '') =>
+        `<div class="skeleton" style="width:${w};height:${h};border-radius:${r};flex-shrink:0;${extra}"></div>`;
+    const card = `
+    <div class="glass rounded-super p-6 border border-white/50 dark:border-slate-700/40 mb-4">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                ${sk('48px','48px','12px')}
+                <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+                    ${sk('55%','18px')}
+                    ${sk('75%','12px')}
+                </div>
+            </div>
+            ${sk('100%','7px','99px','margin-top:4px;')}
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px;">
+                ${sk('40px','40px','50%')}
+                ${sk('40px','40px','50%')}
+                ${sk('40px','40px','50%')}
+                ${sk('40px','40px','50%')}
+                ${sk('90px','44px','14px')}
+            </div>
+        </div>
+    </div>`;
+    list.innerHTML = card.repeat(3);
+}
 
+async function loadGoals() {
     const localGoals = localStorage.getItem('torahApp_goals');
     if (localGoals) {
         userGoals = JSON.parse(localGoals);
@@ -456,18 +493,43 @@ async function loadGoals() {
 
         const userIdForQuery = (currentUser.id && !currentUser.id.includes('@')) ? currentUser.id : null;
         let query = supabaseClient.from('user_goals').select('*');
-        
+
         if (userIdForQuery) {
-            query = query.or(`user_id.eq."${userIdForQuery}",user_email.ilike."${currentUser.email}"`);
+            query = query.eq('user_id', userIdForQuery);
         } else {
-            query = query.eq('user_email', currentUser.email);
+            return;
         }
 
         const { data: cloudGoals, error } = await query;
 
-
-
-        if (cloudGoals && !error) {
+if (cloudGoals && !error) {
+            const localIds = new Set(userGoals.map(g => String(g.id)));
+            cloudGoals.forEach(cg => {
+                const local = userGoals.find(g => String(g.id) === String(cg.id) || g.bookName === cg.book_name);
+                if (local) {
+                    if (cg.status === 'completed') {
+                        local.status = 'completed';
+                        if (cg.completed_at) local.completedDate = cg.completed_at;
+                    }
+                    if (cg.current_page !== undefined) local.currentUnit = cg.current_page;
+                    if (cg.total_pages !== undefined) local.totalUnits = cg.total_pages;
+                    local.id = String(cg.id);
+                } else if (!localIds.has(String(cg.id))) {
+                    userGoals.push({
+                        id: String(cg.id),
+                        bookName: cg.book_name,
+                        currentUnit: cg.current_page || 0,
+                        totalUnits: cg.total_pages || 0,
+                        status: cg.status || 'active',
+                        targetDate: cg.target_date || '',
+                        dedication: cg.dedication || '',
+                        completedDate: cg.completed_at || null,
+                        startPage: cg.start_page || 2
+                    });
+                }
+            });
+            saveGoals();
+            renderGoals();
             await syncGlobalData();
         }
     } catch (e) {
@@ -481,35 +543,28 @@ function saveGoals() {
 }
 
 async function deleteGoal(goalId) {
-    if (!requireAuth()) return;
+    if (!requireAuth() || !goalId || goalId === 'undefined') return;
     if (!(await customConfirm("האם אתה בטוח שברצונך למחוק את הלימוד הזה?"))) return;
 
+const goalToDelete = userGoals.find(g => g.id == goalId);
 
-    const goalToDelete = userGoals.find(g => g.id == goalId);
+userGoals = userGoals.filter(g => g.id != goalId);
 
-
-    userGoals = userGoals.filter(g => g.id != goalId);
-
-
-    saveGoals();
+saveGoals();
     renderGoals();
 
-
-    try {
+try {
         if (typeof supabaseClient !== 'undefined' && currentUser && goalToDelete) {
             if (goalToDelete.id && !goalToDelete.id.toString().includes('-')) {
                 await supabaseClient.from('user_goals').delete().eq('id', goalToDelete.id);
             }
 
             const userIdForQuery = (currentUser.id && !currentUser.id.toString().includes('@')) ? currentUser.id : null;
-            
-            let query = supabaseClient.from('user_goals').delete().eq('book_name', goalToDelete.bookName);
 
-            if (userIdForQuery) {
-                query = query.or(`user_id.eq.${userIdForQuery},user_email.eq.${currentUser.email}`);
-            } else {
-                query = query.eq('user_email', currentUser.email);
-            }
+            if (!userIdForQuery) return;
+            let query = supabaseClient.from('user_goals').delete()
+                .eq('book_name', goalToDelete.bookName)
+                .eq('user_id', userIdForQuery);
 
             const { error: delError } = await query;
             if (delError) {
@@ -517,11 +572,31 @@ async function deleteGoal(goalId) {
                 showToast("המחיקה בענן נכשלה. ייתכן שהמסכת תחזור ברענון.", "error");
             }
 
-            await supabaseClient.from('chavruta_requests')
-                .delete()
-                .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
+            await supabaseClient.from('chavruta_connections')
+                .update({ status: 'cancelled' })
+                .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
                 .eq('book_name', goalToDelete.bookName)
-                .eq('status', 'approved');
+                .in('status', ['accepted', 'approved', 'pending']);
+
+if (typeof chavrutaConnections !== 'undefined') {
+                const cancelled = chavrutaConnections.filter(c => c.book === goalToDelete.bookName);
+                chavrutaConnections = chavrutaConnections.filter(c => c.book !== goalToDelete.bookName);
+
+                cancelled.forEach(c => {
+                    
+                    const stillActive = chavrutaConnections.some(
+                        x => x.partnerId === c.partnerId || x.email === c.email
+                    );
+                    if (!stillActive) {
+                        if (c.email) approvedPartners.delete(c.email);
+                        if (c.partnerId) approvedPartners.delete(c.partnerId);
+                    }
+                });
+
+                localStorage.setItem('torahApp_chavrutas', JSON.stringify(chavrutaConnections));
+                if (typeof renderChavrutas === 'function') renderChavrutas();
+                if (typeof renderChatList === 'function') renderChatList('personal', null, true);
+            }
         }
     } catch (e) {
         console.error("נמחק מקומית, שגיאה במחיקה מהענן:", e);
@@ -585,34 +660,65 @@ function handleScopeChange() {
     }
 }
 
+function showChavrutaOptions(email, name, partnerId, event) {
+    if (event) event.stopPropagation();
+    const existing = document.getElementById('chavruta-options-popup');
+    if (existing) existing.remove();
+
+    const popup = document.createElement('div');
+    popup.id = 'chavruta-options-popup';
+    popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    popup.innerHTML = `
+        <div style="background:var(--card-bg,#fff);border-radius:1.5rem;padding:2rem;min-width:280px;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.2);text-align:center;">
+            <div style="width:64px;height:64px;background:linear-gradient(135deg,#22c55e,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem auto;">
+                <i class="fas fa-user-friends" style="color:#fff;font-size:1.5rem;"></i>
+            </div>
+            <h3 style="margin:0 0 0.25rem;font-size:1.1rem;font-weight:800;color:var(--text-main);">${name}</h3>
+            <p style="margin:0 0 1.5rem;font-size:0.85rem;color:#64748b;">חברותא פעילה</p>
+            <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                <button onclick="document.getElementById('chavruta-options-popup').remove(); showUserDetails('${partnerId || email}')"
+                    style="padding:0.75rem 1rem;background:#3b82f6;color:#fff;border:none;border-radius:0.75rem;font-size:0.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                    <i class="fas fa-user"></i> הצג פרופיל
+                </button>
+                <button onclick="document.getElementById('chavruta-options-popup').remove(); if(typeof openChat==='function') openChat('${email}','${name}')"
+                    style="padding:0.75rem 1rem;background:#22c55e;color:#fff;border:none;border-radius:0.75rem;font-size:0.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                    <i class="fas fa-comments"></i> פתח צ'אט משותף
+                </button>
+                <button onclick="document.getElementById('chavruta-options-popup').remove()"
+                    style="padding:0.6rem 1rem;background:none;border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;font-size:0.9rem;color:#64748b;cursor:pointer;">
+                    ביטול
+                </button>
+            </div>
+        </div>`;
+    popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+    document.body.appendChild(popup);
+}
+
 async function selectBookFromSearch(bookName) {
     document.getElementById('newBookSearch').value = bookName;
     document.getElementById('bookSearchResults').style.display = 'none';
     const detailsArea = document.getElementById('bookDetailsArea');
     if (detailsArea) detailsArea.style.display = 'block';
 
-    try {
-        const res = await fetch(`https://www.sefaria.org.il/api/v2/raw/index/${bookName}`);
-        const data = await res.json();
-        selectedBookStructure = data;
+    const foundInDB = BOOKS_DB.find(b => b.name === bookName);
+    let estimatedUnits = foundInDB ? foundInDB.units : 50;
 
-        document.getElementById('bookScopeSelect').value = 'full';
-        const scopeSelect = document.getElementById('bookScopeSelect');
-        if (scopeSelect) scopeSelect.disabled = false;
+    document.getElementById('calculatedUnits').value = estimatedUnits;
+    if (document.getElementById('customAmountInput')) document.getElementById('customAmountInput').value = estimatedUnits;
 
-        handleScopeChange();
+    document.getElementById('bookScopeSelect').value = 'full';
+    const scopeSelect = document.getElementById('bookScopeSelect');
+    if (scopeSelect) scopeSelect.disabled = false;
+    handleScopeChange();
 
-        let estimatedUnits = 50;
-        if (data.schema && data.schema.sectionNames) {
-            const found = BOOKS_DB.find(b => b.name === bookName);
-            if (found) estimatedUnits = found.units;
+    if (!foundInDB) {
+        try {
+            const res = await fetch(`https://www.sefaria.org.il/api/v2/raw/index/${encodeURIComponent(bookName)}`);
+            const data = await res.json();
+            selectedBookStructure = data;
+        } catch (e) {
+            console.error("Error fetching book structure from Sefaria", e);
         }
-        document.getElementById('calculatedUnits').value = estimatedUnits;
-        if (document.getElementById('customAmountInput')) document.getElementById('customAmountInput').value = estimatedUnits;
-
-    } catch (e) {
-        console.error("Error fetching book structure", e);
-        document.getElementById('calculatedUnits').value = 100;
     }
 }
 
@@ -684,40 +790,128 @@ window.updateGoalNotes = async function (goalId, newNotes) {
 };
 
 async function updateRankProgressBar(score) {
-    return;
-    let currentRank = getRankName(score);
+    const isNotificationsEnabled = typeof notificationsEnabled !== 'undefined' ? notificationsEnabled : false;
+    
+    let ranks = [];
+    try {
+        const { data, error } = await supabaseClient
+            .from('rank_definitions')
+            .select('*')
+            .order('min_points', { ascending: true });
+        if (!error && data && data.length > 0) ranks = data;
+    } catch (e) { }
 
-    if (notificationsEnabled && currentUser && previousRank && currentRank !== previousRank) {
+    if (ranks.length === 0) {
+        
+        ranks = [
+            { name: "צורב צעיר", min_points: 0 },
+            { name: "מתמיד", min_points: 101 },
+            { name: "צורבא מרבנן", min_points: 501 },
+            { name: "תלמיד חכם", min_points: 1001 }
+        ];
+    }
+
+    const currentRankObj = [...ranks].reverse().find(r => score >= r.min_points) || ranks[0];
+    const currentRank = currentRankObj.name;
+
+    if (isNotificationsEnabled && currentUser && previousRank && currentRank !== previousRank) {
         const rankOrder = { "צורב צעיר": 0, "מתמיד": 1, "צורבא מרבנן": 2, "תלמיד חכם": 3 };
-        if (rankOrder[currentRank] > rankOrder[previousRank]) {
+        const transitionKey = `${previousRank}→${currentRank}`;
+        if (rankOrder[currentRank] > rankOrder[previousRank] && !announcedRanks.has(transitionKey)) {
+            announcedRanks.add(transitionKey);
             confetti({ particleCount: 400, spread: 120, origin: { y: 0.6 } });
             const msg = `👑 ברכות! עלית לדרגת ${currentRank}!`;
             addNotification(msg);
             showToast(msg, "success");
-            await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: 100, user_email: currentUser.email });
+            if (typeof addRewardPointsDB === 'function' && currentUser?.id) {
+                await addRewardPointsDB(currentUser.id, 100);
+            }
         }
     }
     previousRank = currentRank;
 
-    let nextRank = "", nextThreshold = 0, prevThreshold = 0;
-    if (score < 101) { nextRank = "מתמיד"; nextThreshold = 101; prevThreshold = 0; }
-    else if (score < 501) { nextRank = "צורבא מרבנן"; nextThreshold = 501; prevThreshold = 101; }
-    else if (score < 1001) { nextRank = "תלמיד חכם"; nextThreshold = 1001; prevThreshold = 501; }
-    else { nextRank = "מאור הדור"; nextThreshold = score; prevThreshold = 0; }
+    const nextRankObj = ranks.find(r => score < r.min_points);
 
     const rInfo = document.getElementById('rank-info');
     const rBar = document.getElementById('rank-progress-bar');
     const rFooter = document.getElementById('rank-footer');
     if (!rInfo || !rBar) return;
 
-    if (score >= 1001) {
+    if (!nextRankObj || !currentRankObj) {
         rInfo.innerText = `דרגת שיא: ${currentRank}`;
         rBar.style.width = "100%";
         rFooter.innerText = "אשריכם! הגעתם לדרגה הגבוהה ביותר.";
     } else {
+        const prevThreshold = currentRankObj.min_points || 0;
+        const nextThreshold = nextRankObj.min_points || 100;
         const progress = ((score - prevThreshold) / (nextThreshold - prevThreshold)) * 100;
         rInfo.innerText = `דרגה נוכחית: ${currentRank}`;
         rBar.style.width = `${progress}%`;
-        rFooter.innerText = `עוד ${nextThreshold - score} דפים לדרגת ${nextRank}`;
+        rFooter.innerText = `עוד ${nextThreshold - score} דפים לדרגת ${nextRankObj.name}`;
+    }
+}
+
+
+const SEFARIA_BAVLI_NAMES = {
+    'ברכות':'Berakhot','שבת':'Shabbat','עירובין':'Eruvin','פסחים':'Pesachim',
+    'שקלים':'Shekalim','יומא':'Yoma','סוכה':'Sukkah','ביצה':'Beitzah',
+    'ראש השנה':'Rosh Hashanah','תענית':'Taanit','מגילה':'Megillah',
+    'מועד קטן':'Moed Katan','חגיגה':'Chagigah','יבמות':'Yevamot',
+    'כתובות':'Ketubot','נדרים':'Nedarim','נזיר':'Nazir','סוטה':'Sotah',
+    'גיטין':'Gittin','קידושין':'Kiddushin','בבא קמא':'Bava Kamma',
+    'בבא מציעא':'Bava Metzia','בבא בתרא':'Bava Batra','סנהדרין':'Sanhedrin',
+    'מכות':'Makkot','שבועות':'Shevuot','עבודה זרה':'Avodah Zarah',
+    'הוריות':'Horayot','זבחים':'Zevachim','מנחות':'Menachot',
+    'חולין':'Chullin','בכורות':'Bekhorot','ערכין':'Arakhin',
+    'תמורה':'Temurah','כריתות':'Keritot','מעילה':'Meilah',
+    'תמיד':'Tamid','מידות':'Middot','נידה':'Niddah',
+};
+
+const SEFARIA_CHUMASH = {
+    'בראשית':'Genesis','שמות':'Exodus','ויקרא':'Leviticus','במדבר':'Numbers','דברים':'Deuteronomy',
+};
+
+const SEFARIA_BASE = 'https://www.sefaria.org.il/';
+
+function _bavliUnitToRef(bookName, currentUnit) {
+    const nextUnit = Math.max(1, currentUnit + 1);
+    const daf = Math.floor((nextUnit - 1) / 2) + 2;
+    const side = (nextUnit - 1) % 2 === 0 ? 'a' : 'b';
+    const engName = SEFARIA_BAVLI_NAMES[bookName];
+    if (!engName) return null;
+    return `${engName}.${daf}${side}`;
+}
+
+function openBookInSefaria(bookName, currentUnit) {
+    const bookEntry = typeof BOOKS_DB !== 'undefined'
+        ? BOOKS_DB.find(b => b.name === bookName)
+        : null;
+    const category = bookEntry?.category || '';
+
+    let ref = null;
+
+    if (category === 'תלמוד בבלי' || SEFARIA_BAVLI_NAMES[bookName]) {
+        ref = _bavliUnitToRef(bookName, currentUnit);
+    } else if (SEFARIA_CHUMASH[bookName]) {
+        const chapter = Math.max(1, Math.floor(currentUnit / 30) + 1);
+        const verse   = Math.max(1, (currentUnit % 30) + 1);
+        ref = `${SEFARIA_CHUMASH[bookName]}.${chapter}.${verse}`;
+    }
+
+    const url = ref
+        ? `${SEFARIA_BASE}${ref}?lang=he&with=all`
+        : `${SEFARIA_BASE}${bookName.replace(/ /g, '_')}?lang=he`;
+
+    const modal = document.getElementById('bookReaderModal');
+    const frame = document.getElementById('bookReaderFrame');
+    const title = document.getElementById('bookReaderTitle');
+
+    if (modal && frame) {
+        if (title) title.textContent = bookName;
+        frame.src = url;
+        modal.style.display = 'flex';
+        if (typeof bringToFront === 'function') bringToFront(modal);
+    } else {
+        window.open(url, '_blank', 'noopener');
     }
 }

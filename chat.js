@@ -1,17 +1,89 @@
+async function _insertNotification(userId, title, content) {
+    const base = { user_id: userId, title, content, is_read: false, created_at: new Date().toISOString() };
+    for (const type of ['message', 'system', 'info', 'admin', null]) {
+        const row = type !== null ? { ...base, type } : { ...base };
+        const result = await supabaseClient.from('notifications').insert(row);
+        if (!result.error || !result.error.message?.includes('check constraint')) return;
+    }
+}
+
+const USER_BADGE_ICONS = [
+    { id: 'crown',      icon: 'fas fa-crown',          color: '#FFB703', label: 'כתר' },
+    { id: 'diamond',    icon: 'fas fa-gem',             color: '#60A5FA', label: 'יהלום' },
+    { id: 'shield',     icon: 'fas fa-shield-alt',      color: '#EF4444', label: 'מגן' },
+    { id: 'scroll',     icon: 'fas fa-scroll',          color: '#10B981', label: 'מגילה' },
+    { id: 'medal',      icon: 'fas fa-medal',           color: '#F59E0B', label: 'מדליה' },
+    { id: 'fire',       icon: 'fas fa-fire',            color: '#F97316', label: 'אש' },
+    { id: 'dove',       icon: 'fas fa-dove',            color: '#93C5FD', label: 'יונה' },
+    { id: 'star',       icon: 'fas fa-star',            color: '#FCD34D', label: 'כוכב' },
+    { id: 'graduation', icon: 'fas fa-graduation-cap',  color: '#8B5CF6', label: 'כובע לימוד' },
+    { id: 'book',       icon: 'fas fa-book-open',       color: '#34D399', label: 'ספר' },
+    { id: 'bolt',       icon: 'fas fa-bolt',            color: '#FBBF24', label: 'ברק' },
+    { id: 'feather',    icon: 'fas fa-feather-alt',     color: '#A78BFA', label: 'נוצה' },
+];
+
+function renderUserIconBadge(iconId) {
+    if (!iconId) return '';
+    const def = USER_BADGE_ICONS.find(b => b.id === iconId);
+    if (!def) return '';
+    return `<i class="${def.icon}" style="color:${def.color}; margin-right:3px; vertical-align:middle;" title="${def.label}"></i>`;
+}
+
+function getChatTable(email) {
+    if (email && email.startsWith('book:')) return 'chat_public';
+    if (email === 'admin@system' || (email && email.endsWith('@system'))) return 'chat_admin';
+    return 'chat_private';
+}
+
+function sanitizeChatHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const ALLOWED_TAGS = new Set(['STRONG','B','EM','I','BR','SPAN','DIV','P','BUTTON','A','BLOCKQUOTE']);
+    function clean(node) {
+        if (node.nodeType === Node.TEXT_NODE) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            if (!ALLOWED_TAGS.has(node.tagName)) { node.replaceWith(...node.childNodes); return; }
+            [...node.attributes].forEach(attr => {
+                if (/^on/i.test(attr.name)) {
+                    if (attr.name === 'onclick') {
+                        const m = attr.value.match(/openDonationModalAndSelectTier\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/);
+                        if (m) {
+                            node.setAttribute('data-sub-tier', m[1]);
+                            node.setAttribute('data-sub-amount', m[2]);
+                            node.classList.add('sub-promo-btn');
+                        }
+                    }
+                    node.removeAttribute(attr.name);
+                } else if (attr.name === 'href' && /^javascript:/i.test(attr.value)) {
+                    node.removeAttribute(attr.name);
+                }
+            });
+        }
+        [...node.childNodes].forEach(clean);
+    }
+    [...tmp.childNodes].forEach(clean);
+    return tmp.innerHTML;
+}
+
 async function searchChats(query) {
     if (!currentUser) return [];
-    
+
     let { data, error } = await supabaseClient.rpc('search_my_chats', {
         p_my_email: currentUser.email,
         p_query: query
     });
 
     if (error) {
+        if (error.code === '400') console.error("Full DB Error (Search Chats RPC):", error.message, error.details);
         const { data: directData, error: directError } = await supabaseClient
-            .from('chat_messages')
-            .select('*')
-            .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
-            .ilike('message', `%${query}%`);
+            .from('chat_private')
+            .select('connection_id, sender_id, content, created_at')
+            .eq('sender_id', currentUser.id)
+            .ilike('content', `%${query}%`);
+
+        if (directError && directError.code === '400') {
+            console.error("Full DB Error (Search Chats Direct):", directError.message, directError.details);
+        }
         data = directData;
         error = directError;
     }
@@ -24,6 +96,63 @@ async function searchChats(query) {
 }
 
 let chatPollTimer = null;
+
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+function showDesktopNotification(title, body, chatId) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.hasFocus() && !document.hidden) return;
+    const notif = new Notification(title, { body, icon: 'favicon.ico', tag: chatId });
+    notif.onclick = function () {
+        window.focus();
+        if (chatId && typeof openChat === 'function') {
+            const u = globalUsersData.find(e => e.email === chatId);
+            openChat(chatId, u?.name || chatId);
+        }
+        notif.close();
+    };
+}
+
+async function markAllChatRead(partnerEmail) {
+    let connId = typeof chavrutaConnections !== 'undefined'
+        ? chavrutaConnections.find(c => c.email === partnerEmail)?.id
+        : null;
+
+    if (!connId && currentUser?.id && typeof supabaseClient !== 'undefined') {
+        const partnerUser = typeof globalUsersData !== 'undefined'
+            ? globalUsersData.find(u => u.email === partnerEmail)
+            : null;
+        if (partnerUser?.id) {
+            try {
+                const { data } = await supabaseClient
+                    .from('chavruta_connections')
+                    .select('id')
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${partnerUser.id}),and(sender_id.eq.${partnerUser.id},receiver_id.eq.${currentUser.id})`)
+                    .limit(1)
+                    .maybeSingle();
+                connId = data?.id;
+            } catch (_) {}
+        }
+    }
+
+    if (connId && typeof supabaseClient !== 'undefined') {
+        const { error } = await supabaseClient.from('chat_private')
+            .update({ is_read: true })
+            .eq('connection_id', connId)
+            .neq('sender_id', currentUser.id);
+        if (!error && typeof chatChannel !== 'undefined' && chatChannel) {
+            chatChannel.send({
+                type: 'broadcast',
+                event: 'messages_read',
+                payload: { reader: currentUser.email, of: partnerEmail }
+            });
+        }
+    }
+}
 
 function startChatPolling() {
     if (!chatPollTimer) {
@@ -40,7 +169,7 @@ async function pollChats() {
 
     for (const win of windows) {
         const partnerEmail = win.id.replace('chat-window-', '');
-        await checkNewMessagesFor(partnerEmail);
+        if (partnerEmail) await checkNewMessagesFor(partnerEmail);
     }
     chatPollTimer = setTimeout(pollChats, 3000);
 }
@@ -52,11 +181,12 @@ function getChatContainer(partnerEmail) {
 }
 
 async function checkNewMessagesFor(partnerEmail) {
+    const table = getChatTable(partnerEmail);
+
     const container = getChatContainer(partnerEmail);
     if (!container) return;
 
-
-    if (container.querySelector('.chat-loading-indicator')) return;
+if (container.querySelector('.chat-loading-indicator')) return;
 
     let lastTime = new Date(0).toISOString();
     const bubbles = container.querySelectorAll('.message-bubble');
@@ -66,38 +196,69 @@ async function checkNewMessagesFor(partnerEmail) {
     }
 
     try {
-        let { data, error } = await supabaseClient.rpc('get_new_messages', {
-            p_my_email: currentUser.email,
-            p_partner_email: partnerEmail,
-            p_last_time: lastTime
-        });
-
-        if (error) {
-            const { data: directData, error: directError } = await supabaseClient
-                .from('chat_messages')
-                .select('*')
-                .or(`and(sender_email.ilike.${currentUser.email},receiver_email.ilike.${partnerEmail}),and(sender_email.ilike.${partnerEmail},receiver_email.ilike.${currentUser.email})`)
-                .gt('created_at', lastTime);
-            data = directData;
-            error = directError;
+        let query;
+        if (table === 'chat_public') {
+            const bookName = partnerEmail.replace('book:', '');
+            query = supabaseClient.from(table).select('*').eq('book_name', bookName).order('created_at', { ascending: true });
+        } else if (table === 'chat_admin') {
+            query = supabaseClient.from(table).select('*').eq('user_id', currentUser.id);
+            if (partnerEmail === 'updates@system') {
+                query = query.eq('sender_email', 'updates@system');
+            } else if (partnerEmail === 'mentions@system') {
+                query = query.eq('sender_email', 'mentions@system');
+            } else {
+                query = query.not('sender_email', 'eq', 'updates@system').not('sender_email', 'eq', 'mentions@system');
+            }
+        } else {
+            
+            const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === partnerEmail) : null;
+            const connId = (conn && conn.id) || (window._archivedConnIds && window._archivedConnIds[partnerEmail]);
+            if (connId) {
+                query = supabaseClient.from(table).select('id, connection_id, sender_id, content, created_at, sender_email').eq('connection_id', connId);
+            } else {
+                query = supabaseClient.from(table).select('id, connection_id, sender_id, content, created_at, sender_email').eq('sender_id', currentUser.id);
+            }
         }
 
-        if (error) throw error;
+        query = query.gt('created_at', lastTime);
+
+        const { data, error } = await query;
+
+        if (error) {
+            if (error.code === '400') console.error("Full DB Error (Poll Chats):", error.message, error.details);
+            throw error;
+        }
         if (data && data.length > 0) {
             data.forEach(msg => {
-                const type = msg.sender_email.toLowerCase() === currentUser.email.toLowerCase() ? 'me' : 'other';
-                appendMessageToWindow(partnerEmail, msg.message, type, msg.id, msg.created_at, msg.is_read, msg.sender_email);
-                if (type === 'other') {
+                if (msg.parent_message_id) return;
+                const isMe = (msg.user_id && msg.user_id === currentUser.id) || (msg.sender_id && msg.sender_id === currentUser.id);
+                const type = isMe ? 'me' : 'other';
+                const senderEmail = msg.sender_email || (globalUsersData.find(u => u.id === (msg.user_id || msg.sender_id))?.email);
+                const alreadyInDom = msg.id && !!document.getElementById(`msg-${msg.id}`);
+                appendMessageToWindow(partnerEmail, msg.content || msg.message_text || msg.message, type, msg.id, msg.created_at, false, senderEmail, true);
+                if (type === 'other' && !alreadyInDom) {
                     const win = document.getElementById(`chat-window-${partnerEmail}`);
-                    if (win && win.classList.contains('minimized')) win.classList.add('flashing');
-                    else markAsRead(partnerEmail);
+                    const isChatOpen = win && !win.classList.contains('minimized');
+                    const isMainChatActive = !!document.getElementById(`msgs-${partnerEmail}`)?.closest('#chat-main-area');
+                    if (isChatOpen || isMainChatActive) {
+                        markAsRead(partnerEmail);
+                    } else {
+                        unreadMessages[partnerEmail] = (unreadMessages[partnerEmail] || 0) + 1;
+                        localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
+                        if (typeof updateChatBadge === 'function') updateChatBadge();
+                        if (win && win.classList.contains('minimized')) win.classList.add('flashing');
+                        const senderUser = globalUsersData.find(u => u.email === senderEmail);
+                        const senderName = senderUser?.name || senderEmail?.split('@')[0] || 'משתמש';
+                        const msgText = (msg.content || msg.message_text || msg.message || '').replace(/<[^>]+>/g, '').substring(0, 80);
+                        showDesktopNotification('הודעה חדשה מ-' + senderName, msgText, partnerEmail);
+                    }
                 }
             });
         }
-    } catch (e) { console.error("Polling error", e); }
+    } catch (e) { console.error("Full DB Error (Poll Chats):", e); }
 }
 
-let activeChats = {}; 
+let activeChats = {};
 
 function getCurrentChatEmail() {
     return isAdminMode ? 'admin@system' : currentUser.email;
@@ -163,27 +324,36 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     const isSystem = partnerEmail === 'admin@system';
     const banStyle = (isSystem || isBook || isUpdates) ? 'display:none;' : `color:${blockIconColor}; cursor:pointer;`;
 
+    const reportBtnHtml = (isSystem || isBook || isUpdates || isMentions) ? '' :
+        `<button onclick="event.stopPropagation(); openReportModal('${partnerEmail}')" id="block-btn-${partnerEmail}"
+            class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${isBlocked ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400' : 'border-slate-200 dark:border-slate-600 text-slate-400 hover:border-red-300 hover:text-red-500'}"
+            title="דיווח וחסימה">
+            <i class="fas fa-ban text-xs"></i> ${isBlocked ? 'חסום' : 'דיווח'}
+        </button>`;
+
     const chatHtml = `
         <div class="chat-window ${blockClass} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl overflow-hidden flex flex-col" id="chat-window-${partnerEmail}">
-            <div class="chat-header bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 flex justify-between items-center cursor-pointer" onclick="toggleChatWindow('${partnerEmail}')">
-                <div class="flex items-center gap-3">
-                    ${isBook ? '<i class="fas fa-book"></i>' : (isSystem ? '<i class="fas fa-shield-alt text-red-500"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`)))}
-                    <div class="flex flex-col">
-                        <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white leading-tight">${partnerName}</span>
+            <div class="chat-header bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex justify-between items-center cursor-pointer" onclick="toggleChatWindow('${partnerEmail}')">
+                <!-- שם ואייקון – צד שמאל -->
+                <div class="flex items-center gap-2">
+                    ${isBook ? '<i class="fas fa-book text-amber-500"></i>' : (isSystem ? '<i class="fas fa-shield-alt text-red-500"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`)))}
+                    <div class="flex flex-col" style="text-align:right;">
+                        <span class="font-bold text-base leading-tight text-slate-800 dark:text-white" ${!isBook && !isSystem && !isUpdates && !isMentions ? `onclick="event.stopPropagation(); showUserDetails('${partnerEmail}')" style="cursor:pointer;"` : ''}>${partnerName}</span>
                         ${isBook ? `<span class="text-[10px] ${bookOnlineCount > 0 ? 'text-emerald-500 font-bold' : 'text-slate-500'} dark:text-slate-400 font-normal">${bookOnlineCount} לומדים מחוברים</span>` : ''}
                     </div>
                 </div>
-                <div class="flex items-center gap-3 text-slate-400">
-                    <i class="fas fa-ban ${banIconClass} hover:text-red-600 transition-colors" onclick="event.stopPropagation(); openReportModal('${partnerEmail}')" title="דיווח וחסימה" style="${banStyle}" id="block-btn-${partnerEmail}"></i>
-                    <i class="fas fa-minus hover:text-slate-600 transition-colors" onclick="event.stopPropagation(); toggleChatWindow('${partnerEmail}')" title="מזער"></i>
-                    <i class="fas fa-expand hover:text-slate-600 transition-colors" onclick="event.stopPropagation(); expandChatToScreen('${partnerEmail}', '${partnerName.replace(/'/g, "\\'")}')" title="פתח במסך מלא"></i>
-                    <i class="fas fa-times hover:text-slate-600 transition-colors" onclick="event.stopPropagation(); closeChatWindow('${partnerEmail}')"></i>
+                <!-- כפתורי שליטה – צד ימין (LTR: X, הגדלה, מזעור, דיווח) -->
+                <div class="flex items-center gap-2 text-slate-400" style="direction:ltr;" onclick="event.stopPropagation()">
+                    <i class="fas fa-times hover:text-slate-600 transition-colors cursor-pointer" onclick="closeChatWindow('${partnerEmail}')" title="סגור"></i>
+                    <i class="fas fa-expand hover:text-slate-600 transition-colors cursor-pointer" onclick="expandChatToScreen('${partnerEmail}', '${partnerName.replace(/'/g, "\\'")}')" title="פתח במסך מלא"></i>
+                    <i class="fas fa-minus hover:text-slate-600 transition-colors cursor-pointer" onclick="toggleChatWindow('${partnerEmail}')" title="מזער"></i>
+                    ${reportBtnHtml}
                 </div>
             </div>
             <div class="chat-body">
                 ${isSystem ? `<div class="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-xs p-2 text-center border-b border-yellow-100 dark:border-yellow-800 font-medium">עקב תקלות טעינה, מומלץ לעבור לצ'אט זה במצב מסך מלא <button class="underline font-bold mr-1 hover:text-yellow-900 dark:hover:text-yellow-100" onclick="expandChatToScreen('${partnerEmail}', '${partnerName.replace(/'/g, "\\'")}')">מעבר למסך מלא</button></div>` : ''}
-                <div class="chat-messages-area flex flex-col" id="msgs-${partnerEmail}">
-                    <div class="chat-loading-indicator" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fas fa-circle-notch fa-spin"></i> טוען צ'אט...</div>
+                <div class="chat-messages-area chat-wa-bg flex flex-col" id="msgs-${partnerEmail}">
+                    <div class="chat-loading-indicator" style="padding:16px;">${getSkeletonHTML('chat', 4)}</div>
                 </div>
                 <div class="typing-indicator-box" id="typing-${partnerEmail}"></div>
                 ${isUpdates || isMentions ?
@@ -194,8 +364,8 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
                         <input type="text" id="input-${partnerEmail}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..." 
                         oninput="handleTyping('${partnerEmail}'); handleMentionInput(event, '${partnerEmail}')" 
                         onkeyup="saveChatDraft('${partnerEmail}', this.value)"
-                        onkeypress="if(event.key === 'Enter' && !isMentionPopupActive()) sendMessage('${partnerEmail}')"
-                        onkeydown="return handleMentionKeyDown(event, '${partnerEmail}')">
+                        onkeypress="if(event.key === 'Enter' && !event.shiftKey && !isMentionPopupActive()) sendMessage('${partnerEmail}')"
+                        onkeydown="if(event.key==='Enter'&&event.shiftKey){event.preventDefault();const p=this.selectionStart;this.value=this.value.slice(0,p)+'\\n'+this.value.slice(p);this.selectionStart=this.selectionEnd=p+1;return false;} return handleMentionKeyDown(event, '${partnerEmail}')">
                         <button class="w-12 h-12 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-slate-800 transition-transform active:scale-95 shadow-md shrink-0" onclick="sendMessage('${partnerEmail}')">
                             <span class="material-icons-round transform -scale-x-100">send</span>
                         </button>
@@ -224,7 +394,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
 
     if (startMinimized) {
         const win = document.getElementById(`chat-window-${partnerEmail}`);
-        if (win && unreadMessages[partnerEmail] > 0) { 
+        if (win && unreadMessages[partnerEmail] > 0) {
             win.classList.add('minimized');
             win.classList.add('flashing');
             rearrangeMinimizedWindows();
@@ -263,35 +433,18 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
         if (filter === 'personal' && tabs[0]) tabs[0].classList.add('active');
         else if (filter === 'public' && tabs[1]) tabs[1].classList.add('active');
         else if (filter === 'other' && tabs[2]) tabs[2].classList.add('active');
-    }
-    if (filter === 'archive') {
-        const mainArea = document.getElementById('chat-main-area');
-        mainArea.innerHTML = `<div style="margin: auto; color: #94a3b8; text-align: center;"><i class="fas fa-archive" style="font-size: 3rem; opacity: 0.3;"></i><p>ארכיון צ'אטים</p></div>`;
+        else if (filter === 'archive' && tabs[3]) tabs[3].classList.add('active');
     }
 
     const container = document.getElementById('chat-list-container');
-    if (!isBackgroundUpdate) {
-        const cachedHtml = localStorage.getItem(cacheKey);
-        if (cachedHtml) {
-            container.innerHTML = cachedHtml;
-        } else {
-            container.innerHTML = '<div class="text-center p-5 text-slate-400">טוען...</div>';
-        }
+
+    if (!isBackgroundUpdate && container) {
+        const skRow = `<div class="skeleton-card" style="padding:10px 14px;"><div class="skeleton skeleton-avatar" style="width:40px;height:40px;"></div><div class="skeleton-card-info"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line short"></div></div></div>`;
+        container.innerHTML = skRow.repeat(4);
     }
 
-    let { data, error } = await supabaseClient.rpc('get_my_conversations', {
-        p_my_email: currentUser.email
-    });
-
-    if (error) {
-        const { data: directData, error: directError } = await supabaseClient
-            .from('chat_messages')
-            .select('*')
-            .or(`sender_email.eq.${currentUser.email},receiver_email.eq.${currentUser.email}`)
-            .order('created_at', { ascending: false });
-        data = directData;
-        error = directError;
-    }
+let data = [];
+    let error = null;
 
     if (error) console.error("Error fetching conversations:", error);
 
@@ -347,17 +500,134 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     }
 
     if (filter === 'personal') {
-        approvedPartners.forEach(partnerEmail => {
-            if (!partners.has(partnerEmail)) {
+        
+        const isEmail = v => typeof v === 'string' && v.includes('@');
+        const unseenPartners = [...approvedPartners].filter(e => isEmail(e) && !partners.has(e));
+
+        if (unseenPartners.length > 0) {
+            const connIds = unseenPartners
+                .map(e => typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === e)?.id : null)
+                .filter(Boolean);
+
+            let lastMsgByConn = {};
+            let lastMsgByEmail = {};
+
+            if (connIds.length > 0) {
+                const { data: recentMsgs } = await supabaseClient
+                    .from('chat_private')
+                    .select('connection_id, content, created_at')
+                    .in('connection_id', connIds)
+                    .order('created_at', { ascending: false })
+                    .limit(connIds.length * 10);
+                if (recentMsgs) {
+                    recentMsgs.forEach(msg => {
+                        if (!lastMsgByConn[msg.connection_id]) {
+                            lastMsgByConn[msg.connection_id] = msg;
+                        }
+                    });
+                }
+            }
+
+const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
+                const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === partnerEmail) : null;
+                return !conn?.id || !lastMsgByConn[conn.id];
+            });
+
+            if (partnersNeedingFallback.length > 0 && currentUser?.id) {
+                const partnerIds = partnersNeedingFallback
+                    .map(e => typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === e)?.partnerId : null)
+                    .filter(Boolean);
+
+                if (partnerIds.length > 0) {
+                    const { data: fallbackMsgs } = await supabaseClient
+                        .from('chat_private')
+                        .select('content, created_at, sender_id, receiver_id')
+                        .or(`sender_id.in.(${partnerIds.join(',')}),receiver_id.in.(${partnerIds.join(',')})`)
+                        .order('created_at', { ascending: false })
+                        .limit(partnerIds.length * 10);
+
+                    if (fallbackMsgs) {
+                        fallbackMsgs.forEach(msg => {
+                            const pid = msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id;
+                            const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.partnerId === pid) : null;
+                            const em = conn?.email;
+                            if (em && !lastMsgByEmail[em]) lastMsgByEmail[em] = msg;
+                        });
+                    }
+                }
+            }
+
+            unseenPartners.forEach(partnerEmail => {
                 partners.add(partnerEmail);
+                const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === partnerEmail) : null;
+                const lastMsg = (conn ? lastMsgByConn[conn.id] : null) || lastMsgByEmail[partnerEmail];
+                const displayContent = lastMsg
+                    ? (lastMsg.content?.startsWith('__DELETED__:') ? 'ההודעה נמחקה' : lastMsg.content)
+                    : 'קבעתם חברותא! התחילו את השיחה.';
                 chats.push({
                     email: partnerEmail,
-                    lastMsg: 'קבעתם חברותא! התחילו את השיחה.',
-                    time: new Date().toISOString(),
+                    lastMsg: displayContent,
+                    time: lastMsg ? lastMsg.created_at : new Date().toISOString(),
                     unread: false
                 });
+            });
+        }
+    }
+
+    if (filter === 'archive') {
+        
+        if (currentUser?.id) {
+            const { data: oldConns } = await supabaseClient
+                .from('chavruta_connections')
+                .select('id, book_name, sender_id, receiver_id, status')
+                .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                .in('status', ['cancelled', 'completed', 'rejected'])
+                .order('created_at', { ascending: false })
+                .limit(30);
+
+            if (oldConns && oldConns.length > 0) {
+                const archiveConnIds = oldConns.map(c => c.id);
+                const { data: archiveMsgs } = await supabaseClient
+                    .from('chat_private')
+                    .select('connection_id, content, created_at')
+                    .in('connection_id', archiveConnIds)
+                    .order('created_at', { ascending: false })
+                    .limit(archiveConnIds.length * 5);
+
+                const lastByConn = {};
+                if (archiveMsgs) {
+                    archiveMsgs.forEach(m => {
+                        if (!lastByConn[m.connection_id]) lastByConn[m.connection_id] = m;
+                    });
+                }
+
+                window._archivedConnIds = window._archivedConnIds || {};
+
+                oldConns.forEach(conn => {
+                    const partnerId = conn.sender_id === currentUser.id ? conn.receiver_id : conn.sender_id;
+                    const partnerUser = globalUsersData.find(u => u.id === partnerId);
+                    const partnerEmail = partnerUser?.email || partnerId;
+
+                    if (!partners.has(partnerEmail)) {
+                        partners.add(partnerEmail);
+                        
+                        window._archivedConnIds[partnerEmail] = conn.id;
+                        const lastMsg = lastByConn[conn.id];
+                        const displayContent = lastMsg
+                            ? (lastMsg.content?.startsWith('__DELETED__:') ? 'ההודעה נמחקה' : lastMsg.content)
+                            : conn.book_name || 'שיחה קודמת';
+                        chats.push({
+                            email: partnerEmail,
+                            lastMsg: displayContent,
+                            time: lastMsg ? lastMsg.created_at : new Date().toISOString(),
+                            unread: false,
+                            bookName: conn.book_name || null,
+                            connStatus: conn.status || null
+                        });
+                    }
+                });
             }
-        });
+        }
     }
 
     chats.sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -402,12 +672,14 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
             emptyMsg += '<br><span style="font-size:0.9em; display:block; margin-top:8px;">יש למצוא חברותא כדי להתחיל לשוחח.</span>';
         } else if (filter === 'public') {
             emptyMsg += '<br><span style="font-size:0.9em; display:block; margin-top:8px;">יש להתחיל ללמוד ספר כדי להצטרף לשיח.</span>';
+        } else if (filter === 'archive') {
+            emptyMsg = '<i class="fas fa-archive" style="font-size:2rem; opacity:0.3; display:block; margin-bottom:8px;"></i>אין חברותות קודמות.<br><span style="font-size:0.85em; display:block; margin-top:6px;">שיחות עם חברותות שהסתיימו יופיעו כאן.</span>';
         }
         newHTML = `<div class="text-center p-5 text-slate-400">${emptyMsg}</div>`;
     } else {
         chats.forEach(chat => {
             const user = globalUsersData.find(u => u.email && chat.email && u.email.toLowerCase() === chat.email.toLowerCase());
-            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'מנהל' : (chat.email === 'updates@system' ? 'עדכונים ממשתמשים שאני עוקב אחריהם' : (chat.email === 'mentions@system' ? 'אזכורים' : chat.email.split('@')[0]))));
+            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'מנהל' : (chat.email === 'updates@system' ? 'עדכונים ממשתמשים שאני עוקב אחריהם' : (chat.email === 'mentions@system' ? 'אזכורים' : 'לומד'))));
 
             const isOnline = chat.email === 'admin@system' || (user && user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000));
 
@@ -418,19 +690,34 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
 
             const truncatedLastMsg = truncateHtmlText(chat.lastMsg, 60);
             const initial = name ? name.charAt(0) : '?';
+            const isUserBanned = user && user.isBanned;
+            const isArchiveItem = !!chat.bookName;
+            const statusLabel = chat.connStatus === 'completed' ? 'הושלם' : chat.connStatus === 'rejected' ? 'נדחה' : chat.connStatus === 'cancelled' ? 'בוטל' : '';
+            const statusColor = chat.connStatus === 'completed' ? '#16a34a' : '#94a3b8';
 
             let iconHtml = initial;
+            let iconExtraStyle = '';
             if (chat.email.startsWith('book:')) iconHtml = '<i class="fas fa-book"></i>';
             else if (chat.email === 'admin@system') iconHtml = '<i class="fas fa-shield-alt text-red-500"></i>';
             else if (chat.email === 'updates@system') iconHtml = '<i class="fas fa-bullhorn text-amber-500"></i>';
             else if (chat.email === 'mentions@system') iconHtml = '<i class="fas fa-at text-amber-500"></i>';
             else if (chat.email.includes('@system')) iconHtml = '<i class="fas fa-robot"></i>';
+            else if (user?.avatar_url) {
+                const bg = user.background_url ? `background-image:url('${user.background_url}');background-size:cover;background-position:center;` : '';
+                iconHtml = `<img src="${user.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='<span style=\\"font-weight:700;\\">${initial}</span>'">`;
+                if (bg) iconExtraStyle = bg;
+            } else if (user?.background_url) {
+                iconHtml = `<span style="font-weight:700;position:relative;z-index:1;">${initial}</span>`;
+                iconExtraStyle = `background-image:url('${user.background_url}');background-size:cover;background-position:center;`;
+            }
 
+            const unreadCount = (typeof unreadMessages !== 'undefined' && unreadMessages[chat.email]) || 0;
+            const hasUnread = unreadCount > 0;
             newHTML += `
-            <div class="chat-list-item p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors cursor-pointer border border-transparent flex items-center gap-3 ${chat.unread ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : ''}" onclick="loadChatIntoMainArea('${chat.email}', '${name.replace(/'/g, "\\'")}', this)">
-                
+            <div class="chat-list-item p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors cursor-pointer border border-transparent flex items-center gap-3 ${hasUnread ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : ''}" onclick="loadChatIntoMainArea('${chat.email}', '${name.replace(/'/g, "\\'")}', this)">
+
                 <div class="relative flex-shrink-0">
-                    <div class="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300">
+                    <div class="w-10 h-10 rounded-full ${isArchiveItem ? 'bg-slate-100 dark:bg-slate-700/50 opacity-75' : 'bg-slate-200 dark:bg-slate-700'} flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 overflow-hidden" style="${iconExtraStyle}">
                         ${iconHtml}
                     </div>
                     ${isOnline ? `<span class="absolute bottom-0 left-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></span>` : ''}
@@ -438,10 +725,14 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
 
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between items-baseline mb-0.5">
-                        <span class="font-bold text-sm text-slate-900 dark:text-white truncate">${name}</span>
-                        <span class="text-[10px] text-slate-400 whitespace-nowrap">${timeDisplay}</span>
+                        <span class="font-bold text-sm text-slate-900 dark:text-white truncate">${name}${user?.user_icon ? ' ' + renderUserIconBadge(user.user_icon) : ''}${isUserBanned ? ' <span class="msg-banned-notice">חסום</span>' : ''}</span>
+                        <span class="text-[10px] ${hasUnread ? 'text-emerald-600 font-bold' : 'text-slate-400'} whitespace-nowrap">${timeDisplay}</span>
                     </div>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 truncate ${chat.unread ? 'font-bold text-slate-800 dark:text-slate-200' : ''}">${truncatedLastMsg}</p>
+                    ${isArchiveItem ? `<div class="text-[10px] mb-0.5" style="color:${statusColor};"><i class="fas fa-book-open" style="margin-left:2px;"></i>${chat.bookName}${statusLabel ? ` · ${statusLabel}` : ''}</div>` : ''}
+                    <div class="flex items-center justify-between gap-1">
+                        <p class="text-xs text-slate-500 dark:text-slate-400 truncate ${hasUnread ? 'font-semibold text-slate-800 dark:text-slate-200' : ''} flex-1 min-w-0">${truncatedLastMsg}</p>
+                        ${hasUnread ? `<span class="chat-unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
+                    </div>
                 </div>
             </div>
         `;
@@ -449,14 +740,29 @@ async function renderChatList(filter, tabEl, isBackgroundUpdate = false) {
     }
 
     if (newHTML !== localStorage.getItem(cacheKey)) {
-        container.innerHTML = newHTML;
         localStorage.setItem(cacheKey, newHTML);
     }
+    container.innerHTML = newHTML;
 }
-function loadChatIntoMainArea(email, name, el) {
+function closeMobileChatView() {
+    const screenEl = document.getElementById('screen-chats');
+    if (screenEl) screenEl.classList.remove('mobile-chat-open');
+    document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('bg-slate-100', 'dark:bg-slate-800'));
+    const main = document.getElementById('chat-main-area');
+    setTimeout(() => {
+        if (main) main.innerHTML = '';
+    }, 310);
+}
+
+async function loadChatIntoMainArea(email, name, el) {
     if (!email.startsWith('book:')) email = email.toLowerCase();
     const main = document.getElementById('chat-main-area');
     main.innerHTML = '';
+
+    const screenEl = document.getElementById('screen-chats');
+    if (screenEl && window.innerWidth <= 768) {
+        screenEl.classList.add('mobile-chat-open');
+    }
 
     document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('bg-slate-100', 'dark:bg-slate-800'));
     if (el) {
@@ -476,6 +782,7 @@ function loadChatIntoMainArea(email, name, el) {
     const isAdmin = email === 'admin@system';
 
     let bookOnlineCount = 0;
+    let isChatClosed = false, isChatHidden = false;
     if (isBook) {
         const bookName = email.replace('book:', '');
         const now = new Date();
@@ -485,14 +792,24 @@ function loadChatIntoMainArea(email, name, el) {
             u.lastSeen &&
             (now - new Date(u.lastSeen) < 5 * 60 * 1000)
         ).length;
+        try {
+            const [{ data: closedData }, { data: hiddenData }] = await Promise.all([
+                supabaseClient.from('system_announcements').select('id').eq('target_type', 'chat_closed').eq('content', bookName).maybeSingle(),
+                supabaseClient.from('system_announcements').select('id').eq('target_type', 'chat_hidden').eq('content', bookName).maybeSingle()
+            ]);
+            isChatClosed = !!closedData;
+            isChatHidden = !!hiddenData;
+        } catch(e) { console.warn('chat status check failed', e); }
     }
 
     const partner = globalUsersData.find(u => u.email === email);
-    const isOnline = email === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000));
-    const statusText = isOnline ? 'מחובר כעת' : 'לא מחובר';
+    const isPartnerBanned = partner && partner.isBanned;
+    
+    const isOnline = !isArchived && !isPartnerBanned && (email === 'admin@system' || (partner && partner.lastSeen && (new Date() - new Date(partner.lastSeen) < 5 * 60 * 1000)));
+    const statusText = isArchived ? 'שיחה בארכיון' : (isPartnerBanned ? 'משתמש חסום' : (isOnline ? 'מחובר כעת' : 'לא מחובר'));
     const finalStatusText = isBook ? `${bookOnlineCount} לומדים מחוברים` : (isUpdates ? 'ערוץ עדכונים' : (isMentions ? 'מערכת התראות' : statusText));
 
-    let statusColorClass = isOnline ? 'text-emerald-500' : 'text-red-500';
+    let statusColorClass = isArchived ? 'text-slate-400' : (isPartnerBanned ? 'text-red-500' : (isOnline ? 'text-emerald-500' : 'text-red-500'));
     if (isBook && bookOnlineCount > 0) {
         statusColorClass = 'text-emerald-500';
     }
@@ -500,39 +817,49 @@ function loadChatIntoMainArea(email, name, el) {
     const avatarInitial = name.charAt(0);
 
     const chatHtml = `
-        <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center px-6 justify-between shadow-sm z-20">
+        <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center px-4 justify-between shadow-sm z-20">
+            <!-- כפתור חזרה – מובייל בלבד -->
+            <button class="mobile-back-btn md:hidden hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-full transition-colors" onclick="closeMobileChatView()" title="חזרה לרשימה" style="display:none;">
+                <span class="material-icons-round text-xl text-slate-500">arrow_forward</span>
+            </button>
+            <!-- שם ואייקון – צד ימין (ראשון ב-RTL) -->
             <div class="flex items-center gap-3">
                 <div class="relative">
                     <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white">${isBook ? '<i class="fas fa-book"></i>' : (isAdmin ? '<i class="fas fa-shield-alt text-red-500 text-xl leading-none"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : avatarInitial)))}</div>
-                    ${!isBook && !isUpdates && !isMentions ? `<span class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusDotBgClass} border-2 border-white dark:border-slate-900"></span>` : ''}
+                    ${!isBook && !isUpdates && !isMentions && !isArchived && !isPartnerBanned ? `<span class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusDotBgClass} border-2 border-white dark:border-slate-900"></span>` : ''}
                 </div>
                 <div class="flex flex-col">
-                    <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white">${name}</span>
+                    <span class="font-bold text-lg leading-tight text-slate-800 dark:text-white" ${!isBook && !isAdmin && !isUpdates && !isMentions ? `onclick="showUserDetails('${email}')" style="cursor:pointer;"` : ''}>${name}${isPartnerBanned ? ' <span class="msg-banned-notice">חסום</span>' : ''}</span>
                     <span class="text-[10px] ${isUpdates || isMentions ? 'text-amber-500' : statusColorClass} font-medium">${finalStatusText}</span>
                 </div>
- </div>
-            <div class="flex items-center gap-4">
-                ${!isSystem && !isBook ? `<button class="hover:bg-slate-100 p-1.5 rounded-full transition-colors" onclick="openReportModal('${email}')"><span class="material-icons-round text-xl text-slate-500">block</span></button>` : ''}
-                <button class="hover:bg-slate-100 p-1.5 rounded-full transition-colors" onclick="minimizeMainChat('${email}', '${name.replace(/'/g, "\\'")}')"><span class="material-icons-round text-xl text-slate-500">open_in_full</span></button>
-                <button class="hover:bg-slate-100 p-1.5 rounded-full transition-colors" onclick="closeMainChat()"><span class="material-icons-round text-xl text-rose-400">close</span></button>
+            </div>
+            <!-- כפתורי שליטה – צד שמאל (LTR: X, הגדלה, דיווח וחסימה) -->
+            <div class="flex items-center gap-3" style="direction:ltr;">
+                <button class="hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-full transition-colors" onclick="closeMainChat()" title="סגור"><span class="material-icons-round text-xl text-rose-400">close</span></button>
+                <button class="hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-full transition-colors" onclick="minimizeMainChat('${email}', '${name.replace(/'/g, "\\'")}') " title="מזעור לחלון צף"><span class="material-icons-round text-xl text-slate-500">open_in_full</span></button>
+                ${!isSystem && !isBook && !isPartnerBanned ? `<button onclick="openReportModal('${email}')" class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${isBlocked ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400' : 'border-slate-200 dark:border-slate-600 text-slate-400 hover:border-red-300 hover:text-red-500'}" title="דיווח וחסימה"><i class="fas fa-ban text-xs"></i> ${isBlocked ? 'חסום' : 'דיווח וחסימה'}</button>` : ''}
+                ${isBook && hasPermission('moderate') ? `<button class="hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-full transition-colors" onclick="moderatorToggleChatClosed('${email.replace('book:', '')}')" title="${isChatClosed ? 'פתח צ\'אט' : 'סגור צ\'אט'}"><span class="material-icons-round text-xl ${isChatClosed ? 'text-emerald-400' : 'text-red-400'}">${isChatClosed ? 'lock_open' : 'lock'}</span></button>` : ''}
             </div>
         </header>
-        <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 dark:bg-slate-900/95 flex flex-col" id="msgs-${email}">
-            <div class="chat-loading-indicator" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fas fa-circle-notch fa-spin"></i> טוען צ'אט...</div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-0 chat-wa-bg flex flex-col" id="msgs-${email}" style="gap:3px;">
+            <div class="chat-loading-indicator" style="padding:16px;">${getSkeletonHTML('chat', 5)}</div>
         </div>
-        ${isArchived || isUpdates || isMentions ? `
+        <div class="typing-indicator-box" id="typing-${email}"></div>
+        ${(isArchived || isUpdates || isMentions || isPartnerBanned || (isChatClosed && !hasPermission('post_locked'))) ? `
             <footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-                <div class="text-center text-slate-500 p-2">${isUpdates || isMentions ? 'ערוץ לקריאה בלבד.' : 'צ\'אט זה בארכיון (לקריאה בלבד).'}</div>
+                <div class="text-center text-slate-500 p-2">${isUpdates || isMentions ? 'ערוץ לקריאה בלבד.' : isPartnerBanned ? 'לא ניתן לשלוח הודעות — המשתמש חסום.' : isChatClosed ? '🔒 צ\'אט זה סגור זמנית על-ידי הניהול.' : 'צ\'אט זה בארכיון (לקריאה בלבד).'}</div>
             </footer>
         ` : `
             <footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                ${isChatClosed ? '<div class="text-xs text-amber-500 text-center mb-2">🔓 הרשאת פרסום בצ\'אט נעול פעילה</div>' : ''}
                 <div id="reply-preview-${email}" class="reply-preview"></div>
                 <div class="max-w-5xl mx-auto relative flex items-center gap-3">
                     <div id="mentions-popup-${email}" class="mentions-popup"></div>
-                    <input type="text" id="input-${email}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..." 
-                        oninput="handleTyping('${email}'); handleMentionInput(event, '${email}')" 
-                        onkeypress="if(event.key === 'Enter' && !isMentionPopupActive()) sendMessage('${email}')"
-                        onkeydown="return handleMentionKeyDown(event, '${email}')">
+                    ${hasPermission('announce') && isBook ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors shrink-0" onclick="sendSystemAnnouncement('${email}')" title="שלח הודעת מערכת"><i class="fas fa-bullhorn text-sm"></i></button>` : ''}
+                    <input type="text" id="input-${email}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..."
+                        oninput="handleTyping('${email}'); handleMentionInput(event, '${email}')"
+                        onkeypress="if(event.key === 'Enter' && !event.shiftKey && !isMentionPopupActive()) sendMessage('${email}')"
+                        onkeydown="if(event.key==='Enter'&&event.shiftKey){event.preventDefault();const p=this.selectionStart;this.value=this.value.slice(0,p)+'\\n'+this.value.slice(p);this.selectionStart=this.selectionEnd=p+1;return false;} return handleMentionKeyDown(event, '${email}')">
                     <button class="w-12 h-12 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-slate-800 transition-transform active:scale-95 shadow-md shrink-0" onclick="sendMessage('${email}')">
                         <span class="material-icons-round transform -scale-x-100">send</span>
                     </button>
@@ -542,17 +869,26 @@ function loadChatIntoMainArea(email, name, el) {
     `;
     main.innerHTML = chatHtml;
 
-    loadChatHistory(email);
+    if (isChatHidden) {
+        const msgsEl = document.getElementById(`msgs-${email}`);
+        if (msgsEl) msgsEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-eye-slash" style="font-size:2rem;margin-bottom:8px;display:block;"></i>הניהול הסתיר את הודעות הצ\'אט הזה.</div>';
+    } else {
+        loadChatHistory(email);
+    }
 
     markAsRead(email);
 }
 
 function closeMainChat() {
-    document.getElementById('chat-main-area').innerHTML = `
-        <div style="margin: auto; color: #94a3b8; text-align: center;">
-            <i class="fas fa-comments" style="font-size: 3rem; opacity: 0.3;"></i>
-            <p>בחר צ'אט מהרשימה</p>
-        </div>`;
+    const screenEl = document.getElementById('screen-chats');
+    const isMobile = window.innerWidth <= 768;
+    if (screenEl) screenEl.classList.remove('mobile-chat-open');
+    const placeholder = `<div style="margin: auto; color: #94a3b8; text-align: center;"><i class="fas fa-comments" style="font-size: 3rem; opacity: 0.3;"></i><p>בחר צ'אט מהרשימה</p></div>`;
+    if (isMobile) {
+        setTimeout(() => { document.getElementById('chat-main-area').innerHTML = placeholder; }, 310);
+    } else {
+        document.getElementById('chat-main-area').innerHTML = placeholder;
+    }
 }
 
 function minimizeMainChat(email, name) {
@@ -577,7 +913,7 @@ function toggleChatWindow(email) {
     const win = document.getElementById(`chat-window-${email}`);
     if (win) {
         win.classList.toggle('minimized');
-        win.classList.remove('flashing'); 
+        win.classList.remove('flashing');
 
         if (!win.classList.contains('minimized')) {
             win.style.bottom = '';
@@ -590,20 +926,63 @@ function toggleChatWindow(email) {
 async function loadChatHistory(partnerEmail) {
     const myEmail = getCurrentChatEmail();
 
-    let { data, error } = await supabaseClient.rpc('get_chat_history', {
-        p_my_email: myEmail,
-        p_partner_email: partnerEmail
-    });
+    const table = getChatTable(partnerEmail);
+    let data = [];
+    let error = null;
 
-    if (error) {
-        const { data: directData, error: directError } = await supabaseClient
-            .from('chat_messages')
-            .select('*')
-            .or(`and(sender_email.ilike.${myEmail},receiver_email.ilike.${partnerEmail}),and(sender_email.ilike.${partnerEmail},receiver_email.ilike.${myEmail})`)
-            .order('created_at', { ascending: true });
-        data = directData;
-        error = directError;
+let query;
+    if (table === 'chat_public') {
+        const bookName = partnerEmail.replace('book:', '');
+        query = supabaseClient.from(table).select('*').eq('book_name', bookName).order('created_at', { ascending: true });
+    } else if (table === 'chat_admin') {
+        query = supabaseClient.from(table).select('*').eq('user_id', currentUser.id);
+        if (partnerEmail === 'updates@system') {
+            query = query.eq('sender_email', 'updates@system');
+        } else if (partnerEmail === 'mentions@system') {
+            query = query.eq('sender_email', 'mentions@system');
+        } else {
+            query = query.not('sender_email', 'eq', 'updates@system').not('sender_email', 'eq', 'mentions@system');
+        }
+    } else {
+        
+        const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === partnerEmail) : null;
+        let connId = (conn && conn.id) || (window._archivedConnIds && window._archivedConnIds[partnerEmail]);
+
+if (!connId && currentUser?.id) {
+            const isArchivedChat = typeof approvedPartners !== 'undefined' && !approvedPartners.has(partnerEmail);
+            if (isArchivedChat) {
+                const partnerUser = globalUsersData.find(u => u.email === partnerEmail);
+                if (partnerUser?.id) {
+                    try {
+                        const { data: archiveConn } = await supabaseClient
+                            .from('chavruta_connections')
+                            .select('id')
+                            .in('status', ['cancelled', 'completed', 'rejected'])
+                            .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${partnerUser.id}),and(sender_id.eq.${partnerUser.id},receiver_id.eq.${currentUser.id})`)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        if (archiveConn?.id) {
+                            connId = archiveConn.id;
+                            window._archivedConnIds = window._archivedConnIds || {};
+                            window._archivedConnIds[partnerEmail] = connId;
+                        }
+                    } catch(e) { console.warn('archive connId lookup failed', e); }
+                }
+            }
+        }
+
+        if (connId) {
+            query = supabaseClient.from(table).select('id, connection_id, sender_id, content, created_at, sender_email, is_read').eq('connection_id', connId);
+        } else {
+            query = supabaseClient.from(table).select('id, connection_id, sender_id, content, created_at, sender_email, is_read').eq('sender_id', currentUser.id);
+        }
     }
+
+    const { data: directData, error: directError } = await query.order('created_at', { ascending: true });
+    if (directError && directError.code === '400') console.error("Full DB Error (Load Chat History):", directError.message, directError.details);
+    data = directData;
+    error = directError;
 
     if (error) console.error("שגיאה בטעינת צ'אט:", error);
 
@@ -615,20 +994,77 @@ async function loadChatHistory(partnerEmail) {
 
     if (data) {
         const isBook = partnerEmail.startsWith('book:');
-        container.innerHTML = '';
-        data.forEach(msg => {
-        
-            const hasReplies = data.some(m => m.message.includes(`ref:${msg.id}`));
 
-            const type = (msg.sender_email.toLowerCase() === myEmail.toLowerCase()) ? 'me' : 'other';
-            const el = appendMessageToWindow(partnerEmail, msg.message, type, msg.id, msg.created_at, msg.is_read, msg.sender_email, false);
+if (isBook && data.length > 0) {
+            const unknownEmails = new Set();
+            const unknownIds = new Set();
+            data.forEach(msg => {
+                const se = msg.sender_email;
+                if (se && se !== currentUser?.email && !globalUsersData.find(u => u.email === se)) {
+                    unknownEmails.add(se);
+                }
+                const uid = msg.user_id || msg.sender_id;
+                if (uid && uid !== currentUser?.id && !globalUsersData.find(u => u.id === uid)) {
+                    unknownIds.add(uid);
+                }
+            });
+            try {
+                const queries = [];
+                if (unknownEmails.size > 0) {
+                    queries.push(supabaseClient.from('profiles_public').select('id, email, display_name').in('email', Array.from(unknownEmails)));
+                }
+                if (unknownIds.size > 0) {
+                    queries.push(supabaseClient.from('profiles_public').select('id, email, display_name').in('id', Array.from(unknownIds)));
+                }
+                const results = await Promise.all(queries);
+                results.forEach(({ data: profiles }) => {
+                    if (profiles) {
+                        profiles.forEach(p => {
+                            if (!globalUsersData.find(u => u.id === p.id)) {
+                                globalUsersData.push({ id: p.id, email: p.email, name: p.display_name || (p.email ? p.email.split('@')[0] : 'לומד') });
+                            }
+                        });
+                    }
+                });
+            } catch (_) {}
+        }
+
+        container.innerHTML = '';
+
+        if (data.length === 0) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'chat-empty-state flex flex-col items-center justify-center py-10 text-slate-400 dark:text-slate-500 gap-2';
+            const isReadOnly = partnerEmail === 'updates@system' || partnerEmail === 'mentions@system';
+            if (isBook) {
+                emptyDiv.innerHTML = `<i class="far fa-comment-dots text-3xl"></i><span class="text-sm">אין הודעות עדיין בצ'אט זה.</span>`;
+            } else if (isReadOnly) {
+                emptyDiv.innerHTML = `<i class="far fa-comment-dots text-3xl"></i><span class="text-sm">אין הודעות עדיין בערוץ זה.</span>`;
+            } else {
+                emptyDiv.innerHTML = `<i class="far fa-comment-dots text-3xl"></i><span class="text-sm">אין הודעות עדיין. היה הראשון לכתוב!</span>`;
+            }
+            container.appendChild(emptyDiv);
+        }
+
+        data.forEach(msg => {
+            
+            if (msg.parent_message_id) return;
+
+            const msgContent = msg.content || msg.message_text || msg.message || "";
+            const hasReplies = data.some(m => m.parent_message_id === msg.id);
+
+            const isMe = (msg.user_id && msg.user_id === currentUser.id) || (msg.sender_id && msg.sender_id === currentUser.id);
+            const type = isMe ? 'me' : 'other';
+            const senderEmail = msg.sender_email || (globalUsersData.find(u => u.id === (msg.user_id || msg.sender_id))?.email);
+            const el = appendMessageToWindow(partnerEmail, msgContent, type, msg.id, msg.created_at, !!msg.is_read, senderEmail, false);
 
             if (hasReplies && el) {
-                const indicator = document.createElement('span');
-                indicator.className = 'thread-active-indicator';
-                indicator.title = "יש תגובות בשרשור";
                 const bubble = el.querySelector('.message-bubble') || el;
-                bubble.appendChild(indicator);
+                const replyCount = data.filter(m => m.parent_message_id === msg.id).length;
+                const threadBtn = document.createElement('button');
+                threadBtn.className = 'thread-indicator-btn';
+                threadBtn.innerHTML = `<span class="material-icons-round" style="font-size:0.8rem;vertical-align:middle;">forum</span> ${replyCount} תגובות בשרשור`;
+                threadBtn.onclick = (e) => { e.stopPropagation(); openThread(msg.id, msgContent, partnerEmail); };
+                bubble.appendChild(threadBtn);
             }
         });
 
@@ -655,11 +1091,12 @@ async function loadChatHistory(partnerEmail) {
 
         if (isBook && data.length > 0) {
             const msgIds = data.map(m => m.id);
+            if (!currentUser || !currentUser.id) return;
             const { data: reactions } = await supabaseClient
                 .from('message_reactions')
                 .select('message_id, reaction_type')
                 .in('message_id', msgIds)
-                .eq('user_email', currentUser.email);
+                .eq('user_id', currentUser.id);
 
             if (reactions) {
                 reactions.forEach(r => {
@@ -675,8 +1112,19 @@ async function loadChatHistory(partnerEmail) {
         }
 
         setTimeout(() => {
+            if (window._pendingScrollMsgId) {
+                const target = document.getElementById('msg-' + window._pendingScrollMsgId);
+                window._pendingScrollMsgId = null;
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    target.style.transition = 'background 0.4s';
+                    target.style.background = '#fef3c7';
+                    setTimeout(() => { target.style.background = ''; }, 2000);
+                    return;
+                }
+            }
             container.scrollTop = container.scrollHeight;
-        }, 100);
+        }, 200);
     }
 }
 
@@ -684,23 +1132,49 @@ async function loadChatRating() {
     const display = document.getElementById('chatRatingDisplay');
     if (!currentUser) return;
 
-    const { data: messages, error } = await supabaseClient.rpc('get_my_message_ids', {
-        p_my_email: currentUser.email
-    });
-    if (error) { console.error("Error getting message IDs for rating:", error); return; }
+    try {
+        
+        const { data: privateMessages, error: privateError } = await supabaseClient
+            .from('chat_private')
+            .select('id, connection_id, created_at')
+            .eq('sender_id', currentUser.id);
+        if (privateError) {
+            if (privateError.code === '400') console.error("Full DB Error (Rating Private):", privateError.message, privateError.details);
+            throw privateError;
+        }
 
-    if (messages && messages.length > 0) {
-        const ids = messages.map(m => m.id);
-        const { count } = await supabaseClient.from('message_reactions').select('*', { count: 'exact', head: true }).in('message_id', ids).eq('reaction_type', 'like');
+const { data: publicMessages, error: publicError } = await supabaseClient
+            .from('chat_public')
+            .select('id')
+            .eq('user_id', currentUser.id); 
+        if (publicError) {
+            if (publicError.code === '400') console.error("Full DB Error (Rating Public):", publicError.message, publicError.details);
+            throw publicError;
+        }
 
-        const rating = count || 0;
-        if (display) display.innerText = rating;
+const allMessageIds = [...(privateMessages || []), ...(publicMessages || [])].map(m => m.id || m.connection_id).filter(Boolean);
 
-        const dashStat = document.getElementById('stat-rating');
-        if (dashStat) dashStat.innerText = rating;
+        if (allMessageIds.length > 0) {
+            const { count, error: reactionsError } = await supabaseClient.from('message_reactions').select('*', { count: 'exact', head: true }).in('message_id', allMessageIds).eq('reaction_type', 'like');
+            if (reactionsError) throw reactionsError;
 
-        localStorage.setItem('torahApp_rating', rating);
-    } else {
+            const rating = count || 0;
+            if (display) display.innerText = rating;
+            const dashStat = document.getElementById('stat-rating');
+            if (dashStat) dashStat.innerText = rating;
+            localStorage.setItem('torahApp_rating', rating);
+            if (currentUser && currentUser.id) {
+                currentUser.chat_rating = rating;
+                supabaseClient.from('profiles_public').update({ chat_rating: rating }).eq('id', currentUser.id).then(() => {});
+            }
+        } else {
+            if (display) display.innerText = 0;
+            const dashStat = document.getElementById('stat-rating');
+            if (dashStat) dashStat.innerText = 0;
+            localStorage.setItem('torahApp_rating', 0);
+        }
+    } catch (error) {
+        console.error("Full DB Error (Chat Rating):", error);
         if (display) display.innerText = 0;
         const dashStat = document.getElementById('stat-rating');
         if (dashStat) dashStat.innerText = 0;
@@ -709,68 +1183,88 @@ async function loadChatRating() {
 }
 
 async function doSendMessage(partnerEmail, finalMsg, isHtml) {
-    visualizeNetworkActivity('request', {
-        action: 'sendMessage',
-        from: currentUser.email,
-        to: partnerEmail,
-        isBoring: false
-    });
+    if (currentUser && currentUser.isBanned) {
+        showToast('חשבונך חסום לשליחת הודעות', 'error');
+        return;
+    }
 
-    const tempId = 'temp-' + Date.now() + Math.random();
-    const tempEl = appendMessageToWindow(partnerEmail, finalMsg, 'me', tempId, new Date().toISOString(), false, currentUser.email);
-    if (tempEl) tempEl.style.opacity = '0.7';
+    if (finalMsg && finalMsg.length > 1000) {
+        showToast('הודעה חורגת ממגבלת 1,000 תווים', 'error');
+        return;
+    }
 
-    const sender = getCurrentChatEmail();
-    try {
-        let { data, error } = await supabaseClient.rpc('send_message', {
-            p_sender_email: sender,
-            p_receiver_email: partnerEmail,
-            p_message: finalMsg,
-            p_is_html: isHtml
-        });
+    const table = getChatTable(partnerEmail);
+    const partner = globalUsersData.find(u => u.email === partnerEmail);
+    const partnerId = partner ? partner.id : null;
 
-        if (error) {
-            const { data: directData, error: directError } = await supabaseClient
-                .from('chat_messages')
-                .insert([{
-                    sender_email: sender,
-                    receiver_email: partnerEmail,
-                    message: finalMsg,
-                    is_html: isHtml
-                }]).select();
-            data = directData;
-            error = directError;
+    const msgCol = 'content';
+    const payload = { [msgCol]: finalMsg, created_at: new Date().toISOString() };
+    
+    if (table !== 'chat_admin') {
+        payload.parent_message_id = (activeReply && activeReply.chatId === partnerEmail) ? activeReply.msgId : null;
+    }
+
+    if (table === 'chat_public') {
+        payload.book_name = partnerEmail.replace('book:', '');
+        payload.user_id = currentUser.id;
+    } else if (table === 'chat_admin') {
+        
+        payload.user_id = currentUser.id;
+        payload.sender_email = currentUser.email;
+    } else {
+        
+        const conn = typeof chavrutaConnections !== 'undefined'
+            ? (chavrutaConnections.find(c => c.email === partnerEmail) || chavrutaConnections.find(c => c.partnerId === partnerEmail))
+            : null;
+        if (conn && conn.id) {
+            payload.connection_id = conn.id;
         }
+        payload.sender_id = currentUser.id;
+        payload.sender_email = currentUser.email;
+    }
+
+    try {
+        const { data, error } = await supabaseClient
+            .from(table)
+            .insert([payload])
+            .select();
 
         if (error) {
-            if (tempEl) tempEl.remove();
-            console.error("Supabase RPC Error:", error);
-            if (error.message) {
-                await showToast(error.message, "error");
-            } else if (error.code === "401") {
-                await customAlert("שגיאת שליחה: אין הרשאה (401).<br>בדוק את מפתח ה-API בקובץ api.js.", true);
-            } else {
-                await customAlert("שגיאה בשליחה: " + error.message);
+            if (error.code === '42501' || error.status === 403) {
+                const { data: profile } = await supabaseClient.from('profiles_public').select('is_banned').eq('id', currentUser.id).maybeSingle();
+                if (profile && profile.is_banned) {
+                    showToast('פעולה נכשלה: חשבונך חסום במערכת עקב הפרת כללי הקהילה.', 'error');
+                    return;
+                }
             }
-        } else if (data && data[0]) {
-            if (tempEl) tempEl.remove();
-            const newMsg = data[0];
-            if (chatChannel) {
+            console.error("Chat Insert Error:", error.message, error.details || error);
+        } else {
+            const newMsg = (data && data[0]) ? data[0] : { ...payload, id: null };
+            const msgId = newMsg.id || null;
+            const msgContent = newMsg.content || finalMsg;
+            const msgTime = newMsg.created_at || payload.created_at;
+            const senderEmail = newMsg.sender_email || currentUser.email;
+
+            appendMessageToWindow(partnerEmail, msgContent, 'me', msgId, msgTime, false, senderEmail, true);
+
+            if (msgId && chatChannel) {
                 chatChannel.send({ type: 'broadcast', event: 'private_message', payload: { message: newMsg } });
             }
-            if (isHtml) {
+            if (isHtml && msgId) {
                 const mentionMatches = finalMsg.matchAll(/<span class="mention" data-user-email="([^"]+)">@([^<]+)<\/span>/g);
-                for (const match of mentionMatches) sendMentionNotification(match[1], partnerEmail);
+                for (const match of mentionMatches) sendMentionNotification(match[1], partnerEmail, msgId);
             }
-            appendMessageToWindow(partnerEmail, newMsg.message, 'me', newMsg.id, newMsg.created_at, false, newMsg.sender_email, false);
         }
-    } catch (e) { if (tempEl) tempEl.remove(); console.error("שגיאה בשליחת הודעה:", e); }
+    } catch (e) { console.error("Full DB Error (Do Send Message):", e.message, e.details || e); }
 }
 
 async function sendMessage(partnerEmail) {
     if (!requireAuth()) return;
     const isBook = partnerEmail.startsWith('book:');
     if (!isBook && blockedUsers.includes(partnerEmail)) return await customAlert("משתמש זה חסום.");
+    
+    const partnerUserObj = !isBook ? globalUsersData.find(u => u.email === partnerEmail) : null;
+    if (partnerUserObj && partnerUserObj.isBanned) return await customAlert("לא ניתן לשלוח הודעות — המשתמש חסום על ידי הניהול.");
 
     const input = document.getElementById(`input-${partnerEmail}`);
     const msg = input.value.trim();
@@ -804,16 +1298,15 @@ async function sendMessage(partnerEmail) {
             finalMsg = finalMsg.replace(mentionRegex, mentionHtml);
         }
         isHtml = true;
-        delete input.mentions; 
+        delete input.mentions;
     }
 
     if (activeReply && activeReply.chatId === partnerEmail) {
-        finalMsg = `<div class="chat-quote"><strong>${activeReply.sender}:</strong> ${activeReply.text}</div>${finalMsg}`;
+        
+        const safeText = (activeReply.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const quoteHtml = `<div class="chat-quote" style="border-right:3px solid #94a3b8; padding:4px 8px; margin-bottom:6px; font-size:0.8rem; color:#64748b; border-radius:2px;"><strong>${activeReply.sender}:</strong> ${safeText}</div>`;
+        finalMsg = quoteHtml + finalMsg;
         isHtml = true;
-        if (activeThreadId) {
-            
-        }
-        cancelReply(partnerEmail);
     }
 
     visualizeNetworkActivity('request', {
@@ -827,6 +1320,10 @@ async function sendMessage(partnerEmail) {
     localStorage.removeItem('chat_draft_' + partnerEmail);
 
     await doSendMessage(partnerEmail, finalMsg, isHtml);
+
+if (activeReply && activeReply.chatId === partnerEmail) {
+        cancelReply(partnerEmail);
+    }
 }
 
 function saveChatDraft(email, val) {
@@ -835,12 +1332,23 @@ function saveChatDraft(email, val) {
 
 function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead = false, senderEmail = null, shouldAnimate = true) {
 
-    if (text.includes('ref:')) return null;
+    if (typeof text === 'string' && /^ref:\d+$/.test(text.trim())) return null;
 
     const container = getChatContainer(partnerEmail);
     if (!container) return null;
 
     if (id && document.getElementById(`msg-${id}`)) return;
+
+if (type === 'other' && senderEmail) {
+        const senderUser = globalUsersData.find(u => u.email === senderEmail);
+        if (senderUser && senderUser.isBanned) {
+            
+            if (partnerEmail.startsWith('book:')) return null;
+            
+        }
+    }
+
+const isDeletedMsg = typeof text === 'string' && text.startsWith('__DELETED__:');
 
     const div = document.createElement('div');
     if (id) div.id = `msg-${id}`;
@@ -848,18 +1356,16 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
     if (senderEmail) div.dataset.sender = senderEmail;
     div.style.cursor = 'pointer';
 
-    let topLevelElement; 
+    let topLevelElement;
 
     if (partnerEmail.startsWith('book:') && senderEmail) {
         const wrapper = document.createElement('div');
         if (shouldAnimate) wrapper.className = 'new-message-animation';
         wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'flex-end';
+        wrapper.style.alignItems = 'flex-start';
         wrapper.style.gap = '8px';
-        wrapper.style.marginBottom = '8px';
         wrapper.style.maxWidth = '70%';
 
-       
         if (senderEmail) wrapper.dataset.sender = senderEmail;
         wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
         wrapper.style.flexDirection = type === 'me' ? 'row-reverse' : 'row';
@@ -870,43 +1376,85 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         const subTitle = isSubscribed ? `מנוי: ${senderUser.subscription.name}` : '';
 
         const avatar = document.createElement('div');
-        const avatarColor = type === 'me' ? '#3b82f6' : '#cbd5e1';
-        avatar.innerHTML = `<i class="fas fa-user-circle ${subClass}" style="font-size: 28px; color: ${avatarColor}; cursor: pointer; border-radius:50%;" title="${subTitle}"></i>`;
+        avatar.style.cssText = 'padding-top:2px;flex-shrink:0;cursor:pointer;';
         avatar.onclick = (e) => { e.stopPropagation(); showUserDetails(senderEmail); };
 
-        wrapper.appendChild(avatar); 
-        wrapper.appendChild(div);
+        const senderAvatarUrl = senderUser?.avatar_url || (type === 'me' ? (localStorage.getItem('torahApp_equipped_avatar') || null) : null);
+        const senderBgUrl = senderUser?.background_url || null;
+
+        if (senderAvatarUrl) {
+            const bgStyle = senderBgUrl ? `background-image:url('${senderBgUrl}');background-size:cover;background-position:center;` : '';
+            avatar.innerHTML = `<div class="${subClass}" title="${subTitle}" style="width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;${bgStyle}"><img src="${senderAvatarUrl}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'"></div>`;
+        } else if (senderBgUrl) {
+            const initial2 = senderUser ? (senderUser.name || senderUser.display_name || '?').charAt(0) : '?';
+            avatar.innerHTML = `<div class="${subClass}" title="${subTitle}" style="width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;color:#fff;background-image:url('${senderBgUrl}');background-size:cover;background-position:center;">${initial2}</div>`;
+        } else {
+            const avatarColor = type === 'me' ? '#ca8a04' : '#f59e0b';
+            avatar.innerHTML = `<i class="fas fa-user-circle ${subClass}" style="font-size:28px;color:${avatarColor};border-radius:50%;" title="${subTitle}"></i>`;
+        }
+
+const msgCol = document.createElement('div');
+        msgCol.style.cssText = 'display:flex; flex-direction:column; gap:4px; min-width:0;';
+
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(msgCol);
+        msgCol.appendChild(div);
         container.appendChild(wrapper);
         topLevelElement = wrapper;
 
-        const senderName = senderUser ? senderUser.name : 'לומד'; 
+        const senderName = senderUser ? (senderUser.name || senderUser.display_name) : 'לומד';
+        const nameSpan = document.createElement('span');
         nameSpan.className = 'msg-sender-name';
         const badgesHtml = senderUser ? getFullUserBadges(senderUser) : '';
         nameSpan.innerHTML = `${senderName} ${badgesHtml}`;
-        div.appendChild(nameSpan);
+        div.prepend(nameSpan);
     } else {
         const wrapper = document.createElement('div');
         if (shouldAnimate) wrapper.className = 'new-message-animation';
         wrapper.style.display = 'flex';
-        wrapper.style.maxWidth = '80%'; 
-        wrapper.style.marginBottom = '8px';
-        wrapper.style.alignSelf = type === 'me' ? 'flex-end' : 'flex-start';
+        wrapper.style.flexDirection = 'column';
+        wrapper.style.maxWidth = '80%';
+        wrapper.style.gap = '2px';
+        if (type === 'me') {
+            wrapper.style.alignSelf = 'flex-end';
+            wrapper.style.alignItems = 'flex-end';
+            wrapper.style.marginLeft = '0';
+            wrapper.style.marginRight = 'auto';
+        } else {
+            wrapper.style.alignSelf = 'flex-start';
+            wrapper.style.alignItems = 'flex-start';
+            wrapper.style.marginRight = '0';
+            wrapper.style.marginLeft = 'auto';
+        }
         if (senderEmail) wrapper.dataset.sender = senderEmail;
         wrapper.appendChild(div);
         container.appendChild(wrapper);
         topLevelElement = wrapper;
     }
 
-    const animClass = '';
     if (type === 'me') {
-        div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tr-sm shadow-lg relative`;
-        div.className = `message-bubble max-w-md bg-slate-800 dark:bg-slate-700 text-white p-4 rounded-2xl rounded-tl-sm shadow-lg relative`; 
+        div.className = `message-bubble my-bubble max-w-md p-3 shadow-sm relative chat-bubble-me`;
     } else {
-        div.className = `message-bubble max-w-md bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 dark:border-slate-700 relative`;
+        div.className = `message-bubble max-w-md p-3 shadow-sm relative chat-bubble-other`;
     }
 
-    if (text.includes('<button') || text.includes('chat-quote') || text.includes('<strong>') || text.includes('<b>') || text.includes('<br>') || text.includes('<span')) {
-        div.insertAdjacentHTML('beforeend', text);
+if (isDeletedMsg) {
+        const deletedP = document.createElement('p');
+        deletedP.className = 'msg-deleted-notice text-sm italic';
+        deletedP.textContent = 'ההודעה נמחקה';
+        div.appendChild(deletedP);
+    } else if (type === 'other' && senderEmail && globalUsersData.find(u => u.email === senderEmail)?.isBanned) {
+        
+        const bannedBadge = document.createElement('span');
+        bannedBadge.className = 'msg-banned-notice';
+        bannedBadge.textContent = 'חסום';
+        div.appendChild(bannedBadge);
+        const bannedP = document.createElement('p');
+        bannedP.className = 'text-sm leading-relaxed mb-1 opacity-50 italic';
+        bannedP.textContent = 'הודעה ממשתמש חסום';
+        div.appendChild(bannedP);
+    } else if (text.includes('<button') || text.includes('chat-quote') || text.includes('<strong>') || text.includes('<b>') || text.includes('<br>') || text.includes('<span')) {
+        div.insertAdjacentHTML('beforeend', sanitizeChatHtml(text));
     } else {
         const p = document.createElement('p');
         p.className = "text-sm leading-relaxed mb-1";
@@ -921,23 +1469,17 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
         }
     });
 
-    if (type === 'me') {
-        if ((partnerEmail !== 'admin@system' && !partnerEmail.startsWith('book:')) || isAdminMode) {
-            const check = document.createElement('span');
-            check.className = 'msg-check';
-            check.id = `check-${id}`;
-            check.innerText = isRead ? '✓✓' : '✓';
-        }
-    }
-
     const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
     const timeDiv = document.createElement('div');
     timeDiv.className = 'msg-time-container flex justify-between items-center mt-auto pt-1 text-[10px] opacity-70';
-    timeDiv.innerHTML = `<span>${timeStr}</span>`;
+    const checkHtml = (type === 'me' && id && !isDeletedMsg)
+        ? `<span class="msg-check${isRead ? ' read' : ''}" id="chk-${id}">✓${isRead ? '✓' : ''}</span>`
+        : '';
+    timeDiv.innerHTML = `<span>${timeStr}</span>${checkHtml}`;
     div.appendChild(timeDiv);
 
     div.onclick = function (e) {
-        if (e.target.closest('.msg-delete-btn')) return;
+        if (e.target.closest('.msg-delete-btn, .restore-btn')) return;
 
         const mention = e.target.closest('.mention');
         if (mention) {
@@ -946,86 +1488,69 @@ function appendMessageToWindow(partnerEmail, text, type, id, timestamp, isRead =
             return;
         }
 
+        const subBtn = e.target.closest('.sub-promo-btn[data-sub-tier]');
+        if (subBtn) {
+            const tierLevel = parseInt(subBtn.dataset.subTier);
+            const amount = parseInt(subBtn.dataset.subAmount);
+            if (typeof openDonationModalAndSelectTier === 'function') openDonationModalAndSelectTier(tierLevel, amount);
+            return;
+        }
+
         const ts = this.querySelector('.msg-timestamp');
         if (ts) ts.style.display = ts.style.display === 'block' ? 'none' : 'block';
     };
 
-    if (type === 'me' && id) {
-        const delBtn = document.createElement('button');
-        delBtn.className = 'msg-delete-btn';
-        delBtn.innerHTML = '<i class="fas fa-trash"></i>';
-        delBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(id, div); };
-        div.appendChild(delBtn);
+    if (isDeletedMsg && type === 'me') {
+        const restoreBtn = document.createElement('button');
+        restoreBtn.className = 'restore-btn text-xs text-blue-400 hover:text-blue-300 mr-2';
+        restoreBtn.textContent = 'שחזור';
+        restoreBtn.onclick = (e) => { e.stopPropagation(); restoreMessage(div); };
+        timeDiv.prepend(restoreBtn);
     }
 
     if (id) {
-        let plainText = "";
-        const pTag = div.querySelector('p');
-        if (pTag) {
-            plainText = pTag.innerText;
-        } else {
-            const clone = div.cloneNode(true);
-            const toRemove = clone.querySelectorAll('.msg-timestamp, .msg-time-container, .msg-sender-name, .msg-delete-btn, .msg-check, .msg-reactions, .msg-actions-menu');
-            toRemove.forEach(el => el.remove());
-            plainText = clone.innerText;
-        }
-
+        let plainText = text.replace(/<[^>]*>?/gm, '').replace('הצג טלפון ליצירת קשר', '').trim();
         const isBook = partnerEmail.startsWith('book:');
-        plainText = plainText.replace('הצג טלפון ליצירת קשר', '').trim();
         const senderName = senderEmail ? (globalUsersData.find(u => u.email === senderEmail)?.name || senderEmail.split('@')[0]) : 'משתמש';
         const fullTextSafe = plainText.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeSenderName = senderName.replace(/'/g, "\\'");
-
         const isMe = senderEmail === currentUser.email;
 
-        const reactionsDiv = document.createElement('div');
-        reactionsDiv.className = 'flex gap-2 mt-2 justify-end';
+const actionsBar = document.createElement('div');
+        actionsBar.className = 'msg-actions-bar flex gap-1 items-center ' + (isMe ? 'justify-start' : 'justify-end');
 
-        if (type === 'me') {
-            if ((partnerEmail !== 'admin@system' && !partnerEmail.startsWith('book:')) || isAdminMode) {
-                const check = document.createElement('span');
-                check.id = `check-${id}`;
-                check.innerText = isRead ? '✓✓' : '✓';
-                check.className = "msg-check";
-                check.style.fontWeight = "bold";
-                check.style.fontSize = "12px";
-                check.style.color = isRead ? '#4ade80' : '#cbd5e1';
-                timeDiv.appendChild(check); 
-            }
-        }
-
-        let innerHTML = '';
-        if (isBook) {
-            const likeDisabled = isMe ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : '';
-            innerHTML += `
-                <button class="reaction-btn" ${likeDisabled} onclick="event.stopPropagation(); toggleReaction('${id}', 'like', this)">
-                    <i class="fas fa-thumbs-up"></i>
-                    <span id="like-count-${id}" style="font-size:0.75rem; margin-right:3px; display:none; font-weight:bold;">0</span>
-                </button>
-                <button class="reaction-btn" ${likeDisabled} onclick="event.stopPropagation(); toggleReaction('${id}', 'dislike', this)"><i class="fas fa-thumbs-down"></i></button>
-            `;
-        }
-
-        innerHTML += `
-            <div class="relative inline-block chat-action-menu-container">
-                <button class="text-slate-400 hover:text-white transition-colors" onclick="event.stopPropagation(); const el = this.nextElementSibling; document.querySelectorAll('.chat-action-dropdown:not(.hidden)').forEach(d => { if (d !== el) d.classList.add('hidden'); }); el.classList.toggle('hidden')"><span class="material-icons-round text-sm">more_vert</span></button>
-                <div class="chat-action-dropdown hidden absolute bottom-full ${isMe ? 'left-0' : 'right-0'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10 min-w-[120px] overflow-hidden text-slate-800 dark:text-slate-200">
-                    <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); replyToMessage('${partnerEmail}', '${safeSenderName}', '${fullTextSafe}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">reply</span> ציטוט</div>
-                    ${isMe ? `<div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); editMessage('${id}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">edit</span> ערוך</div>` : ''}
-                    ${isBook ? `<div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); openThread('${id}', '${fullTextSafe}', '${partnerEmail}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">forum</span> שרשור</div>` : ''}
-                    ${!isMe ? `<div class="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 cursor-pointer text-xs flex items-center gap-2" onclick="event.stopPropagation(); openReportModal('${senderEmail}'); this.parentElement.classList.add('hidden');"><span class="material-icons-round text-sm">flag</span> דיווח</div>` : ''}
-                </div>
+        const likeDisabled = isMe ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : '';
+        actionsBar.innerHTML = `
+            <div class="msg-action-pill flex items-center gap-1" style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:999px; padding:2px 8px; display:inline-flex; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                ${isBook ? `
+                    <button class="reaction-btn" ${likeDisabled} onclick="event.stopPropagation(); toggleReaction('${id}', 'like', this)" style="display:inline-flex;align-items:center;gap:2px;padding:3px 5px;background:none;border:none;cursor:pointer;color:var(--text-main);opacity:${isMe ? '0.5' : '1'};" ${isMe ? 'disabled' : ''}>
+                        <i class="fas fa-thumbs-up" style="font-size:0.8rem;"></i>
+                        <span id="like-count-${id}" style="font-size:0.72rem;margin-right:1px;display:none;font-weight:bold;">0</span>
+                    </button>
+                    <button class="reaction-btn" ${likeDisabled} onclick="event.stopPropagation(); toggleReaction('${id}', 'dislike', this)" style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:var(--text-main);opacity:${isMe ? '0.5' : '1'};" ${isMe ? 'disabled' : ''}><i class="fas fa-thumbs-down" style="font-size:0.8rem;"></i></button>
+                    <span style="width:1px;height:14px;background:var(--border-color);display:inline-block;margin:0 2px;"></span>
+                ` : ''}
+                <button style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:#94a3b8;" onclick="event.stopPropagation(); replyToMessage('${partnerEmail}', '${safeSenderName}', '${fullTextSafe}', '${id}')" title="ציטוט"><span class="material-icons-round" style="font-size:0.9rem;">reply</span></button>
+                ${isMe ? `<button style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:#94a3b8;" onclick="event.stopPropagation(); editMessage('${id}')" title="ערוך"><span class="material-icons-round" style="font-size:0.9rem;">edit</span></button>` : ''}
+                ${isBook ? `<button style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:#94a3b8;" onclick="event.stopPropagation(); openThread('${id}', '${fullTextSafe}', '${partnerEmail}')" title="שרשור"><span class="material-icons-round" style="font-size:0.9rem;">forum</span></button>` : ''}
+                ${!isMe ? `<button style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:#ef4444;" onclick="event.stopPropagation(); openReportModal('${senderEmail}', '${isBook ? 'public' : 'private'}')" title="דיווח"><span class="material-icons-round" style="font-size:0.9rem;">flag</span></button>` : ''}
+                ${isMe && !isDeletedMsg ? `<button style="display:inline-flex;align-items:center;padding:3px 5px;background:none;border:none;cursor:pointer;color:#ef4444;" onclick="event.stopPropagation(); deleteMessage('${id}', document.getElementById('msg-${id}'))" title="מחק"><span class="material-icons-round" style="font-size:0.9rem;">delete</span></button>` : ''}
             </div>
         `;
-        timeDiv.innerHTML += innerHTML;
+
+        const msgCol = div.parentElement || topLevelElement;
+        msgCol.insertBefore(actionsBar, div);
     }
 
-    container.scrollTop = container.scrollHeight;
+    const scrollToBottom = () => { container.scrollTop = container.scrollHeight; };
+    scrollToBottom();
+    requestAnimationFrame(scrollToBottom);
+    setTimeout(scrollToBottom, 100);
     return topLevelElement;
 }
 
-function replyToMessage(chatId, senderName, text) {
-    activeReply = { chatId, sender: senderName, text };
+function replyToMessage(chatId, senderName, text, msgId) {
+    activeReply = { chatId, sender: senderName, text, msgId };
     const preview = document.getElementById(`reply-preview-${chatId}`);
     if (preview) {
         preview.style.display = 'flex';
@@ -1072,15 +1597,17 @@ async function editMessage(id) {
         }
 
         try {
-            const { data, error } = await supabaseClient
-                .from('chat_messages')
-                .update({ message: finalMessage, is_html: isHtml })
+            const chatContainer = msgEl.closest('[id^="chat-window-"], [id^="msgs-"]');
+            const chatId = chatContainer
+                ? chatContainer.id.replace('chat-window-', '').replace(/^msgs-/, '')
+                : null;
+            const table = getChatTable(activeThreadChatId || chatId);
+            const { error } = await supabaseClient
+                .from(table)
+                .update({ content: finalMessage })
                 .eq('id', id);
 
             if (error) throw error;
-            if (!data || data.length === 0) {
-                throw new Error("ההודעה לא עודכנה בבסיס הנתונים. ייתכן שאין לך הרשאה או שההודעה לא קיימת.");
-            }
             updateMessageDOM(id, finalMessage);
         } catch (e) {
             console.error("Error updating message:", e);
@@ -1138,21 +1665,98 @@ function updateMessageDOM(id, newText) {
 
 async function deleteMessage(id, element) {
     if (!requireAuth()) return;
-    if (!(await customConfirm('למחוק הודעה זו לכולם?'))) return;
+    if (!(await customConfirm('למחוק הודעה זו? ההודעה תוצג כנמחקה עבורך ועבור האחרים.'))) return;
 
     try {
-        const { error } = await supabaseClient.from('chat_messages').delete().eq('id', id);
+        const chatContainer = element.closest('[id^="chat-window-"], [id^="msgs-"]');
+        const partnerEmail = chatContainer
+            ? chatContainer.id.replace('chat-window-', '').replace(/^msgs-/, '')
+            : element.dataset.sender || null;
+        const table = getChatTable(partnerEmail);
+
+const clone = element.cloneNode(true);
+        const toRemove = clone.querySelectorAll('.msg-delete-btn, .msg-time-container, .msg-sender-name, .thread-active-indicator');
+        toRemove.forEach(el => el.remove());
+        const originalContent = element.querySelector('p')?.textContent
+            || element.innerText?.trim()
+            || '';
+
+const deletedContent = '__DELETED__:' + originalContent;
+        const { data: updated, error } = await supabaseClient.from(table)
+            .update({ content: deletedContent })
+            .eq('id', id)
+            .select('id');
         if (error) throw error;
+        if (!updated || updated.length === 0) throw new Error('RLS_BLOCKED');
 
         if (chatChannel) {
             chatChannel.send({ type: 'broadcast', event: 'delete_message', payload: { id: id } });
         }
 
-        if (element.parentElement) element.parentElement.remove();
-        else element.remove();
+markMessageAsDeleted(element, true);
     } catch (e) {
-        console.error("Error deleting message:", e);
-        await customAlert("שגיאה במחיקת ההודעה");
+        console.error("Full DB Error (Delete Message):", e.message, e.details || e);
+        if (e.message === 'RLS_BLOCKED') {
+            await customAlert("לא ניתן למחוק הודעה זו כרגע. נסה שוב מאוחר יותר.");
+        } else {
+            await customAlert("שגיאה במחיקת ההודעה");
+        }
+    }
+}
+
+function markMessageAsDeleted(element, isOwner) {
+    const pEls = element.querySelectorAll('p:not(.msg-deleted-notice), .chat-quote');
+    pEls.forEach(el => el.remove());
+    const delBtn = element.querySelector('.msg-delete-btn');
+    if (delBtn) delBtn.remove();
+
+    if (!element.querySelector('.msg-deleted-notice')) {
+        const deletedP = document.createElement('p');
+        deletedP.className = 'msg-deleted-notice text-sm italic';
+        deletedP.textContent = 'ההודעה נמחקה';
+        const timeDiv = element.querySelector('.msg-time-container');
+        if (timeDiv) element.insertBefore(deletedP, timeDiv);
+        else element.appendChild(deletedP);
+    }
+
+    if (isOwner) {
+        const timeDiv = element.querySelector('.msg-time-container');
+        if (timeDiv && !timeDiv.querySelector('.restore-btn')) {
+            const restoreBtn = document.createElement('button');
+            restoreBtn.className = 'restore-btn text-xs text-blue-400 hover:text-blue-300 mr-2';
+            restoreBtn.textContent = 'שחזור';
+            restoreBtn.onclick = (e) => { e.stopPropagation(); restoreMessage(element); };
+            timeDiv.prepend(restoreBtn);
+        }
+    }
+}
+
+async function restoreMessage(element) {
+    const msgId = element.id?.replace('msg-', '');
+    if (!msgId) return;
+    const chatContainer = element.closest('[id^="chat-window-"], [id^="msgs-"]');
+    const partnerEmail = chatContainer?.id.replace('chat-window-', '').replace(/^msgs-/, '') || null;
+    const table = getChatTable(partnerEmail);
+    const { data, error } = await supabaseClient.from(table).select('content').eq('id', msgId).maybeSingle();
+    if (error || !data) return customAlert('שגיאה בשחזור ההודעה');
+    const content = data.content || '';
+    if (!content.startsWith('__DELETED__:')) return customAlert('לא נמצא תוכן לשחזור');
+    const original = content.slice('__DELETED__:'.length);
+    const newContent = await customPrompt('ערוך את ההודעה לפני השחזור:', original);
+    if (newContent === null) return;
+    const { error: updateErr } = await supabaseClient.from(table).update({ content: newContent }).eq('id', msgId);
+    if (updateErr) return customAlert('שגיאה בשחזור: ' + updateErr.message);
+    updateMessageDOM(msgId, newContent);
+    
+    const msgEl = document.getElementById(`msg-${msgId}`);
+    if (msgEl) {
+        const restoreBtn = msgEl.querySelector('.restore-btn');
+        if (restoreBtn) restoreBtn.remove();
+        const delBtn = document.createElement('button');
+        delBtn.className = 'msg-delete-btn';
+        delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+        delBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(msgId, msgEl); };
+        msgEl.appendChild(delBtn);
     }
 }
 
@@ -1191,21 +1795,48 @@ async function toggleReaction(msgId, type, btn) {
         countSpan.style.display = currentCount > 0 ? 'inline' : 'none';
     }
 
+if (type === 'dislike' && !isActive && otherBtn.classList.contains('active')) {
+        const likeCountSpan = otherBtn.querySelector(`span[id^='like-count-']`);
+        if (likeCountSpan) {
+            const lc = Math.max(0, parseInt(likeCountSpan.innerText || '0') - 1);
+            likeCountSpan.innerText = lc;
+            likeCountSpan.style.display = lc > 0 ? 'inline' : 'none';
+        }
+    }
+
     try {
         if (isActive) {
             await supabaseClient.from('message_reactions').delete()
                 .eq('message_id', msgId)
-                .eq('user_email', currentUser.email);
+                .eq('user_id', currentUser.id);
 
             btn.classList.remove('active');
             btn.style.color = '';
             delete btn.dataset.reaction;
         } else {
+            
+            let alreadyLiked = false;
+            if (type === 'like') {
+                const { data: existingLike } = await supabaseClient
+                    .from('message_reactions')
+                    .select('id')
+                    .eq('message_id', msgId)
+                    .eq('user_id', currentUser.id)
+                    .eq('reaction_type', 'like')
+                    .maybeSingle();
+                alreadyLiked = !!existingLike;
+            }
+
+            if (alreadyLiked) {
+                showToast('כבר נתת לייק להודעה זו', 'info');
+                return;
+            }
+
             await supabaseClient.from('message_reactions').upsert({
                 message_id: msgId,
-                user_email: currentUser.email,
+                user_id: currentUser.id,
                 reaction_type: type
-            }, { onConflict: 'message_id,user_email' });
+            }, { onConflict: 'message_id,user_id' });
 
             btn.classList.add('active');
             btn.style.color = type === 'like' ? '#22c55e' : '#ef4444';
@@ -1219,18 +1850,25 @@ async function toggleReaction(msgId, type, btn) {
 
             if (type === 'like') {
                 try {
-                    const { data: msg } = await supabaseClient.from('chat_messages').select('sender_email, message').eq('id', msgId).single();
-                    if (msg && msg.sender_email !== currentUser.email) {
-                        await supabaseClient.rpc('increment_field', { table_name: 'users', field_name: 'reward_points', increment_value: 5, user_email: msg.sender_email });
-
-                        const cleanMsg = msg.message.replace(/<[^>]*>?/gm, '').substring(0, 30) + (msg.message.length > 30 ? '...' : '');
-                        const notifText = `המשתמש ${currentUser.displayName} סימן לייק על ההודעה שלך: "${cleanMsg}"`;
-                        await supabaseClient.rpc('send_message', {
-                            p_sender_email: 'updates@system',
-                            p_receiver_email: msg.sender_email,
-                            p_message: notifText,
-                            p_is_html: false
-                        });
+                    const { data: msg } = await supabaseClient.from('chat_public').select('user_id, content').eq('id', msgId).maybeSingle();
+                    if (msg && msg.user_id && msg.user_id !== currentUser.id) {
+                        const senderUser = globalUsersData.find(u => u.id === msg.user_id);
+                        if (senderUser?.id) {
+                            const { data: cur } = await supabaseClient.from('profiles_public').select('reward_points').eq('id', senderUser.id).maybeSingle();
+                            await supabaseClient.from('profiles_public').update({ reward_points: (cur?.reward_points || 0) + 5 }).eq('id', senderUser.id);
+                            const rawMsg = msg.content || '';
+                            const cleanMsg = rawMsg.replace(/<[^>]*>?/gm, '').substring(0, 30) + (rawMsg.length > 30 ? '...' : '');
+                            const notifText = `👍 ${currentUser.displayName} נתן לייק על ההודעה שלך: "${cleanMsg}"`;
+                            
+                            await _insertNotification(senderUser.id, 'לייק חדש', notifText);
+                            
+                            supabaseClient.from('rating_log').insert({
+                                user_id: senderUser.id,
+                                source: 'like',
+                                points: 5,
+                                ref_id: String(msgId)
+                            }).then(() => {}).catch(() => {});
+                        }
                     }
                 } catch (e) {
                     console.error("Error awarding points for like", e);
@@ -1251,8 +1889,7 @@ async function toggleReaction(msgId, type, btn) {
 
 let typingTimeout = null;
 let lastTypingTime = 0;
-let typingTimers = {}; 
-
+let typingTimers = {};
 
 function handleTyping(partnerEmail) {
     const now = Date.now();
@@ -1262,36 +1899,49 @@ function handleTyping(partnerEmail) {
     }
 }
 
-
 function showTyping(partnerEmail, text) {
     const el = document.getElementById(`typing-${partnerEmail}`);
     if (el) {
-        el.innerText = text;
+        el.innerHTML = `<span class="typing-dots"><span></span><span></span><span></span></span><span class="typing-dots-label">${text}</span>`;
         el.classList.add('active');
         if (typingTimers[partnerEmail]) clearTimeout(typingTimers[partnerEmail]);
         typingTimers[partnerEmail] = setTimeout(() => { el.classList.remove('active'); }, 3000);
     }
 }
 
-async function markAsRead(senderEmail) {
+function markAsRead(senderEmail) {
     const emailKey = !senderEmail.startsWith('book:') ? senderEmail.toLowerCase() : senderEmail;
 
     lastReadTimes[emailKey] = Date.now();
     localStorage.setItem('torahApp_lastReadTimes', JSON.stringify(lastReadTimes));
 
-    try {
-        await supabaseClient.from('chat_messages')
-            .update({ is_read: true })
-            .ilike('sender_email', senderEmail) 
-            .ilike('receiver_email', getCurrentChatEmail())
-            .eq('is_read', false);
+    if (unreadMessages[emailKey]) {
+        unreadMessages[emailKey] = 0;
+        localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
+        if (typeof updateChatBadge === 'function') updateChatBadge();
+    }
+    if (document.getElementById('screen-chavrutas')?.classList.contains('active')) renderChavrutas();
 
-        if (unreadMessages[emailKey]) {
-            unreadMessages[emailKey] = 0;
-            localStorage.setItem('torahApp_unread', JSON.stringify(unreadMessages));
-            if (typeof updateChatBadge === 'function') updateChatBadge();
-        }
-    } catch (e) { console.error("Error marking as read:", e); }
+    
+    if (!emailKey.startsWith('book:') && !emailKey.includes('@system') && currentUser?.id) {
+        markAllChatRead(emailKey);
+    }
+}
+
+function updateCheckmarksForChat(partnerEmail) {
+    const containers = [];
+    const mainMsgs = document.getElementById(`msgs-${partnerEmail}`);
+    if (mainMsgs) containers.push(mainMsgs);
+    const winEl = document.getElementById(`chat-window-${partnerEmail}`);
+    if (winEl) containers.push(winEl);
+    containers.forEach(container => {
+        container.querySelectorAll('.msg-check').forEach(el => {
+            if (!el.classList.contains('read')) {
+                el.classList.add('read');
+                el.textContent = '✓✓';
+            }
+        });
+    });
 }
 
 let mentionQuery = null;
@@ -1302,6 +1952,44 @@ let selectedMentionIndex = -1;
 
 function isMentionPopupActive() {
     return activeMentionPopup && activeMentionPopup.style.display === 'block';
+}
+
+async function moderatorToggleChatClosed(bookName) {
+    if (!hasPermission('moderate')) return;
+    const { data: existing } = await supabaseClient
+        .from('system_announcements')
+        .select('id')
+        .eq('target_type', 'chat_closed')
+        .eq('content', bookName)
+        .maybeSingle();
+    if (existing) {
+        await supabaseClient.from('system_announcements').delete().eq('id', existing.id);
+        showToast(`צ'אט "${bookName}" נפתח`, 'success');
+    } else {
+        await supabaseClient.from('system_announcements').insert({
+            title: `סגירת צ'אט: ${bookName}`,
+            content: bookName,
+            target_type: 'chat_closed',
+            created_at: new Date().toISOString()
+        });
+        showToast(`צ'אט "${bookName}" נסגר`, 'warn');
+    }
+    openMainChat(bookName.startsWith('book:') ? bookName : 'book:' + bookName, bookName);
+}
+
+async function sendSystemAnnouncement(email) {
+    if (!hasPermission('announce')) return;
+    const text = prompt('הזן את תוכן ההודעה לשליחה כהודעת מערכת:');
+    if (!text || !text.trim()) return;
+    const bookName = email.replace('book:', '');
+    const { error } = await supabaseClient.from('chat_messages').insert({
+        room: bookName,
+        sender_email: 'admin@system',
+        content: text.trim(),
+        created_at: new Date().toISOString()
+    });
+    if (!error) showToast('הודעת מערכת נשלחה ✓', 'success');
+    else showToast('שגיאה בשליחה: ' + error.message, 'error');
 }
 
 function handleMentionKeyDown(event, chatId) {
@@ -1388,31 +2076,44 @@ function hideMentions() {
 async function populateMentions(chatId, query) {
     if (!activeMentionPopup) return;
 
-    if (!chatId.startsWith('book:')) {
-        activeMentionPopup.innerHTML = '<div class="p-2 text-sm text-slate-500">תיוג זמין רק בצ\'אט ספר.</div>';
-        setTimeout(hideMentions, 2000);
-        return;
-    }
-
     activeMentionPopup.innerHTML = '<div class="p-2 text-sm text-slate-500">טוען משתמשים...</div>';
-    const bookName = chatId.replace('book:', '');
 
-    const potentialUsers = globalUsersData.filter(u => u.books && u.books.includes(bookName) && u.email !== currentUser.email);
-
-    const chatContainer = document.getElementById(`msgs-${chatId}`);
+const chatContainer = document.getElementById(`msgs-${chatId}`);
     const postedUserEmails = new Set();
     if (chatContainer) {
         chatContainer.querySelectorAll('[data-sender]').forEach(el => {
-            if (el.dataset.sender !== currentUser.email) {
+            if (el.dataset.sender && el.dataset.sender !== currentUser.email) {
                 postedUserEmails.add(el.dataset.sender);
             }
         });
     }
 
+    let potentialUsers = [];
+    if (chatId.startsWith('book:')) {
+        const bookName = chatId.replace('book:', '');
+        potentialUsers = globalUsersData.filter(u => u.books && u.books.includes(bookName) && u.email !== currentUser.email);
+        
+        const potentialEmailSet = new Set(potentialUsers.map(u => u.email));
+        postedUserEmails.forEach(email => {
+            if (!potentialEmailSet.has(email)) {
+                const chatUser = globalUsersData.find(u => u.email === email);
+                if (chatUser) potentialUsers.push(chatUser);
+            }
+        });
+    } else {
+        
+        postedUserEmails.forEach(email => {
+            const chatUser = globalUsersData.find(u => u.email === email);
+            if (chatUser) potentialUsers.push(chatUser);
+        });
+        if (potentialUsers.length === 0) {
+            potentialUsers = globalUsersData.filter(u => u.email !== currentUser.email && !u.isAnonymous).slice(0, 30);
+        }
+    }
+
     const lowerQuery = query.toLowerCase();
     let filteredUsers = potentialUsers.filter(u =>
-        u.name.toLowerCase().includes(lowerQuery) ||
-        u.email.toLowerCase().includes(lowerQuery)
+        !query || (u.name || '').toLowerCase().includes(lowerQuery) || (u.email || '').toLowerCase().includes(lowerQuery)
     );
 
     filteredUsers.sort((a, b) => {
@@ -1420,7 +2121,7 @@ async function populateMentions(chatId, query) {
         const bPosted = postedUserEmails.has(b.email);
         if (aPosted && !bPosted) return -1;
         if (!aPosted && bPosted) return 1;
-        return a.name.localeCompare(b.name);
+        return (a.name || '').localeCompare(b.name || '');
     });
 
     mentionUserList = filteredUsers;
@@ -1465,20 +2166,73 @@ function selectMention(chatId, name, email) {
     input.setSelectionRange(newCursorPos, newCursorPos);
 }
 
-function sendMentionNotification(mentionedEmail, chatId) {
-    const bookName = chatId.replace('book:', '');
-    const safeBookName = bookName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+function scrollToMsgWithRetry(msgId, attempts) {
+    if (!msgId) return;
+    const el = document.getElementById('msg-' + msgId);
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.transition = 'background 0.4s';
+        el.style.background = '#fef3c7';
+        setTimeout(() => { el.style.background = ''; }, 2000);
+    } else if (attempts > 0) {
+        setTimeout(() => scrollToMsgWithRetry(msgId, attempts - 1), 300);
+    }
+}
 
-    const notificationMessage = `<span class="mention" data-user-email="${currentUser.email}">${currentUser.displayName}</span> תייג אותך בצ'אט של הספר <span style="cursor:pointer; font-weight:bold; color:#f59e0b;" onclick="event.stopPropagation(); openBookChat('${safeBookName}')">${bookName}</span>.`;
+function sendMentionNotification(mentionedEmail, chatId, msgId = null) {
+    const isBook = chatId.startsWith('book:');
+    const bookName = isBook ? chatId.replace('book:', '') : null;
+    const safeBookName = bookName ? bookName.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
 
-    supabaseClient.rpc('send_message', {
+    let jumpBtn;
+    if (isBook) {
+        jumpBtn = msgId
+            ? `<button class="mention-jump-btn" style="display:inline-block; margin-right:8px; padding:3px 10px; background:#f59e0b; color:#fff; border-radius:6px; font-size:0.78rem; cursor:pointer; border:none;" onclick="event.stopPropagation(); window._pendingScrollMsgId='${msgId}'; openBookChat('${safeBookName}');">עבור לאזכור</button>`
+            : `<button class="mention-jump-btn" style="display:inline-block; margin-right:8px; padding:3px 10px; background:#f59e0b; color:#fff; border-radius:6px; font-size:0.78rem; cursor:pointer; border:none;" onclick="event.stopPropagation(); openBookChat('${safeBookName}')">פתח צ'אט</button>`;
+    } else {
+        const safeEmail = chatId.replace(/'/g, "\\'");
+        jumpBtn = msgId
+            ? `<button class="mention-jump-btn" style="display:inline-block; margin-right:8px; padding:3px 10px; background:#f59e0b; color:#fff; border-radius:6px; font-size:0.78rem; cursor:pointer; border:none;" onclick="event.stopPropagation(); window._pendingScrollMsgId='${msgId}'; openChat('${safeEmail}');">עבור לאזכור</button>`
+            : `<button class="mention-jump-btn" style="display:inline-block; margin-right:8px; padding:3px 10px; background:#f59e0b; color:#fff; border-radius:6px; font-size:0.78rem; cursor:pointer; border:none;" onclick="event.stopPropagation(); openChat('${safeEmail}')">פתח צ'אט</button>`;
+    }
+
+    const contextLabel = isBook ? `בצ'אט של הספר <strong style="color:#f59e0b;">${bookName}</strong>` : `בצ'אט פרטי`;
+    const notificationMessage = `<span class="mention" data-user-email="${currentUser.email}">${currentUser.displayName || currentUser.email}</span> תייג אותך ${contextLabel}. ${jumpBtn}`;
+
+supabaseClient.rpc('send_message', {
         p_sender_email: 'mentions@system',
         p_receiver_email: mentionedEmail,
         p_message: notificationMessage,
         p_is_html: true
     }).then(({ error }) => {
-        if (error) console.error("Error sending mention notification:", error);
+        if (error) {
+            
+            const mentionedUser = globalUsersData.find(u => u.email === mentionedEmail);
+            if (mentionedUser && mentionedUser.id) {
+                supabaseClient.from('chat_admin').insert({
+                    user_id: mentionedUser.id,
+                    sender_email: 'mentions@system',
+                    content: notificationMessage,
+                    created_at: new Date().toISOString()
+                }).then(() => {}).catch(() => {});
+            }
+        }
+    }).catch(e => {
+        const mentionedUser = globalUsersData.find(u => u.email === mentionedEmail);
+        if (mentionedUser && mentionedUser.id) {
+            supabaseClient.from('chat_admin').insert({
+                user_id: mentionedUser.id,
+                sender_email: 'mentions@system',
+                content: notificationMessage,
+                created_at: new Date().toISOString()
+            }).then(() => {}).catch(() => {});
+        }
     });
+
+const mentionedUser = globalUsersData.find(u => u.email === mentionedEmail);
+    if (mentionedUser && mentionedUser.id) {
+        _insertNotification(mentionedUser.id, `תיוג מאת ${currentUser.displayName || currentUser.email}`, `תויגת בצ'אט של "${bookName}"`);
+    }
 }
 
 async function updateMessageLikeCount(messageId) {

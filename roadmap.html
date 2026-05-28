@@ -1,19 +1,21 @@
-<div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden relative flex flex-col m-4 max-h-[80vh]">
-    <button aria-label="סגור" class="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors z-10" onclick="document.getElementById('roadmapModal').style.display='none'">
-        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-        </svg>
-    </button>
-    <header class="pt-8 pb-4 px-8 flex flex-col items-center text-center border-b border-slate-100 dark:border-slate-800">
-        <h1 class="text-xl font-bold text-slate-800 dark:text-white mb-2">מפת הדרכים שלנו</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
-        <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mt-4 w-full max-w-xs">
-            <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('done', this)">בוצע</button>
-            <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('in_progress', this)">בטיפול</button>
-            <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('planned', this)">בתכנון</button>
+<div style="background:var(--card-bg);color:var(--text-main);width:90%;max-width:560px;border-radius:1.5rem;overflow:hidden;position:relative;display:flex;flex-direction:column;max-height:85vh;box-shadow:0 20px 40px rgba(0,0,0,0.15);margin:auto;font-family:'Assistant',sans-serif;">
+
+    <span class="close-modal" onclick="document.getElementById('roadmapModal').style.display='none'" style="position:absolute;top:1rem;left:1rem;z-index:10;font-size:1.4rem;cursor:pointer;color:#94a3b8;line-height:1;">&times;</span>
+
+    <div style="padding:2rem 2rem 1.25rem;text-align:center;border-bottom:1px solid var(--border-color);">
+        <div style="display:flex;justify-content:center;margin-bottom:0.35rem;">
+            <h2 style="margin:0;font-size:1.25rem;font-weight:800;color:var(--text-main);">מפת הדרכים שלנו</h2>
         </div>
-    </header>
-    <main id="roadmap-list-area" class="p-6 flex-1 overflow-y-auto space-y-4">
-        <div class="text-center p-5 text-slate-400">טוען...</div>
-    </main>
+        <p style="margin:0;font-size:0.85rem;color:#64748b;text-align:center;">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
+
+        <div style="display:flex;gap:0.5rem;background:var(--bg,#f1f5f9);border-radius:0.75rem;padding:0.3rem;margin-top:1rem;">
+            <button class="roadmap-tab" onclick="setRoadmapFilter('בוצע', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בוצע</button>
+            <button class="roadmap-tab" onclick="setRoadmapFilter('בטיפול', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בטיפול</button>
+            <button class="roadmap-tab" onclick="setRoadmapFilter('בתכנון', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בתכנון</button>
+        </div>
+    </div>
+
+    <div id="roadmap-list-area" style="padding:1.25rem;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.75rem;">
+        <div style="text-align:center;padding:2rem;color:#94a3b8;">טוען...</div>
+    </div>
 </div>

@@ -47,13 +47,14 @@ window.addEventListener('online', () => {
     showToast("האינטרנט חזר! ברוך מחיה המתים ;)", "success");
 });
 
-function customConfirm(msg) {
+function customConfirm(msg, isHtml = false) {
     const modal = document.getElementById('customConfirmModal');
     if (!modal || !document.getElementById('cConfirmMsg') || !document.getElementById('cConfirmOk') || !document.getElementById('cConfirmCancel')) {
         return Promise.resolve(window.confirm(msg));
     }
     return new Promise(resolve => {
-        document.getElementById('cConfirmMsg').innerText = msg;
+        const msgEl = document.getElementById('cConfirmMsg');
+        if (isHtml) { msgEl.innerHTML = msg; } else { msgEl.innerText = msg; }
         modal.style.display = 'flex';
         bringToFront(modal);
         document.getElementById('cConfirmOk').onclick = () => {
@@ -122,10 +123,27 @@ function customPrompt(msg, defaultVal = '') {
     });
 }
 
-window.alert.original = window.alert;
+const _nativeAlert = window.alert;
 window.alert = customAlert;
+window.alert.original = _nativeAlert;
 window.confirm = customConfirm;
 window.prompt = customPrompt;
+
+function setCookie(name, value, days) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+}
+
+function getCookie(name) {
+    return document.cookie.split('; ').reduce((r, v) => {
+        const [k, val] = v.split('=');
+        return k === name ? decodeURIComponent(val) : r;
+    }, null);
+}
+
+function deleteCookie(name) {
+    document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+}
 
 function formatHebrewDate(dateString) {
     if (!dateString) return 'לא ידוע';
@@ -204,12 +222,22 @@ function getFullUserBadges(user) {
     const rankName = getRankName(user.learned || 0);
     const rankColor = getRankColor(rankName);
 
+badgesHtml += `<span class="chat-badge" style="background-color: ${rankColor}; border: 1px solid ${rankColor}; color: white;">${rankName}</span>`;
 
-    badgesHtml += `<span class="chat-badge" style="background-color: ${rankColor}; border: 1px solid ${rankColor}; color: white;">${rankName}</span>`;
+return badgesHtml;
+}
 
-
-
-    return badgesHtml;
+function getSkeletonHTML(type = 'list', count = 3) {
+    const line = (w) => `<div class="skeleton skeleton-line" style="width:${w};height:12px;margin-bottom:6px;"></div>`;
+    const avatar = `<div class="skeleton skeleton-avatar" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;"></div>`;
+    const card = `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;">${avatar}<div style="flex:1;">${line('60%')}${line('40%')}</div></div>`;
+    const msgLeft = `<div style="display:flex;gap:8px;margin-bottom:10px;"><div class="skeleton skeleton-avatar" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;"></div><div class="skeleton" style="height:40px;border-radius:12px;width:55%;"></div></div>`;
+    const msgRight = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><div class="skeleton" style="height:40px;border-radius:12px;width:45%;"></div></div>`;
+    const block = `<div class="skeleton skeleton-block" style="margin-bottom:10px;"></div>`;
+    if (type === 'chat') return Array.from({length: count}, (_, i) => i % 2 === 0 ? msgLeft : msgRight).join('');
+    if (type === 'card') return Array.from({length: count}, () => card).join('');
+    if (type === 'block') return Array.from({length: count}, () => block).join('');
+    return Array.from({length: count}, () => card).join('');
 }
 
 function bringToFront(element) {
@@ -261,6 +289,11 @@ function closeModal() {
     if (document.getElementById('completionsModal')) document.getElementById('completionsModal').style.display = 'none';
     if (chatInterval) clearInterval(chatInterval);
     if (document.getElementById('notesModal')) document.getElementById('notesModal').style.display = 'none';
+}
+
+function closeFollowersModal() {
+    const modal = document.getElementById('followersModal');
+    if (modal) modal.style.display = 'none';
 }
 
 function truncateHtmlText(htmlString, maxLength) {

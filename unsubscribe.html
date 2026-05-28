@@ -5,134 +5,236 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>הסרה מרשימת תפוצה - בית המדרש</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root {
-            --bg: #f8fafc;
-            --card: #ffffff;
-            --text: #1e293b;
-            --primary: #f59e0b;
-            --error: #ef4444;
-            --success: #22c55e;
-            --muted: #64748b;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
+            font-family: 'Heebo', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
+            color: #e2e8f0;
+            padding: 1rem;
+        }
+
+        .site-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .site-logo {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fbbf24;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+            text-decoration: none;
+        }
+
+        .site-logo span {
+            color: #e2e8f0;
         }
 
         .card {
-            background: var(--card);
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(251, 191, 36, 0.2);
             padding: 2.5rem;
             border-radius: 1.5rem;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(251, 191, 36, 0.05);
             text-align: center;
-            max-width: 450px;
-            width: 90%;
+            max-width: 460px;
+            width: 100%;
             transition: all 0.3s ease;
         }
 
+        .status-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1.25rem;
+            display: block;
+        }
+
         h1 {
-            margin-top: 0;
-            font-size: 1.5rem;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 0.75rem;
         }
 
         p {
-            line-height: 1.6;
-            color: var(--muted);
-        }
-
-        .status-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-
-        .btn-unsubscribe {
-            background-color: var(--error);
-            color: white;
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 0.75rem;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 1.5rem;
-            width: 100%;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
-        }
-
-        .btn-unsubscribe:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-
-        .btn-unsubscribe:active {
-            transform: translateY(0);
+            line-height: 1.7;
+            color: #94a3b8;
+            font-size: 0.95rem;
         }
 
         .email-input {
             width: 100%;
-            padding: 0.8rem;
-            margin-top: 1rem;
-            border: 1px solid #cbd5e1;
+            padding: 0.85rem 1rem;
+            margin-top: 1.25rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(251, 191, 36, 0.25);
             border-radius: 0.75rem;
             font-size: 1rem;
-            box-sizing: border-box;
+            color: #e2e8f0;
+            font-family: 'Heebo', sans-serif;
+            direction: ltr;
+            text-align: left;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
 
+        .email-input::placeholder { color: #475569; }
+
+        .email-input:focus {
+            outline: none;
+            border-color: rgba(251, 191, 36, 0.6);
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+        }
+
+        .btn-unsubscribe {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: white;
+            border: none;
+            padding: 0.85rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Heebo', sans-serif;
+            cursor: pointer;
+            margin-top: 1.25rem;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-unsubscribe:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn-unsubscribe:active { transform: translateY(0); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #0f172a;
+            border: none;
+            padding: 0.85rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: 'Heebo', sans-serif;
+            cursor: pointer;
+            margin-top: 1.25rem;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+        }
+
+        .back-link {
+            color: #64748b;
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-top: 1.5rem;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover { color: #fbbf24; }
+
         .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid var(--primary);
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(251, 191, 36, 0.15);
+            border-top-color: #fbbf24;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
             margin: 0 auto 1.5rem;
         }
 
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
+            to { transform: rotate(360deg); }
+        }
 
-            100% {
-                transform: rotate(360deg);
-            }
+        .divider {
+            border: none;
+            border-top: 1px solid rgba(251, 191, 36, 0.1);
+            margin: 1.5rem 0 0;
+        }
+
+        .success-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            color: #4ade80;
+            padding: 0.35rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .error-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            color: #f87171;
+            padding: 0.35rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
         }
     </style>
 </head>
 
 <body>
+    <div class="site-header">
+        <a href="index.html" class="site-logo">בית<span> המדרש</span></a>
+    </div>
+
     <div class="card" id="status-card">
-        <div class="status-icon">📩</div>
+        <span class="status-icon">📩</span>
         <h1>הסרה מרשימת תפוצה</h1>
-        <p>הזן את כתובת האימייל שלך כדי להפסיק לקבל עדכונים:</p>
-        <input type="email" id="email-input" class="email-input" placeholder="email@example.com">
-        <button onclick="handleManualUnsubscribe()" class="btn-unsubscribe">הסר אותי מהרשימה</button>
-        <p style="margin-top:1.5rem;"><a href="index.html"
-                style="color:var(--muted); text-decoration:none; font-size:0.9rem;">חזרה לאתר</a></p>
+        <p>הזן את כתובת האימייל שלך כדי להפסיק לקבל עדכונים מבית המדרש.</p>
+        <input type="email" id="email-input" class="email-input" placeholder="your@email.com" autocomplete="email">
+        <button onclick="handleManualUnsubscribe()" class="btn-unsubscribe">
+            <i class="fas fa-user-minus"></i>
+            הסר אותי מהרשימה
+        </button>
+        <hr class="divider">
+        <a href="index.html" class="back-link">
+            <i class="fas fa-arrow-right"></i>
+            חזרה לאתר
+        </a>
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://dsaxhbmyvjtdmcbxnnlj.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXhoYm15dmp0ZG1jYnhubmxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2ODI1NTcsImV4cCI6MjA4MjI1ODU1N30.F31n85Lm2e5-mDC83TlstJY9Pya3GOAyIRilDcL_5Hc';
+        const SUPABASE_URL = 'https://afihonprbwaoiokowsty.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_nAMFWiuTDObLLVoofQurSw_VSbSXxRT';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        function initPage() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const email = urlParams.get('email');
-            if (email) {
-                document.getElementById('email-input').value = email;
-            }
-        }
 
         async function handleManualUnsubscribe() {
             const email = document.getElementById('email-input').value.trim();
@@ -143,11 +245,11 @@
                 return;
             }
 
-            card.innerHTML = `<div class="loader"></div><h1>בודק נתונים...</h1>`;
+            card.innerHTML = `<div class="loader"></div><h1>בודק נתונים...</h1><p>אנא המתן...</p>`;
 
             try {
                 const { data: user, error } = await supabaseClient
-                    .from('users')
+                    .from('profiles_public')
                     .select('marketing_consent')
                     .eq('email', email.toLowerCase())
                     .maybeSingle();
@@ -155,41 +257,64 @@
                 if (error) throw error;
 
                 if (!user) {
-                    card.innerHTML = `<div class="status-icon">❓</div><h1>משתמש לא נמצא</h1><p>כתובת האימייל <strong>${email}</strong> אינה רשומה במערכת שלנו.</p><button onclick="location.reload()" class="btn-unsubscribe" style="background-color:var(--primary)">נסה שוב</button>`;
+                    card.innerHTML = `
+                        <span class="status-icon">❓</span>
+                        <h1>משתמש לא נמצא</h1>
+                        <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> אינה רשומה במערכת שלנו.</p>
+                        <button onclick="location.reload()" class="btn-primary">נסה שוב</button>
+                        <hr class="divider">
+                        <a href="index.html" class="back-link"><i class="fas fa-arrow-right"></i> חזרה לאתר</a>
+                    `;
                     return;
                 }
 
                 if (user.marketing_consent === false) {
-                    card.innerHTML = `<div class="status-icon" style="color:var(--success)">✅</div><h1>כבר הוסרת</h1><p>כתובת האימייל <strong>${email}</strong> כבר הוסרה מרשימת התפוצה בעבר.</p><a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold; display:block; margin-top:1.5rem;">חזרה לאתר</a>`;
+                    card.innerHTML = `
+                        <span class="success-badge"><i class="fas fa-check-circle"></i> כבר הוסרת</span>
+                        <h1>כבר מוסר מהרשימה</h1>
+                        <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> כבר הוסרה מרשימת התפוצה בעבר.</p>
+                        <a href="index.html" class="btn-primary">חזרה לאתר</a>
+                    `;
                     return;
                 }
 
                 await handleUnsubscribe(email);
             } catch (err) {
-                console.error('Check status error:', err);
-                card.innerHTML = `<div class="status-icon" style="color:var(--error)">❌</div><h1>שגיאה בבדיקה</h1><p>אירעה תקלה בעת בדיקת הסטטוס. נא לוודא שאתה מחובר לאינטרנט.</p>`;
+                card.innerHTML = `
+                    <span class="error-badge"><i class="fas fa-exclamation-circle"></i> שגיאה</span>
+                    <h1>שגיאה בבדיקה</h1>
+                    <p>אירעה תקלה בעת בדיקת הסטטוס. נא לוודא שאתה מחובר לאינטרנט.</p>
+                    <button onclick="location.reload()" class="btn-primary">נסה שוב</button>
+                `;
             }
         }
 
         async function handleUnsubscribe(email) {
             const card = document.getElementById('status-card');
-            card.innerHTML = `<div class="loader"></div><h1>מעדכן העדפות...</h1>`;
+            card.innerHTML = `<div class="loader"></div><h1>מעדכן העדפות...</h1><p>אנא המתן...</p>`;
             try {
                 const { error } = await supabaseClient
-                    .from('users')
+                    .from('profiles_public')
                     .update({ marketing_consent: false })
                     .eq('email', email.toLowerCase());
 
                 if (error) throw error;
 
-                card.innerHTML = `<div class="status-icon" style="color:var(--success)">✅</div><h1>הוסרת בהצלחה</h1><p>כתובת האימייל <strong>${email}</strong> הוסרה מרשימת התפוצה. לא תקבל מאיתנו הודעות שיווקיות נוספות.</p><a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold; display:block; margin-top:1.5rem;">חזרה לאתר</a>`;
+                card.innerHTML = `
+                    <span class="success-badge"><i class="fas fa-check-circle"></i> הוסרת בהצלחה</span>
+                    <h1>הוסרת מהרשימה</h1>
+                    <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> הוסרה מרשימת התפוצה. לא תקבל מאיתנו הודעות נוספות.</p>
+                    <a href="index.html" class="btn-primary">חזרה לאתר</a>
+                `;
             } catch (err) {
-                console.error('Unsubscribe error:', err);
-                card.innerHTML = `<div class="status-icon" style="color:var(--error)">❌</div><h1>שגיאה בעדכון</h1><p>אירעה תקלה בעת ניסיון ההסרה. ניתן לפנות לתמיכה או לנסות שוב מאוחר יותר.</p>`;
+                card.innerHTML = `
+                    <span class="error-badge"><i class="fas fa-exclamation-circle"></i> שגיאה</span>
+                    <h1>שגיאה בעדכון</h1>
+                    <p>אירעה תקלה בעת ניסיון ההסרה. ניתן לנסות שוב מאוחר יותר.</p>
+                    <button onclick="location.reload()" class="btn-primary">נסה שוב</button>
+                `;
             }
         }
-
-        window.onload = initPage;
     </script>
 </body>
 

@@ -41,8 +41,7 @@ function setupInterfaceChanges() {
         document.body.appendChild(completionsModal);
     }
 
-
-    const profileMenu = document.getElementById('profile-dropdown');
+const profileMenu = document.getElementById('profile-dropdown');
     if (profileMenu) {
         profileMenu.innerHTML = `
             <div id="profile-menu-achievements" class="profile-menu-item" onclick="toggleProfileMenu(); showAchievements();">
@@ -54,8 +53,11 @@ function setupInterfaceChanges() {
             <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('calendar');">
                 <i class="fas fa-calendar-alt"></i> לוח זמנים
             </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('profile');">
-                <i class="fas fa-user-edit"></i> עריכת פרופיל
+            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('my-profile');">
+                <i class="fas fa-user-circle"></i> הפרופיל שלי
+            </div>
+            <div class="profile-menu-item" onclick="toggleProfileMenu(); showReferralModal();">
+                <i class="fas fa-user-plus"></i> הזמן חבר (30 זוזים)
             </div>
             <div class="profile-menu-item" onclick="toggleProfileMenu(); showFollows();">
                 <i class="fas fa-users"></i> עוקבים
@@ -111,13 +113,12 @@ function setupInterfaceChanges() {
         const uiStyle = document.createElement('style');
         uiStyle.id = 'app-ui-improvements';
         uiStyle.innerHTML = `
-            /* הוספת סמן עכבר לחיץ לאלמנטים אינטראקטיביים */
+            
             .result-item, .search-tag, .inbox-item, .profile-menu-item, .chat-list-item, .lb-card, .siyum-card, .tier-card, .amount-chip, .user-select-item {
                 cursor: pointer;
             }
 
-            /* 1. אנימציה להופעת הודעות בצ'אט */
-            @keyframes floatIn {
+@keyframes floatIn {
                 from { opacity: 0; transform: translateY(15px); }
                 to { opacity: 1; transform: translateY(0); }
             }
@@ -125,9 +126,8 @@ function setupInterfaceChanges() {
                 animation: floatIn 0.4s ease-out forwards;
             }
 
-            /* 2. עיצוב מודאל אישור מחיקה */
-            #cConfirmMsg {
-                margin-bottom: 2rem; /* הרחקת הטקסט מהכפתורים */
+#cConfirmMsg {
+                margin-bottom: 2rem; 
             }
             #customConfirmModal .modal-actions {
                 display: flex;
@@ -135,35 +135,33 @@ function setupInterfaceChanges() {
                 width: 100%;
             }
             #cConfirmOk, #cConfirmCancel {
-                flex: 1; /* גודל זהה */
+                flex: 1; 
                 padding: 0.75rem 1rem;
-                border-radius: 12px; /* פינות מעוגלות */
+                border-radius: 12px; 
                 font-weight: bold;
                 border: none;
                 cursor: pointer;
                 transition: background-color 0.2s;
             }
             #cConfirmOk {
-                background-color: #16a34a; /* ירוק */
+                background-color: #16a34a; 
                 color: white;
             }
             #cConfirmCancel {
-                background-color: #ef4444; /* אדום לביטול */
+                background-color: #ef4444; 
                 color: white;
             }
 
-            /* 3. אנימציה לתפריט תחתון */
-            .floating-nav-container {
+.floating-nav-container {
                 transition: transform 0.4s ease-in-out, opacity 0.3s ease-in-out;
             }
             .floating-nav-container.nav-hidden {
-                transform: translateY(100%);
+                transform: translate(-50%, 100%);
                 opacity: 0;
                 pointer-events: none;
             }
 
-            /* 4. עיצוב פופאפ תיוגים */
-            .mentions-popup {
+.mentions-popup {
                 position: absolute;
                 bottom: 100%;
                 left: 0;
@@ -216,9 +214,8 @@ function setupInterfaceChanges() {
                 box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
                 text-transform: uppercase;
             }
-            
-            /* עיצוב תיוג בתוך הודעה */
-            .mention {
+
+.mention {
                 color: #2563eb;
                 font-weight: bold;
                 cursor: pointer;
@@ -234,28 +231,52 @@ function setupInterfaceChanges() {
             body.dark-mode .mention:hover {
                 color: #93c5fd;
             }
-            
-            /* עיצוב חיווי הקלדה */
-            .typing-indicator-box {
+
+.typing-indicator-box {
                 display: none;
                 margin-left: 15px;
                 margin-bottom: 5px;
-                font-size: 0.75rem;
+                font-size: 0.78rem;
                 color: #94a3b8;
                 font-style: italic;
+                align-items: center;
+                gap: 4px;
             }
             .typing-indicator-box.active {
-                display: block;
+                display: flex;
                 animation: floatIn 0.3s ease-out forwards;
             }
+            .typing-dots {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                flex-shrink: 0;
+            }
+            .typing-dots span {
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background-color: #94a3b8;
+                display: inline-block;
+                animation: typingBounce 1.2s infinite ease-in-out;
+            }
+            .typing-dots span:nth-child(1) { animation-delay: 0s; }
+            .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+            .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+            @keyframes typingBounce {
+                0%, 80%, 100% { transform: translateY(0) scale(0.8); opacity: 0.5; }
+                40% { transform: translateY(-4px) scale(1.1); opacity: 1; }
+            }
+            body.dark-mode .typing-dots span {
+                background-color: #64748b;
+            }
 
-            /* הסתרת פסי גלילה במודאל כניסה והרשמה */
-            #auth-overlay {
-                scrollbar-width: none; /* Firefox */
-                -ms-overflow-style: none; /* IE 10+ */
+#auth-overlay {
+                scrollbar-width: none; 
+                -ms-overflow-style: none; 
             }
             #auth-overlay::-webkit-scrollbar {
-                display: none; /* Chrome/Safari */
+                display: none; 
             }
         `;
         document.head.appendChild(uiStyle);
@@ -280,29 +301,37 @@ function setupInterfaceChanges() {
     }
 }
 
-function showSystemPopup(htmlContent) {
-    let modal = document.getElementById('systemPopupModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'systemPopupModal';
-        modal.className = 'modal-overlay';
-        modal.style.zIndex = '9999';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 600px; width: 90%;">
-                <div style="text-align: center; margin-bottom: 15px;">
-                    <h2 style="color: var(--accent); margin: 0;">📢 הודעת מערכת</h2>
+function showSystemPopup(htmlContent, onAcknowledge) {
+    return new Promise(resolve => {
+        let modal = document.getElementById('systemPopupModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'systemPopupModal';
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '9999';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; width: 90%;">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h2 style="color: var(--accent); margin: 0;">📢 הודעת מערכת</h2>
+                    </div>
+                    <div id="systemPopupBody" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 25px; overflow-y: auto; max-height: 60vh;"></div>
+                    <div style="text-align: center;">
+                        <button class="btn" id="systemPopupAckBtn">הבנתי, סגור</button>
+                    </div>
                 </div>
-                <div id="systemPopupBody" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 25px; overflow-y: auto; max-height: 60vh;"></div>
-                <div style="text-align: center;">
-                    <button class="btn" onclick="document.getElementById('systemPopupModal').style.display='none'">הבנתי, סגור</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    }
-    document.getElementById('systemPopupBody').innerHTML = htmlContent;
-    modal.style.display = 'flex';
-    if (typeof bringToFront === 'function') bringToFront(modal);
+            `;
+            document.body.appendChild(modal);
+        }
+        document.getElementById('systemPopupBody').innerHTML = htmlContent;
+        const ackBtn = document.getElementById('systemPopupAckBtn');
+        ackBtn.onclick = () => {
+            modal.style.display = 'none';
+            if (typeof onAcknowledge === 'function') onAcknowledge();
+            resolve();
+        };
+        modal.style.display = 'flex';
+        if (typeof bringToFront === 'function') bringToFront(modal);
+    });
 }
 
 function showMaintenanceOverlay() {

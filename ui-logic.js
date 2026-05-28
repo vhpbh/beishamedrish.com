@@ -2,6 +2,35 @@ function closeSearchDropdown() {
     document.getElementById('searchDropdown').classList.remove('active');
 }
 
+let _bookActionCurrent = null;
+
+function openBookActionPopup(name, category, units) {
+    _bookActionCurrent = { name, category, units };
+    document.getElementById('bookActionTitle').textContent = name;
+    document.getElementById('bookActionModal').style.display = 'flex';
+}
+
+function bookActionBrowse() {
+    document.getElementById('bookActionModal').style.display = 'none';
+    if (_bookActionCurrent) openBookText(_bookActionCurrent.name);
+}
+
+function bookActionAdd() {
+    const b = _bookActionCurrent;
+    document.getElementById('bookActionModal').style.display = 'none';
+    if (!b) return;
+    closeSearchDropdown();
+    switchScreen('add');
+    showAddSection('new');
+    setTimeout(() => {
+        const searchInput = document.getElementById('newBookSearch');
+        if (searchInput) {
+            searchInput.value = b.name;
+            handleBookSearch(b.name);
+        }
+    }, 400);
+}
+
 function openSearchDropdown() {
     const dropdown = document.getElementById('searchDropdown');
     const tagsContainer = document.getElementById('search-tags-container');
@@ -49,10 +78,12 @@ function handleSearchInput() {
 
 function clearSearch() {
     const input = document.getElementById('generalSearchInput');
+    const dropdown = document.getElementById('searchDropdown');
+    const wasOpen = dropdown.classList.contains('active');
     input.value = '';
     document.getElementById('clearSearchBtn').style.display = 'none';
-    input.focus();
     document.getElementById('generalSearchResults').innerHTML = `<div style="text-align:center; color:#94a3b8; padding-top: 50px;"><i class="fas fa-search" style="font-size: 3rem; opacity: 0.5;"></i><p>הקלד כדי להתחיל חיפוש</p></div>`;
+    if (wasOpen) input.focus();
 }
 
 async function executeGeneralSearch() {
@@ -64,7 +95,7 @@ async function executeGeneralSearch() {
         return;
     }
 
-    resultsContainer.innerHTML = `<div style="text-align:center; color:#94a3b8; padding-top: 50px;"><i class="fas fa-circle-notch fa-spin" style="font-size: 3rem;"></i><p>מחפש...</p></div>`;
+    resultsContainer.innerHTML = `<div style="padding:16px;">${getSkeletonHTML('card', 4)}</div>`;
 
     const activeTags = Array.from(document.querySelectorAll('.search-tag.active')).map(t => t.id.replace('search-tag-', ''));
     const searchAll = activeTags.length === 0;
@@ -93,14 +124,14 @@ async function executeGeneralSearch() {
 }
 
 async function searchUsers(query) {
-    return globalUsersData.filter(u =>
-        ((u.email && u.email.toLowerCase().includes(query)) ||
-            u.name.toLowerCase().includes(query) ||
-            (u.city && u.city.toLowerCase().includes(query))) &&
-        u.id !== currentUser?.id &&
-        u.email !== currentUser?.email &&
-        u.name !== currentUser?.displayName
-    );
+    const { data, error } = await supabaseClient
+        .from('safe_profiles')
+        .select('id, display_name, city, rank_score, last_seen') 
+        .ilike('display_name', `%${query}%`)
+        .limit(15);
+
+    if (error) return [];
+    return (data || []).filter(u => u.id !== currentUser?.id);
 }
 
 async function searchMyGoals(query) {
@@ -202,9 +233,9 @@ function renderGeneralSearchResults(results, query) {
         let groupHtml = '<div class="result-group-title">החברותות שלי</div>';
         results.my_chavrutas.forEach(u => {
             groupHtml += `
-                <div class="result-item" onclick="closeSearchDropdown(); switchScreen('chavrutas'); showUserDetails('${u.email}');">
+                <div class="result-item" onclick="closeSearchDropdown(); switchScreen('chavrutas', null); showUserDetails('${u.id || u.email}');">
                     <div class="result-item-title">${highlight(u.name, query)}</div>
-                    <div class="result-item-context">${highlight(u.email, query)}</div>
+                    <div class="result-item-context">${u.city || 'חברותא'}</div>
                 </div>
             `;
         });
@@ -237,8 +268,9 @@ function renderGeneralSearchResults(results, query) {
         foundResults = true;
         let groupHtml = '<div class="result-group-title">ספרים בספרייה</div>';
         results.books.forEach(b => {
+            const safeName = b.name.replace(/'/g, "\\'");
             groupHtml += `
-                <div class="result-item" onclick="closeSearchDropdown(); switchScreen('add'); showAddSection('new'); setTimeout(() => { document.getElementById('categorySelect').value = '${b.category}'; populateAllBooks(); document.getElementById('bookSelect').value = JSON.stringify({name:'${b.name}', units:${b.units}}); }, 500);">
+                <div class="result-item" onclick="closeSearchDropdown(); openBookActionPopup('${safeName}', '${b.category}', ${b.units})">
                     <div class="result-item-title">${highlight(b.name, query)}</div>
                     <div class="result-item-context">קטגוריה: ${b.category}</div>
                 </div>
@@ -253,9 +285,21 @@ function renderGeneralSearchResults(results, query) {
     if (document.getElementById('notesModal')) document.getElementById('notesModal').style.display = 'none';
 }
 
+let pendingChavrutaBook = null;
+
 async function openChavrutaSearch(bookName) {
-    if (!currentUser.phone || !currentUser.city) {
-        await customAlert("כדי למצוא חברותא, עליך למלא עיר ומספר טלפון בפרופיל.");
+    const missingPhone = !currentUser.phone;
+    const missingCity = !currentUser.city;
+
+    if (missingPhone || missingCity) {
+        pendingChavrutaBook = bookName;
+
+        let missing = [];
+        if (missingPhone) missing.push('מספר טלפון');
+        if (missingCity) missing.push('עיר מגורים');
+        const missingStr = missing.join(' ו-');
+
+        await customAlert(`כדי לחפש חברותא לספר "${bookName}", עליך להוסיף ${missingStr} בפרופיל שלך. נעביר אותך לשם עכשיו.`);
         switchScreen('profile', document.getElementById('nav-profile'));
         return;
     }
@@ -274,7 +318,8 @@ function searchSpecificUser() {
         (u.name.toLowerCase().includes(query) || (u.email && u.email.toLowerCase().includes(query))) &&
         u.id !== currentUser?.id &&
         u.name !== currentUser?.displayName &&
-        (!u.email || !currentUser?.email || u.email.toLowerCase() !== currentUser.email.toLowerCase())
+        (!u.email || !currentUser?.email || u.email.toLowerCase() !== currentUser.email.toLowerCase()) &&
+        !u.isAnonymous  
     );
 
     if (matches.length === 0) {
