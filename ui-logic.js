@@ -304,6 +304,30 @@ async function openChavrutaSearch(bookName) {
         return;
     }
 
+    // הצג תמיד חלון תיאור לפני החיפוש
+    if (typeof userGoals !== 'undefined' && typeof showChavrutaDescriptionPrompt === 'function') {
+        const goal = userGoals.find(g => g.bookName === bookName && g.status === 'active');
+        if (goal) {
+            goal.chavrutaDescSkipped = false;
+            showChavrutaDescriptionPrompt(goal.id);
+            const orig = window.saveChavrutaDescription;
+            const origSkip = window.skipChavrutaDescription;
+            window.saveChavrutaDescription = async (gId) => {
+                orig(gId);
+                window.saveChavrutaDescription = orig;
+                window.skipChavrutaDescription = origSkip;
+                await findChavruta(bookName);
+            };
+            window.skipChavrutaDescription = async (gId) => {
+                origSkip(gId);
+                window.saveChavrutaDescription = orig;
+                window.skipChavrutaDescription = origSkip;
+                await findChavruta(bookName);
+            };
+            return;
+        }
+    }
+
     await findChavruta(bookName);
 }
 

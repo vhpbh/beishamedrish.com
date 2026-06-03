@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מחברת חידושים</title>
+    <title>מחברת חידושים | בית המדרש הדיגיטלי</title>
+    <meta name="description" content="כתוב ושמור חידושי תורה, הערות ורעיונות. מחברת אישית דיגיטלית לכל לומד בבית המדרש הדיגיטלי.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://beishamedrish.com/notes.html">
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -205,6 +208,10 @@
         .shared-icon {
             margin-left: 5px; color: var(--primary); font-size: 0.8rem;
         }
+        /* מצב מוטמע (בתוך iframe של שיחת ווידאו) */
+        body.compact .sidebar { display: none; }
+        body.compact .editor { padding: 1rem 1.25rem; font-size: 1rem; }
+        body.compact .toolbar { padding: 0.35rem 0.75rem; }
     </style>
 </head>
 
@@ -237,6 +244,23 @@
             <i class="fas fa-book-open" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.3;"></i>
             <p style="font-size: 1.1rem; font-weight: 500;">בחר דף מהרשימה או צור דף חדש</p>
             <p style="font-size: 0.9rem; max-width: 80%;">כאן תוכל לרכז את כל חידושי התורה וההערות שלך על הלימוד.</p>
+        </div>
+    </div>
+
+    <!-- מודל יצירת דף חדש -->
+    <div id="newNoteModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:340px;width:90%;">
+            <h3 style="margin-top:0; color:#1e293b; font-size:1.1rem;">📝 דף חדש</h3>
+            <input id="newNoteTitle" type="text" value="חידוש חדש" dir="rtl"
+                style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:1rem; font-family:Heebo,sans-serif; outline:none; margin-bottom:16px; color:#1e293b;"
+                onfocus="this.select()"
+                onkeydown="if(event.key==='Enter'){document.getElementById('newNoteConfirmBtn').click();}if(event.key==='Escape'){document.getElementById('newNoteModal').style.display='none';}">
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="document.getElementById('newNoteModal').style.display='none'"
+                    style="padding:8px 18px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer;font-family:Heebo,sans-serif;font-size:0.9rem;">ביטול</button>
+                <button id="newNoteConfirmBtn" onclick="confirmNewNote()"
+                    style="padding:8px 18px;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;font-weight:700;font-family:Heebo,sans-serif;font-size:0.9rem;">צור דף</button>
+            </div>
         </div>
     </div>
 
@@ -411,17 +435,29 @@
             renderList();
         }
 
-        async function createNewNote() {
-            const title = await window.parent.customPrompt("שם הדף החדש:", "חידוש חדש");
-            if (!title) return;
+        function createNewNote() {
+            const modal = document.getElementById('newNoteModal');
+            const inp   = document.getElementById('newNoteTitle');
+            if (modal && inp) {
+                inp.value = 'חידוש חדש';
+                modal.style.display = 'flex';
+                setTimeout(() => { inp.focus(); inp.select(); }, 60);
+            }
+        }
+
+        function confirmNewNote() {
+            const modal = document.getElementById('newNoteModal');
+            const inp   = document.getElementById('newNoteTitle');
+            const title = (inp?.value || '').trim() || 'חידוש חדש';
+            if (modal) modal.style.display = 'none';
 
             const newNote = {
-                id: 'temp-' + Date.now(), 
-                title: title,
+                id: 'temp-' + Date.now(),
+                title,
                 content: '',
                 date: new Date().toISOString()
             };
-            notes.unshift(newNote); 
+            notes.unshift(newNote);
             renderList();
             loadNote(newNote.id);
             saveNotes();
@@ -676,6 +712,11 @@
                 return conn ? conn.email : null;
             }
             return null;
+        }
+    </script>
+    <script>
+        if (new URLSearchParams(window.location.search).get('compact') === '1') {
+            document.body.classList.add('compact');
         }
     </script>
 </body>

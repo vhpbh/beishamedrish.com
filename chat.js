@@ -275,7 +275,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
     if (!isBook) partnerEmail = partnerEmail.toLowerCase();
 
     if (partnerEmail === 'admin@system') {
-        partnerName = 'הודעת מנהל';
+        partnerName = 'תמיכה';
     }
     if (partnerEmail === 'updates@system') {
         partnerName = 'עדכונים ממשתמשים שאני עוקב אחריהם';
@@ -336,7 +336,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
             <div class="chat-header bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex justify-between items-center cursor-pointer" onclick="toggleChatWindow('${partnerEmail}')">
                 <!-- שם ואייקון – צד שמאל -->
                 <div class="flex items-center gap-2">
-                    ${isBook ? '<i class="fas fa-book text-amber-500"></i>' : (isSystem ? '<i class="fas fa-shield-alt text-red-500"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`)))}
+                    ${isBook ? '<i class="fas fa-book text-amber-500"></i>' : (isSystem ? '<i class="fas fa-headset" style="color:#0ea5e9;"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : `<span class="online-dot" id="online-${partnerEmail}"></span>`)))}
                     <div class="flex flex-col" style="text-align:right;">
                         <span class="font-bold text-base leading-tight text-slate-800 dark:text-white" ${!isBook && !isSystem && !isUpdates && !isMentions ? `onclick="event.stopPropagation(); showUserDetails('${partnerEmail}')" style="cursor:pointer;"` : ''}>${partnerName}</span>
                         ${isBook ? `<span class="text-[10px] ${bookOnlineCount > 0 ? 'text-emerald-500 font-bold' : 'text-slate-500'} dark:text-slate-400 font-normal">${bookOnlineCount} לומדים מחוברים</span>` : ''}
@@ -361,8 +361,9 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
             `<footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
                     <div class="max-w-5xl mx-auto relative flex items-center gap-3">
                         <div id="mentions-popup-${partnerEmail}" class="mentions-popup"></div>
-                        <input type="text" id="input-${partnerEmail}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..." 
-                        oninput="handleTyping('${partnerEmail}'); handleMentionInput(event, '${partnerEmail}')" 
+                        ${!isBook && !isSystem && !isUpdates && !isMentions ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" disabled title="שיחות וידאו אינן זמינות כעת — בקרוב" style="background:#e2e8f0; color:#94a3b8; opacity:0.5; cursor:not-allowed; filter:grayscale(1);"><i class="fas fa-video-slash text-sm"></i></button>` : ''}
+                        <input type="text" id="input-${partnerEmail}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..."
+                        oninput="handleTyping('${partnerEmail}'); handleMentionInput(event, '${partnerEmail}')"
                         onkeyup="saveChatDraft('${partnerEmail}', this.value)"
                         onkeypress="if(event.key === 'Enter' && !event.shiftKey && !isMentionPopupActive()) sendMessage('${partnerEmail}')"
                         onkeydown="if(event.key==='Enter'&&event.shiftKey){event.preventDefault();const p=this.selectionStart;this.value=this.value.slice(0,p)+'\\n'+this.value.slice(p);this.selectionStart=this.selectionEnd=p+1;return false;} return handleMentionKeyDown(event, '${partnerEmail}')">
@@ -679,7 +680,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
     } else {
         chats.forEach(chat => {
             const user = globalUsersData.find(u => u.email && chat.email && u.email.toLowerCase() === chat.email.toLowerCase());
-            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'מנהל' : (chat.email === 'updates@system' ? 'עדכונים ממשתמשים שאני עוקב אחריהם' : (chat.email === 'mentions@system' ? 'אזכורים' : 'לומד'))));
+            const name = user ? user.name : (chat.email.startsWith('book:') ? chat.email.replace('book:', '') : (chat.email === 'admin@system' ? 'תמיכה' : (chat.email === 'updates@system' ? 'עדכונים ממשתמשים שאני עוקב אחריהם' : (chat.email === 'mentions@system' ? 'אזכורים' : 'לומד'))));
 
             const isOnline = chat.email === 'admin@system' || (user && user.lastSeen && (new Date() - new Date(user.lastSeen) < 5 * 60 * 1000));
 
@@ -698,7 +699,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
             let iconHtml = initial;
             let iconExtraStyle = '';
             if (chat.email.startsWith('book:')) iconHtml = '<i class="fas fa-book"></i>';
-            else if (chat.email === 'admin@system') iconHtml = '<i class="fas fa-shield-alt text-red-500"></i>';
+            else if (chat.email === 'admin@system') iconHtml = '<i class="fas fa-headset" style="color:#0ea5e9;"></i>';
             else if (chat.email === 'updates@system') iconHtml = '<i class="fas fa-bullhorn text-amber-500"></i>';
             else if (chat.email === 'mentions@system') iconHtml = '<i class="fas fa-at text-amber-500"></i>';
             else if (chat.email.includes('@system')) iconHtml = '<i class="fas fa-robot"></i>';
@@ -825,7 +826,7 @@ async function loadChatIntoMainArea(email, name, el) {
             <!-- שם ואייקון – צד ימין (ראשון ב-RTL) -->
             <div class="flex items-center gap-3">
                 <div class="relative">
-                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white">${isBook ? '<i class="fas fa-book"></i>' : (isAdmin ? '<i class="fas fa-shield-alt text-red-500 text-xl leading-none"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : avatarInitial)))}</div>
+                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white">${isBook ? '<i class="fas fa-book"></i>' : (isAdmin ? '<i class="fas fa-headset text-xl leading-none" style="color:#0ea5e9;"></i>' : (isUpdates ? '<i class="fas fa-bullhorn text-amber-500"></i>' : (isMentions ? '<i class="fas fa-at text-amber-500"></i>' : avatarInitial)))}</div>
                     ${!isBook && !isUpdates && !isMentions && !isArchived && !isPartnerBanned ? `<span class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusDotBgClass} border-2 border-white dark:border-slate-900"></span>` : ''}
                 </div>
                 <div class="flex flex-col">
@@ -855,6 +856,7 @@ async function loadChatIntoMainArea(email, name, el) {
                 <div id="reply-preview-${email}" class="reply-preview"></div>
                 <div class="max-w-5xl mx-auto relative flex items-center gap-3">
                     <div id="mentions-popup-${email}" class="mentions-popup"></div>
+                    ${!isBook && !isSystem && !isArchived ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" disabled title="שיחות וידאו אינן זמינות כעת — בקרוב" style="background:#e2e8f0; color:#94a3b8; opacity:0.5; cursor:not-allowed; filter:grayscale(1);"><i class="fas fa-video-slash text-sm"></i></button>` : ''}
                     ${hasPermission('announce') && isBook ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors shrink-0" onclick="sendSystemAnnouncement('${email}')" title="שלח הודעת מערכת"><i class="fas fa-bullhorn text-sm"></i></button>` : ''}
                     <input type="text" id="input-${email}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..."
                         oninput="handleTyping('${email}'); handleMentionInput(event, '${email}')"
@@ -1453,6 +1455,26 @@ if (isDeletedMsg) {
         bannedP.className = 'text-sm leading-relaxed mb-1 opacity-50 italic';
         bannedP.textContent = 'הודעה ממשתמש חסום';
         div.appendChild(bannedP);
+    } else if (typeof text === 'string' && text.startsWith('__VIDEO_INVITE__:')) {
+        const parts = text.split(':');
+        const videoRoomId = parts[1] || '';
+        const videoBook = decodeURIComponent(parts.slice(2).join(':') || 'לימוד חברותא');
+        const isSentByMe = type === 'me';
+        const targetPartnerEmail = isSentByMe ? partnerEmail : (senderEmail || partnerEmail);
+        const targetPartnerUser = globalUsersData.find(u => u.email === targetPartnerEmail);
+        const targetName = targetPartnerUser ? targetPartnerUser.name : targetPartnerEmail.split('@')[0];
+        div.innerHTML = `
+            <div style="background:linear-gradient(135deg,#0ea5e9,#0369a1);color:white;padding:12px 16px;border-radius:12px;display:flex;flex-direction:column;gap:8px;min-width:200px;">
+                <div style="font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-video"></i> הזמנה לשיחת וידיאו
+                </div>
+                <div style="font-size:0.82rem;opacity:0.85;">${isSentByMe ? 'שלחת הזמנה לשיחת וידאו' : 'הוזמנת לשיחת וידאו'}</div>
+                ${videoBook && videoBook !== 'לימוד חברותא' ? `<div style="font-size:0.78rem;opacity:0.75;"><i class="fas fa-book-open" style="margin-left:4px;"></i>${videoBook}</div>` : ''}
+                <button disabled style="background:#e2e8f0;color:#94a3b8;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:not-allowed;font-family:Assistant,sans-serif;font-size:0.87rem;display:flex;align-items:center;gap:6px;justify-content:center;opacity:0.6;" title="פונקציה זו אינה זמינה כעת — בקרוב">
+                    <i class="fas fa-video-slash"></i> לא זמין כעת — בקרוב
+                </button>
+            </div>
+        `;
     } else if (text.includes('<button') || text.includes('chat-quote') || text.includes('<strong>') || text.includes('<b>') || text.includes('<br>') || text.includes('<span')) {
         div.insertAdjacentHTML('beforeend', sanitizeChatHtml(text));
     } else {
@@ -2255,4 +2277,8 @@ async function updateMessageLikeCount(messageId) {
 function handleReactionRealtime(payload) {
     const msgId = payload.new?.message_id || payload.old?.message_id;
     if (msgId) updateMessageLikeCount(msgId);
+}
+
+function sendVideoCallInvite(partnerEmail, partnerName) {
+    if (typeof showToast === 'function') showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
 }

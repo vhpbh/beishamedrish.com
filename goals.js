@@ -1,4 +1,4 @@
-let userGoals = [];
+﻿let userGoals = [];
 let nextActionAfterGoalCreation = null;
 let _goalsRenderHash = '';
 let _goalsFirstRender = true;
@@ -387,6 +387,8 @@ if (!bookName || !totalUnits || totalUnits <= 0) {
         if (trackerDafim > 0) initialUnit = Math.min(trackerDafim * 2, totalUnits);
     }
 
+    const studyMode = document.getElementById('studyModeInput')?.value || null;
+
     const newGoal = {
         id: crypto.randomUUID(),
         bookName: bookName,
@@ -396,39 +398,44 @@ if (!bookName || !totalUnits || totalUnits <= 0) {
         startDate: new Date().toISOString(),
         targetDate: targetDate,
         dedication: dedicationEl ? dedicationEl.value : "",
-        startPage: startPage
+        startPage: startPage,
+        studyMode: studyMode
     };
 
-userGoals.unshift(newGoal);
+    userGoals.unshift(newGoal);
     localStorage.setItem('torahApp_goals', JSON.stringify(userGoals));
     saveGoals();
 
-window.newGoalId = newGoal.id;
+    window.newGoalId = newGoal.id;
     window.isNewGoalAnimation = true;
 
     renderGoals();
 
-if (customNameEl) customNameEl.value = '';
+    if (customNameEl) customNameEl.value = '';
     if (customAmountEl) customAmountEl.value = '';
-
     if (quickAmountEl) quickAmountEl.value = '';
-    showToast("הלימוד נוסף בהצלחה!", "success");
 
-switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
+    showToast("הלימוד נוסף בהצלחה!", "success");
+    switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
+
+    // שאלה על תיאור חברותא – רק אם לא הוסיף ביקשה כבר
+    setTimeout(() => showChavrutaDescriptionPrompt(newGoal.id), 600);
 
 try {
         if (typeof supabaseClient !== 'undefined' && currentUser && currentUser.email) {
             const { data: { user: authUser } } = await supabaseClient.auth.getUser();
             if (!authUser) throw new Error("משתמש לא מחובר");
 
-            const { data, error } = await supabaseClient.from('user_goals').insert([{
+            const insertPayload = {
                 user_id: authUser.id,
                 book_name: bookName,
                 total_pages: totalUnits,
                 current_page: initialUnit || 0,
                 status: 'active',
                 target_date: targetDate || null
-            }]).select();
+            };
+            if (studyMode) insertPayload.study_mode = studyMode;
+            const { data, error } = await supabaseClient.from('user_goals').insert([insertPayload]).select();
 
             if (error) throw error;
             if (data && data[0]) {
@@ -711,6 +718,16 @@ async function selectBookFromSearch(bookName) {
     if (scopeSelect) scopeSelect.disabled = false;
     handleScopeChange();
 
+    // הצג רמת לימוד רק לגמרא (בבלי/ירושלמי)
+    const isGemara = foundInDB && (foundInDB.category === 'תלמוד בבלי' || foundInDB.category === 'תלמוד ירושלמי');
+    const smRow = document.getElementById('studyModeRow');
+    if (smRow) smRow.style.display = isGemara ? 'block' : 'none';
+    if (!isGemara) {
+        const smInput = document.getElementById('studyModeInput');
+        if (smInput) smInput.value = '';
+        document.querySelectorAll('.study-mode-btn').forEach(b => b.style.opacity = '1');
+    }
+
     if (!foundInDB) {
         try {
             const res = await fetch(`https://www.sefaria.org.il/api/v2/raw/index/${encodeURIComponent(bookName)}`);
@@ -720,6 +737,21 @@ async function selectBookFromSearch(bookName) {
             console.error("Error fetching book structure from Sefaria", e);
         }
     }
+}
+
+function setStudyMode(mode) {
+    const input = document.getElementById('studyModeInput');
+    if (input) input.value = mode;
+    const labels = { iyun: 'עיון', iyun_kal: 'עיון קל', bekiut: 'בקיאות' };
+    const colors = { iyun: '#e8951a', iyun_kal: '#6366f1', bekiut: '#10b981' };
+    document.querySelectorAll('.study-mode-btn').forEach(btn => {
+        const btnMode = btn.id.replace('sm-','').replace('-','_');
+        const isSelected = btnMode === mode;
+        btn.style.opacity = isSelected ? '1' : '0.45';
+        btn.style.background = isSelected ? colors[mode] : 'transparent';
+        btn.style.color = isSelected ? '#fff' : colors[btnMode] || '#64748b';
+        btn.style.transform = isSelected ? 'scale(1.05)' : 'scale(1)';
+    });
 }
 
 async function handleBookSearch(query) {
@@ -914,4 +946,59 @@ function openBookInSefaria(bookName, currentUnit) {
     } else {
         window.open(url, '_blank', 'noopener');
     }
+}
+
+// ===== תיאור חברותא =====
+function showChavrutaDescriptionPrompt(goalId) {
+    const goal = userGoals.find(g => g.id == goalId);
+    if (!goal) return;
+    if (goal.chavrutaDescSkipped) return; // כבר דילג בעבר
+
+    const overlay = document.createElement('div');
+    overlay.id = 'chavruta-desc-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border-radius:1.5rem;padding:1.75rem 1.5rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.18);border:1px solid var(--border-color,#e2e8f0);text-align:right;">
+        <div style="font-size:1.5rem;margin-bottom:0.5rem;">📝</div>
+        <h3 style="font-size:1.05rem;font-weight:800;margin:0 0 0.4rem;color:var(--text-main);">תוסיף תיאור לחברותא שלך?</h3>
+        <p style="font-size:0.85rem;color:var(--text-muted,#64748b);margin:0 0 1rem;">תיאור קצר יופיע לאנשים שמחפשים חברותא לספר זה.<br><span style="font-style:italic;">לדוגמא: "מחפש חברותא ללימוד בשעות הערב"</span></p>
+        <textarea id="chavruta-desc-input" placeholder="כתוב כאן..." rows="3"
+            style="width:100%;border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;padding:0.65rem 0.75rem;font-size:0.9rem;resize:none;outline:none;background:var(--bg,#f8fafc);color:var(--text-main);box-sizing:border-box;font-family:inherit;">${goal.chavrutaDescription || ''}</textarea>
+        <div style="display:flex;gap:0.75rem;margin-top:1rem;">
+            <button onclick="saveChavrutaDescription('${goalId}')"
+                style="flex:1;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:0.75rem;padding:0.65rem;font-weight:700;cursor:pointer;font-size:0.9rem;">שמור תיאור</button>
+            <button onclick="skipChavrutaDescription('${goalId}')"
+                style="padding:0.65rem 1rem;background:var(--bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;font-size:0.85rem;cursor:pointer;color:var(--text-muted,#64748b);font-weight:600;">לא עכשיו</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+}
+
+function saveChavrutaDescription(goalId) {
+    const input = document.getElementById('chavruta-desc-input');
+    const desc = input ? input.value.trim() : '';
+    const goal = userGoals.find(g => g.id == goalId);
+    if (goal) {
+        goal.chavrutaDescription = desc;
+        goal.chavrutaDescSkipped = false;
+        saveGoals();
+        renderGoals();
+        if (typeof supabaseClient !== 'undefined' && currentUser) {
+            supabaseClient.from('user_goals').update({ chavruta_description: desc }).eq('id', goalId).then(() => {});
+        }
+    }
+    document.getElementById('chavruta-desc-overlay')?.remove();
+    if (desc) showToast('התיאור נשמר!', 'success');
+}
+
+function skipChavrutaDescription(goalId) {
+    const goal = userGoals.find(g => g.id == goalId);
+    if (goal) { goal.chavrutaDescSkipped = true; saveGoals(); }
+    document.getElementById('chavruta-desc-overlay')?.remove();
+}
+
+function editChavrutaDescription(goalId) {
+    const goal = userGoals.find(g => g.id == goalId);
+    if (goal) { goal.chavrutaDescSkipped = false; }
+    showChavrutaDescriptionPrompt(goalId);
 }

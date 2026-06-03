@@ -324,6 +324,10 @@ const uniquePartners = new Map();
                             <span class="text-[10px] font-bold">ספר</span>
                         </button>
                     </div>
+                    <button class="btn-video-call" disabled title="פונקציה זו אינה זמינה כעת" style="opacity:0.45; cursor:not-allowed; filter:grayscale(1);">
+                        <i class="fas fa-video-slash"></i>
+                        שיחת וידאו — בקרוב
+                    </button>
                     <button class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 font-bold hover:bg-red-50 transition-colors text-sm flex items-center justify-center gap-2" onclick="cancelChavruta('${partnerId}')">
                         <i class="fas fa-times-circle text-base"></i>
                         ביטול חברותא
@@ -432,4 +436,9 @@ function startAddNewChavrutaFlow() {
     const addNavButton = Array.from(document.querySelectorAll('.floating-nav-item')).find(el => el.getAttribute('onclick')?.includes("switchScreen('add'"));
     switchScreen('add', addNavButton);
     showAddSection('new');
+}
+
+// ===== שיחת וידאו =====
+function openVideoStudy(connectionIdOrPartnerId, book, partner) {
+    if (typeof showToast === 'function') showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
 }

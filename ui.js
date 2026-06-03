@@ -41,44 +41,7 @@ function setupInterfaceChanges() {
         document.body.appendChild(completionsModal);
     }
 
-const profileMenu = document.getElementById('profile-dropdown');
-    if (profileMenu) {
-        profileMenu.innerHTML = `
-            <div id="profile-menu-achievements" class="profile-menu-item" onclick="toggleProfileMenu(); showAchievements();">
-                <i class="fas fa-medal"></i> הישגים
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('shop');">
-                <i class="fas fa-store"></i> חנות הזכויות
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('calendar');">
-                <i class="fas fa-calendar-alt"></i> לוח זמנים
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); switchScreen('my-profile');">
-                <i class="fas fa-user-circle"></i> הפרופיל שלי
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); showReferralModal();">
-                <i class="fas fa-user-plus"></i> הזמן חבר (30 זוזים)
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); showFollows();">
-                <i class="fas fa-users"></i> עוקבים
-                <span id="followersCountBadge" style="margin-right: auto; font-size: 0.9rem; color: inherit; font-weight: normal;">0</span>
-            </div>
-            <div class="profile-menu-item" style="display: flex; justify-content: space-between; align-items: center;">
-                <span><i class="fas fa-moon"></i> מצב לילה</span>
-                <label class="switch">
-                    <input type="checkbox" id="darkModeSwitch" onchange="toggleDarkMode(event)">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <div class="profile-menu-item" onclick="toggleProfileMenu(); openChat('admin@system', 'תמיכה');">
-                <i class="fas fa-headset"></i> תמיכה / פנייה למנהל
-                <span id="profileAdminBadge" class="unread-badge" style="display: none; margin-right: auto;">0</span>
-            </div>
-            <div class="profile-menu-item" onclick="logout()">
-                <i class="fas fa-sign-out-alt"></i> התנתק
-            </div>
-        `;
-    }
+// profile-dropdown is now populated dynamically by toggleProfileMenu() in script.js
 
     const userSearchInput = document.getElementById('userSearchInput');
     if (userSearchInput && userSearchInput.parentElement) {

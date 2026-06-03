@@ -531,7 +531,7 @@ async function loadUserPermissions() {
             .eq('user_id', currentUser.id)
             .maybeSingle();
         if (data) {
-            
+
             const perms = data.permissions || data.tag_permissions || {};
             currentUserPermissions = (typeof perms === 'string') ? JSON.parse(perms) : (perms || {});
         } else {
@@ -540,6 +540,13 @@ async function loadUserPermissions() {
     } catch (e) {
         currentUserPermissions = {};
     }
+    updateMaggidShiurMenuItem();
+}
+
+function updateMaggidShiurMenuItem() {
+    const menuItem = document.getElementById('maggid-menu-item');
+    if (!menuItem) return;
+    menuItem.style.display = hasPermission('maggid_shiur') ? 'flex' : 'none';
 }
 
 async function loadUserProfile() {

@@ -1080,18 +1080,29 @@ async function findChavruta(bookName) {
         </div>
     `).join('');
 
+    // מצא את רמת הלימוד שלי לספר זה
+    const myGoalForBook = userGoals.find(g => g.bookName === bookName && g.status === 'active');
+    const myStudyMode = myGoalForBook?.studyMode || null;
+
     try {
-        
+
         const [profilesResult, goalsResult] = await Promise.all([
             supabaseClient.from('safe_profiles').select('id, email, display_name, city, rank_score, last_seen'),
-            supabaseClient.from('user_goals').select('user_id').eq('book_name', bookName).eq('status', 'active')
+            supabaseClient.from('user_goals').select('user_id, study_mode, chavruta_description').eq('book_name', bookName).eq('status', 'active')
         ]);
 
         if (profilesResult.error) throw profilesResult.error;
 
         if (modal.style.display === 'none') return;
 
-const studyingThisBook = new Set((goalsResult.data || []).map(g => g.user_id));
+        // מפות userId → study_mode / chavruta_description
+        const userStudyModeMap = {};
+        const userDescMap = {};
+        (goalsResult.data || []).forEach(g => {
+            userStudyModeMap[g.user_id] = g.study_mode || null;
+            userDescMap[g.user_id] = g.chavruta_description || null;
+        });
+        const studyingThisBook = new Set(Object.keys(userStudyModeMap));
 
         const matches = (profilesResult.data || []).filter(u => {
             const isMe = (u.id === currentUser?.id) ||
@@ -1112,19 +1123,38 @@ const studyingThisBook = new Set((goalsResult.data || []).map(g => g.user_id));
         const myCity = currentUser.city ? currentUser.city.trim().toLowerCase() : "";
         const myRank = getRankName(userGoals.reduce((sum, g) => sum + g.currentUnit, 0));
 
+        const studyModeLabels = { iyun: 'עיון', iyun_kal: 'עיון קל', bekiut: 'בקיאות' };
+
         matches.forEach(u => {
             u.matchScore = 0;
-            u.studyingThisBook = studyingThisBook.has(u.id); 
-            if (u.studyingThisBook) u.matchScore += 50; 
+            u.studyingThisBook = true;
+            u.studyMode = userStudyModeMap[u.id] || null;
+            u.studyModeLabel = u.studyMode ? (studyModeLabels[u.studyMode] || u.studyMode) : null;
+            u.chavrutaDescription = userDescMap[u.id] || null;
+
             if (u.city && u.city.trim().toLowerCase() === myCity && myCity) u.matchScore += 100;
             const uScore = u.rank_score || 0;
             if (getRankName(uScore) === myRank) u.matchScore += 30;
             if (u.display_name && currentUser.displayName && u.display_name[0] === currentUser.displayName[0]) u.matchScore += 10;
+
+            // התאמת רמת לימוד: זהה = +60, קרוב (עיון↔עיון קל) = +20, שונה = 0
+            if (myStudyMode && u.studyMode) {
+                if (u.studyMode === myStudyMode) {
+                    u.matchScore += 60;
+                } else if ((myStudyMode === 'iyun' && u.studyMode === 'iyun_kal') ||
+                           (myStudyMode === 'iyun_kal' && u.studyMode === 'iyun') ||
+                           (myStudyMode === 'iyun_kal' && u.studyMode === 'bekiut') ||
+                           (myStudyMode === 'bekiut' && u.studyMode === 'iyun_kal')) {
+                    u.matchScore += 20;
+                }
+            } else {
+                u.matchScore += 50; // אין מידע = בסיסי
+            }
         });
 
         matches.sort((a, b) => b.matchScore - a.matchScore);
 
-        renderChavrutaResults(matches, bookName);
+        renderChavrutaResults(matches, bookName, myStudyMode);
 
     } catch (e) {
         console.error(e);
@@ -1153,9 +1183,10 @@ function activateStep(stepId) {
     }
 }
 
-function renderChavrutaResults(matches, bookName) {
+function renderChavrutaResults(matches, bookName, myStudyMode) {
     currentChavrutaSearchResults = matches;
     currentSearchBook = bookName;
+    window._currentMyStudyMode = myStudyMode || null;
 
     closeModal();
     switchScreen('chavruta-results');
@@ -1170,11 +1201,42 @@ function closeChavrutaModal() {
     }
 }
 
-async function findNewChavruta() {
-    const bookName = await customPrompt("לאיזה ספר תרצה לחפש חברותא?");
-    if (bookName && bookName.trim() !== '') {
-        await openChavrutaSearch(bookName.trim());
-    }
+function findNewChavruta() {
+    const overlay = document.createElement('div');
+    overlay.id = 'findChavrutaOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:20px;padding:28px;width:100%;max-width:420px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.35);display:flex;flex-direction:column;gap:1rem;font-family:Assistant,sans-serif;direction:rtl;">
+            <div style="font-size:1.15rem;font-weight:800;color:#1a233a;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-user-friends" style="color:#f59e0b;"></i> חיפוש חברותא
+            </div>
+            <div>
+                <label style="display:block;font-size:0.82rem;font-weight:700;color:#64748b;margin-bottom:5px;">לאיזה ספר?</label>
+                <input id="findChavrutaBook" type="text" placeholder="לדוגמה: מסכת ברכות..." dir="rtl"
+                    style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;font-family:Assistant,sans-serif;outline:none;box-sizing:border-box;">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.82rem;font-weight:700;color:#64748b;margin-bottom:5px;">מה אני מחפש? <span style="font-weight:400;color:#94a3b8;">(אופציונלי)</span></label>
+                <textarea id="findChavrutaDesc" rows="3" placeholder='לדוגמה: "מחפש חברותא לשעות הבוקר, בקיאות..."' dir="rtl"
+                    style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.88rem;font-family:Assistant,sans-serif;outline:none;resize:none;box-sizing:border-box;"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="document.getElementById('findChavrutaOverlay').remove()" style="padding:10px 18px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;font-size:0.88rem;font-weight:700;cursor:pointer;font-family:Assistant,sans-serif;color:#64748b;">ביטול</button>
+                <button onclick="
+                    const bk=document.getElementById('findChavrutaBook').value.trim();
+                    const ds=document.getElementById('findChavrutaDesc').value.trim();
+                    if(!bk){document.getElementById('findChavrutaBook').focus();return;}
+                    document.getElementById('findChavrutaOverlay').remove();
+                    if(ds&&typeof userGoals!=='undefined'){const g=userGoals.find(x=>x.bookName===bk&&x.status==='active');if(g){g.chavrutaDescription=ds;if(typeof saveGoals==='function')saveGoals();}}
+                    openChavrutaSearch(bk);
+                " style="flex:1;padding:10px;background:linear-gradient(135deg,#FFB703,#d97706);color:#fff;border:none;border-radius:12px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:Assistant,sans-serif;">
+                    <i class="fas fa-search"></i> חפש חברותא
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    setTimeout(() => document.getElementById('findChavrutaBook')?.focus(), 50);
 }
 
 window.onclick = function (event) {
@@ -1992,7 +2054,7 @@ function switchScreen(name, el, chatFilter) {
         showAddSection('menu');
     }
 
-const routeScreens = ['dashboard', 'chavrutas', 'chats', 'add', 'community', 'profile', 'shop', 'chavruta-results', 'archive', 'my-profile'];
+const routeScreens = ['dashboard', 'chavrutas', 'chats', 'add', 'community', 'profile', 'shop', 'chavruta-results', 'archive', 'my-profile', 'video-sessions'];
     if (routeScreens.includes(name)) {
         window.history.replaceState(null, null, '#' + name);
     }
@@ -2081,7 +2143,47 @@ const routeScreens = ['dashboard', 'chavrutas', 'chats', 'add', 'community', 'pr
     if (name === 'shop') renderShop();
     if (name === 'my-profile') { if (!requireAuth()) return; loadMyProfileScreen(); }
     if (name === 'ads') loadAds();
+    if (name === 'video-sessions') renderVideoSessions();
+    if (name === 'my-shiurim') { if (!requireAuth()) return; loadMyShiurimScreen(); }
     if (typeof trackPageView === 'function' && name !== 'admin') trackPageView(name);
+}
+
+// ===== מסך שיחות וידאו =====
+function renderVideoSessions() {
+    const container = document.getElementById('videoSessionsList');
+    if (!container) return;
+
+    container.innerHTML = `
+    <main class="max-w-2xl mx-auto w-full px-4 py-16 flex flex-col items-center gap-6 text-center">
+        <div style="width:80px; height:80px; background:#f1f5f9; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2.5rem; color:#94a3b8;">
+            <i class="fas fa-video-slash"></i>
+        </div>
+        <div>
+            <h2 style="font-size:1.5rem; font-weight:800; color:var(--text-main); margin-bottom:0.5rem;">שיחות וידאו</h2>
+            <p style="color:#94a3b8; font-size:1rem;">פונקציה זו אינה זמינה כעת</p>
+        </div>
+        <div style="background:#fef9ec; border:1px solid #fde68a; border-radius:1rem; padding:1rem 1.5rem; display:flex; align-items:center; gap:0.75rem; color:#92400e; font-weight:700; font-size:0.95rem;">
+            <i class="fas fa-clock" style="color:#f59e0b;"></i>
+            בקרוב
+        </div>
+    </main>`;
+}
+
+function joinVideoSession() {
+    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+}
+
+function openCreateShiurFromMain() {
+    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+}
+
+function formatDuration(startTime) {
+    if (!startTime) return '';
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    if (secs < 60) return 'פחות מדקה';
+    const m = Math.floor(secs / 60);
+    if (m < 60) return m + ' דקות';
+    return Math.floor(m / 60) + ' שעות';
 }
 
 function toggleDateInput() { document.getElementById('dateInputDiv').style.display = document.getElementById('paceType').value === 'date' ? 'block' : 'none'; }
@@ -2917,18 +3019,25 @@ function renderChavrutaResultsPage() {
         return !isMe;
     });
 
-if (currentSearchBook && window._publicActiveBooksOk === true) {
+    if (currentSearchBook && window._publicActiveBooksOk === true) {
         filtered = filtered.filter(u => u.studyingThisBook === true);
     }
 
-const sameCity = document.getElementById('filterSameCity').checked;
+    const sameCity = document.getElementById('filterSameCity')?.checked;
     if (sameCity && currentUser && currentUser.city) {
         filtered = filtered.filter(u => u.id !== currentUser.id && u.city && u.city.trim() === currentUser.city.trim());
     }
 
-    const historyFilter = document.getElementById('filterHistory').checked;
+    const historyFilter = document.getElementById('filterHistory')?.checked;
     if (historyFilter) {
         filtered = filtered.filter(u => u.id !== currentUser.id && chavrutaConnections.some(c => (c.id && c.id === u.id) || (c.email && c.email === u.email)));
+    }
+
+    // פילטר רמת לימוד
+    const studyModeFilterEl = document.getElementById('filterStudyMode');
+    const studyModeFilter = studyModeFilterEl ? studyModeFilterEl.value : '';
+    if (studyModeFilter) {
+        filtered = filtered.filter(u => u.studyMode === studyModeFilter);
     }
 
     countLabel.innerText = `(${filtered.length} חברותות נמצאו)`;
@@ -2975,9 +3084,14 @@ const sameCity = document.getElementById('filterSameCity').checked;
                 <div class="flex flex-wrap gap-2">
                     <span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">לומד: ${currentSearchBook}</span>
                     ${!isAnon ? `<span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">דרגה: ${user.rank || getRankName(user.learned || 0)}</span>` : ''}
+                    ${user.studyModeLabel ? (() => {
+                        const modeColors = { 'עיון': '#e8951a', 'עיון קל': '#6366f1', 'בקיאות': '#10b981' };
+                        const c = modeColors[user.studyModeLabel] || '#64748b';
+                        return `<span style="background:${c}18;color:${c};border:1px solid ${c}44;" class="px-3 py-1 rounded-full text-xs font-bold">📖 ${user.studyModeLabel}</span>`;
+                    })() : ''}
                 </div>
                 <p class="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
-                    מחפש חברותא ללימוד משותף.${isAnon ? ' (משתמש אנונימי)' : ''}
+                    ${user.chavrutaDescription ? `<span style="color:var(--text-main);font-style:italic;">"${user.chavrutaDescription}"</span>` : `מחפש חברותא ללימוד משותף.${isAnon ? ' (משתמש אנונימי)' : ''}`}
                 </p>
                 <div class="flex items-center gap-4 pt-2">
                     ${sendBtn}
@@ -3742,9 +3856,9 @@ let ctaHtml = '';
 
                 if (deliveryType === 'admin') {
                     
-                    addNotification(`📢 ${ann.title || 'הודעת מנהל'}: ${msg}`);
+                    addNotification(`📢 ${ann.title || 'תמיכה'}: ${msg}`);
                     if (typeof openChat === 'function') {
-                        openChat('admin@system', 'הודעת מנהל', true);
+                        openChat('admin@system', 'תמיכה', true);
                     }
                     setTimeout(() => {
                         const chatMsgsArea = document.getElementById('msgs-admin@system') ||
@@ -3769,15 +3883,6 @@ let ctaHtml = '';
                 renderAdminSuggestions();
             }
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'roadmap' }, () => {
-            if (document.getElementById('roadmapModal') && document.getElementById('roadmapModal').style.display === 'flex') {
-                openRoadmapModal();
-            }
-            if (isAdminMode && document.getElementById('admin-sec-roadmap').classList.contains('active')) {
-                renderAdminRoadmap();
-            }
-        })
-        
         .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, (payload) => {
             syncGlobalData();
             if (typeof loadChatRating === 'function') loadChatRating();
@@ -3810,7 +3915,7 @@ let ctaHtml = '';
                 const sender = globalUsersData.find(u => u.email === payload.payload.from);
                 let displayName = sender ? sender.name : payload.payload.from;
                 if (payload.payload.from === 'admin@system') {
-                    displayName = 'הודעת מנהל';
+                    displayName = 'תמיכה';
                 }
                 showTyping(payload.payload.from, `${displayName} מקליד...`);
             }
@@ -3978,7 +4083,7 @@ if (receiver === myEmail) {
                     setTimeout(() => _processedMsgIds.delete(String(newMsg.id)), 10000);
                     let senderDisplayName = sender;
                     if (sender === 'admin@system') {
-                        senderDisplayName = 'הודעת מנהל';
+                        senderDisplayName = 'תמיכה';
                     } else {
                         const senderUser = globalUsersData.find(u => u.email === sender);
                         if (senderUser) senderDisplayName = senderUser.name;
@@ -4088,119 +4193,8 @@ function switchAdminTab(tabName) {
     if (tabName === 'reports') renderAdminReports();
     if (tabName === 'inbox') renderAdminInbox();
     if (tabName === 'suggestions') renderAdminSuggestions();
-    if (tabName === 'roadmap') renderAdminRoadmap();
 }
 
-async function renderAdminRoadmap() {
-    const container = document.getElementById('admin-sec-roadmap');
-    container.innerHTML = `
-        <h3 style="color:#fff; border:none;">ניהול מפת דרכים</h3>
-        <div id="adminRoadmapForm" style="background:#0f172a; padding:15px; border-radius:8px; border:1px solid #334155; margin-bottom:20px;">
-            <h4 style="color: #fff; margin-top:0; border:none;">הוסף/ערוך פיצ'ר</h4>
-            <input type="hidden" id="roadmapFeatureId">
-            <input type="text" id="roadmapFeatureTitle" class="admin-input" placeholder="כותרת הפיצ'ר">
-            <textarea id="roadmapFeatureDesc" class="admin-input" placeholder="תיאור מפורט" style="height: 80px;"></textarea>
-            <select id="roadmapFeatureStatus" class="admin-input">
-                <option value="בתכנון">בתכנון</option>
-                <option value="בטיפול">בטיפול</option>
-                <option value="בוצע">בוצע</option>
-            </select>
-            <button class="admin-btn" style="background: #22c55e;" onclick="saveRoadmapFeature()">שמור פיצ'ר</button>
-            <button class="admin-btn" style="background: #334155;" onclick="clearRoadmapForm()">נקה טופס</button>
-        </div>
-        <div id="adminRoadmapList">טוען רשימה...</div>
-    `;
-
-    const { data: features, error } = await supabaseClient
-        .from('roadmap')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        document.getElementById('adminRoadmapList').innerHTML = 'שגיאה בטעינת הפיצ\'רים.';
-        return;
-    }
-
-    const listContainer = document.getElementById('adminRoadmapList');
-    let listHtml = '<div style="display:flex; flex-direction:column; gap:10px;">';
-    features.forEach(f => {
-        listHtml += `
-            <div style="background:#1e293b; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <strong>${f.title}</strong>
-                    <span style="color:#94a3b8; font-size:0.8rem;"> (סטטוס: ${f.status})</span>
-                </div>
-                <div>
-                    <button class="admin-btn" style="background:#3b82f6;" onclick='editRoadmapFeature(${JSON.stringify(f)})'>ערוך</button>
-                    <button class="admin-btn" style="background:#ef4444;" onclick="deleteRoadmapFeature(${f.id})">מחק</button>
-                </div>
-            </div>
-        `;
-    });
-    listHtml += '</div>';
-    listContainer.innerHTML = listHtml;
-}
-
-function clearRoadmapForm() {
-    document.getElementById('roadmapFeatureId').value = '';
-    document.getElementById('roadmapFeatureTitle').value = '';
-    document.getElementById('roadmapFeatureDesc').value = '';
-    document.getElementById('roadmapFeatureStatus').value = 'בתכנון';
-}
-
-function editRoadmapFeature(feature) {
-    document.getElementById('roadmapFeatureId').value = feature.id;
-    document.getElementById('roadmapFeatureTitle').value = feature.title;
-    document.getElementById('roadmapFeatureDesc').value = feature.description;
-    document.getElementById('roadmapFeatureStatus').value = feature.status;
-    document.getElementById('adminRoadmapForm').scrollIntoView({ behavior: 'smooth' });
-}
-
-async function saveRoadmapFeature() {
-    const id = document.getElementById('roadmapFeatureId').value;
-    const title = document.getElementById('roadmapFeatureTitle').value;
-    const description = document.getElementById('roadmapFeatureDesc').value;
-    const status = document.getElementById('roadmapFeatureStatus').value;
-
-    if (!title) {
-        return customAlert('חובה להזין כותרת.');
-    }
-
-    const featureData = {
-        title,
-        description,
-        status
-    };
-
-    if (id) {
-        featureData.id = parseInt(id);
-    }
-
-    const { error } = await supabaseClient.from('roadmap').upsert(featureData);
-
-    if (error) {
-        console.error(error);
-        await customAlert('שגיאה בשמירת הפיצ\'ר: ' + error.message);
-    } else {
-        showToast('הפיצ\'ר נשמר בהצלחה!', 'success');
-        clearRoadmapForm();
-        renderAdminRoadmap();
-    }
-}
-
-async function deleteRoadmapFeature(id) {
-    if (!await customConfirm('האם למחוק את הפיצ\'ר הזה?')) return;
-
-    const { error } = await supabaseClient.from('roadmap').delete().eq('id', id);
-
-    if (error) {
-        console.error(error);
-        await customAlert('שגיאה במחיקת הפיצ\'ר: ' + error.message);
-    } else {
-        showToast('הפיצ\'ר נמחק!', 'info');
-        renderAdminRoadmap();
-    }
-}
 
 let selectedUsersForDelete = [];
 
@@ -4300,12 +4294,71 @@ async function checkBanLifted() {
 }
 
 function toggleProfileMenu() {
-    const notifDropdown = document.getElementById('notif-dropdown');
-    if (notifDropdown) {
-        notifDropdown.style.display = 'none';
-    }
     const menu = document.getElementById('profile-dropdown');
-    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    if (!menu) return;
+    const gridMenu = document.getElementById('grid-menu-dropdown');
+    if (gridMenu) gridMenu.style.display = 'none';
+    const notifDropdown = document.getElementById('notif-dropdown');
+    if (notifDropdown) notifDropdown.style.display = 'none';
+    const isOpen = menu.style.display === 'block';
+    if (isOpen) { menu.style.display = 'none'; return; }
+    // Populate with current user info
+    const displayName = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.displayName || currentUser.email || '') : '';
+    const email = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.email || '') : '';
+    menu.innerHTML = `
+        <div onclick="toggleProfileMenu();switchScreen('my-profile');" style="cursor:pointer;padding:12px 14px;background:var(--bg,#f8fafc);border-radius:10px;margin-bottom:8px;border:1px solid var(--border-color,#e2e8f0);transition:background .15s;" onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,0.04))'" onmouseleave="this.style.background='var(--bg,#f8fafc)'">
+            <div style="font-weight:800;font-size:0.95rem;color:var(--text-main);margin-bottom:2px;">${displayName || 'משתמש'}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted,#64748b);" dir="ltr">${email}</div>
+        </div>
+        <div onclick="toggleProfileMenu();logout();" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;color:#ef4444;font-size:0.85rem;font-weight:600;transition:background .15s;" onmouseenter="this.style.background='rgba(239,68,68,0.06)'" onmouseleave="this.style.background='transparent'">
+            <i class="fas fa-sign-out-alt"></i> התנתק
+        </div>
+    `;
+    menu.style.display = 'block';
+    setTimeout(() => {
+        document.addEventListener('click', _closeProfileMenuOnOutside, { once: true });
+    }, 0);
+}
+
+function _closeProfileMenuOnOutside(e) {
+    const menu = document.getElementById('profile-dropdown');
+    const btn = document.getElementById('headerProfileBtn');
+    if (menu && !menu.contains(e.target) && btn && !btn.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+}
+
+function closeProfileMenu() {
+    const menu = document.getElementById('profile-dropdown');
+    if (menu) menu.style.display = 'none';
+}
+
+function toggleGridMenu(e) {
+    if (e) e.stopPropagation();
+    const notifDropdown = document.getElementById('notif-dropdown');
+    if (notifDropdown) notifDropdown.style.display = 'none';
+    const menu = document.getElementById('grid-menu-dropdown');
+    if (!menu) return;
+    const isOpen = menu.style.display === 'block';
+    menu.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+        setTimeout(() => {
+            document.addEventListener('click', _closeGridOnOutside, { once: true });
+        }, 0);
+    }
+}
+
+function _closeGridOnOutside(e) {
+    const menu = document.getElementById('grid-menu-dropdown');
+    const btn = document.getElementById('grid-menu-btn');
+    if (menu && !menu.contains(e.target) && btn && !btn.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+}
+
+function closeGridMenu() {
+    const menu = document.getElementById('grid-menu-dropdown');
+    if (menu) menu.style.display = 'none';
 }
 
 function toggleGuestProfileMenu() {
@@ -5427,6 +5480,130 @@ function openMyProfileDashboard() {
     switchScreen('my-profile');
 }
 
+// ===== מסך ניהול שיעורים (מגיד שיעור) =====
+async function loadMyShiurimScreen() {
+    if (!currentUser) return;
+    loadShiurAnnouncementHistory();
+    loadShiurSchedule();
+}
+
+async function sendShiurAnnouncement() {
+    if (!requireAuth()) return;
+    const text = document.getElementById('shiurAnnouncementText')?.value?.trim();
+    if (!text) { showToast('הכנס טקסט להודעה', 'error'); return; }
+    const { error } = await supabaseClient.from('notifications').insert({
+        user_id: null,
+        type: 'shiur_update',
+        title: `עדכון שיעור מ-${currentUser.display_name || 'מגיד שיעור'}`,
+        content: text,
+        target_type: 'all',
+        created_by: currentUser.id
+    });
+    if (!error) {
+        showToast('ההודעה נשלחה לכל המנויים!', 'success');
+        document.getElementById('shiurAnnouncementText').value = '';
+        loadShiurAnnouncementHistory();
+    } else showToast('שגיאה: ' + error.message, 'error');
+}
+
+async function sendShiurLinkAnnouncement() {
+    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+}
+
+function copyShiurLink() {
+    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+}
+
+function startNewShiurFromManage() {
+    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+}
+
+async function loadShiurAnnouncementHistory() {
+    const el = document.getElementById('shiurAnnouncementHistory');
+    if (!el || !currentUser) return;
+    const { data } = await supabaseClient
+        .from('notifications')
+        .select('title, content, created_at')
+        .eq('created_by', currentUser.id)
+        .in('type', ['shiur_update', 'shiur_link'])
+        .order('created_at', { ascending: false })
+        .limit(10);
+    if (!data?.length) { el.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">אין הודעות עדיין</p>'; return; }
+    el.innerHTML = data.map(n => `
+        <div class="flex gap-3 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
+            <div class="flex-1 min-w-0">
+                <div class="font-bold text-xs text-slate-800 dark:text-white mb-0.5">${n.title || ''}</div>
+                <div class="text-sm text-slate-500 dark:text-slate-400 break-words">${n.content || ''}</div>
+            </div>
+            <div class="text-xs text-slate-400 whitespace-nowrap">${new Date(n.created_at).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        </div>`).join('');
+}
+
+let shiurScheduleEntries = [];
+
+function loadShiurSchedule() {
+    try {
+        shiurScheduleEntries = JSON.parse(localStorage.getItem(`torahApp_shiur_schedule_${currentUser?.id}`) || '[]');
+    } catch(e) { shiurScheduleEntries = []; }
+    renderShiurSchedule();
+}
+
+function renderShiurSchedule() {
+    const el = document.getElementById('shiurScheduleList');
+    if (!el) return;
+    if (!shiurScheduleEntries.length) { el.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">לא קבעת שיעורים עדיין</p>'; return; }
+    el.innerHTML = shiurScheduleEntries.map((s, i) => `
+        <div class="flex items-center gap-3 py-2 px-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+            <div class="flex-1 min-w-0">
+                <div class="font-bold text-sm text-slate-800 dark:text-white">${s.topic || '—'}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">${s.date || ''} ${s.time ? '· ' + s.time : ''}</div>
+            </div>
+            <button onclick="deleteShiurScheduleEntry(${i})" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fas fa-times"></i></button>
+        </div>`).join('');
+}
+
+function addShiurScheduleEntry() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;z-index:5000;';
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+            <h3 class="font-black text-xl mb-4 text-slate-900 dark:text-white">הוספת שיעור ללוח</h3>
+            <div class="space-y-3 mb-4">
+                <div><label class="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-1">נושא השיעור</label>
+                    <input id="new-shiur-topic" type="text" placeholder="למשל: מסכת ברכות דף ב'" dir="rtl" class="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"></div>
+                <div><label class="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-1">תאריך</label>
+                    <input id="new-shiur-date" type="date" class="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"></div>
+                <div><label class="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-1">שעה</label>
+                    <input id="new-shiur-time" type="time" class="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"></div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="this.closest('.modal-overlay').remove()" class="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm hover:opacity-80">ביטול</button>
+                <button onclick="saveNewShiurEntry(this)" class="flex-1 py-2 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600">הוסף</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function saveNewShiurEntry(btn) {
+    const topic = document.getElementById('new-shiur-topic')?.value?.trim();
+    const date = document.getElementById('new-shiur-date')?.value;
+    const time = document.getElementById('new-shiur-time')?.value;
+    if (!topic) { showToast('הכנס נושא לשיעור', 'error'); return; }
+    shiurScheduleEntries.unshift({ topic, date, time });
+    localStorage.setItem(`torahApp_shiur_schedule_${currentUser?.id}`, JSON.stringify(shiurScheduleEntries));
+    btn.closest('.modal-overlay').remove();
+    renderShiurSchedule();
+    showToast('שיעור נוסף ללוח!', 'success');
+}
+
+function deleteShiurScheduleEntry(index) {
+    shiurScheduleEntries.splice(index, 1);
+    localStorage.setItem(`torahApp_shiur_schedule_${currentUser?.id}`, JSON.stringify(shiurScheduleEntries));
+    renderShiurSchedule();
+}
+
 async function loadMyProfileScreen() {
     if (!currentUser) return;
 
@@ -5656,167 +5833,6 @@ supabaseClient.from('rating_log').insert([
     } catch(e) { console.warn('Referral processing error:', e); }
 }
 
-let currentRoadmapFeatures = [];
-let currentRoadmapFilter = 'done';
-
-async function openRoadmapModal() {
-    const modal = document.getElementById('roadmapModal');
-    if (!modal) return;
-
-    modal.style.display = 'flex';
-    bringToFront(modal);
-    const inner = modal.querySelector('[class*="rounded"]');
-    if (inner) { inner.style.animation = 'none'; inner.offsetHeight; inner.style.animation = 'popIn 0.3s ease'; }
-
-    try {
-        let templateHtml;
-        try {
-            const response = await fetch('roadmap.html');
-            if (!response.ok) throw new Error('Roadmap template not found');
-            templateHtml = await response.text();
-        } catch (fetchErr) {
-            console.warn("Could not fetch roadmap.html (CORS/Offline), using fallback.", fetchErr);
-            templateHtml = `
-            <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden relative flex flex-col m-4 max-h-[80vh]">
-                <button aria-label="סגור" class="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors z-10" onclick="document.getElementById('roadmapModal').style.display='none'">
-                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-                </button>
-                <header class="pt-8 pb-4 px-8 flex flex-col items-center text-center border-b border-slate-100 dark:border-slate-800">
-                    <h1 class="text-xl font-bold text-slate-800 dark:text-white mb-2" style="text-align:center;">מפת הדרכים שלנו</h1>
-                    <p class="text-sm text-slate-500 dark:text-slate-400">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
-                    <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mt-4 w-full max-w-xs">
-                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('בוצע', this)">בוצע</button>
-                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('בטיפול', this)">בטיפול</button>
-                        <button class="roadmap-tab flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all" onclick="setRoadmapFilter('בתכנון', this)">בתכנון</button>
-                    </div>
-                </header>
-                <main id="roadmap-list-area" class="p-6 flex-1 overflow-y-auto space-y-4">
-                    <div class="p-5" id="roadmap-initial-skeleton">טוען...</div>
-                </main>
-            </div>`;
-        }
-
-        modal.innerHTML = templateHtml;
-        const skeletonEl = document.getElementById('roadmap-initial-skeleton');
-        if (skeletonEl) skeletonEl.innerHTML = getSkeletonHTML('card', 3);
-
-        const { data: features, error } = await supabaseClient
-            .from('roadmap')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            return;
-        }
-
-        if (!features || features.length === 0) {
-            document.getElementById('roadmap-list-area').innerHTML = `<div class="text-center p-10 text-slate-500">מפת הדרכים תתפרסם בקרוב.</div>`;
-            return;
-        }
-
-currentRoadmapFeatures = features;
-
-        setRoadmapFilter('בוצע');
-
-    } catch (e) {
-        modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeModal()">&times;</span><p>שגיאה בטעינת התבנית: ${e.message}</p></div>`;
-    }
-}
-
-function setRoadmapFilter(filter, btn) {
-    currentRoadmapFilter = filter;
-    const modal = document.getElementById('roadmapModal');
-    if (!modal) return;
-
-    const tabs = modal.querySelectorAll('.roadmap-tab');
-    if (!btn) {
-        tabs.forEach(t => {
-            if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(`'${filter}'`)) btn = t;
-        });
-    }
-
-    tabs.forEach(t => {
-        t.style.background = 'transparent';
-        t.style.color = '#64748b';
-        t.style.boxShadow = 'none';
-    });
-
-    if (btn) {
-        btn.style.background = 'var(--card-bg)';
-        btn.style.color = 'var(--text-main)';
-        btn.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)';
-    }
-
-    const listArea = document.getElementById('roadmap-list-area');
-    if (listArea && currentRoadmapFeatures) {
-        const filtered = currentRoadmapFeatures.filter(f => f.status === filter);
-        if (filtered.length === 0) {
-            listArea.innerHTML = `<div style="text-align:center;padding:2rem;color:#94a3b8;">אין פריטים להצגה בסטטוס זה.</div>`;
-        } else {
-            renderRoadmapFeatures(filtered, listArea);
-        }
-    }
-}
-
-function renderRoadmapFeatures(features, container) {
-    let html = '';
-    features.forEach(feature => {
-        let iconHtml = '';
-        let dotColor = '';
-        let badgeStyle = '';
-
-        switch (feature.status) {
-            case 'בוצע':
-                iconHtml = '<i class="fas fa-check"></i>';
-                dotColor = '#16a34a';
-                badgeStyle = 'background:#dcfce7;color:#16a34a;';
-                break;
-            case 'בטיפול':
-                iconHtml = '<i class="fas fa-spinner fa-spin"></i>';
-                dotColor = '#3b82f6';
-                badgeStyle = 'background:#dbeafe;color:#1d4ed8;';
-                break;
-            case 'בתכנון':
-                iconHtml = '<i class="far fa-circle"></i>';
-                dotColor = '#94a3b8';
-                badgeStyle = 'background:#f1f5f9;color:#64748b;';
-                break;
-        }
-
-        html += `
-        <div class="roadmap-item" style="background:var(--bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:0.875rem;overflow:hidden;">
-            <div style="padding:1rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleRoadmapItem(this)">
-                <div style="display:flex;align-items:center;gap:0.875rem;">
-                    <div style="width:2.25rem;height:2.25rem;border-radius:50%;background:${dotColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;">
-                        ${iconHtml}
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:0.2rem;">
-                        <span style="font-weight:700;font-size:0.95rem;color:var(--text-main);">${feature.title}</span>
-                        <span style="font-size:0.72rem;padding:2px 8px;border-radius:99px;width:fit-content;${badgeStyle}">${feature.status}</span>
-                    </div>
-                </div>
-                <i class="fas fa-chevron-down" style="color:#94a3b8;transition:transform 0.2s;"></i>
-            </div>
-            <div class="roadmap-item-description" style="display:none;padding:0 1rem 1rem 1rem;border-top:1px solid var(--border-color,#e2e8f0);">
-                <p style="font-size:0.875rem;color:#64748b;margin:0.75rem 0 0;">${feature.description || 'אין פירוט נוסף.'}</p>
-            </div>
-        </div>
-        `;
-    });
-    container.innerHTML = html;
-}
-
-function toggleRoadmapItem(element) {
-    const description = element.nextElementSibling;
-    const icon = element.querySelector('.fa-chevron-down');
-    if (description.style.display === 'none') {
-        description.style.display = 'block';
-        icon.style.transform = 'rotate(180deg)';
-    } else {
-        description.style.display = 'none';
-        icon.style.transform = 'rotate(0deg)';
-    }
-}
 
 function toHebrewDateString(dateString) {
     if (!dateString) return 'תאריך לא ידוע';

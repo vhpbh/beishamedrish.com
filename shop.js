@@ -93,15 +93,16 @@ const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}
                         btnHtml = `<button class="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold hover:opacity-90 transition-all shadow-md" onclick="equipItem('${item.id}', '${item.item_type}')">הפעל רקע/אייקון</button>`;
                     }
                 } else {
-                    if (canAfford) {
-                        const action = hasLandingPage ? `openProductLandingPage('${item.id}')` : `purchaseItem('${item.id}', ${item.price_zuzim})`;
-                        const btnText = hasLandingPage ? 'פרטים ורכישה' : `רכוש ב-${item.price_zuzim} <i class="fas fa-coins text-xs"></i>`;
-
-                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold hover:shadow-lg hover:shadow-amber-500/30 transition-all transform active:scale-95" onclick="${action}">
-                            ${btnText}
+                    if (canAfford && !hasLandingPage) {
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold hover:shadow-lg hover:shadow-amber-500/30 transition-all transform active:scale-95" onclick="purchaseItem('${item.id}', ${item.price_zuzim})">
+                            רכוש ב-${item.price_zuzim} <i class="fas fa-coins text-xs"></i>
                         </button>`;
                     } else {
-                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed font-bold border border-slate-200 dark:border-slate-700">חסרים ${item.price_zuzim - currentUser.reward_points} נק'</button>`;
+                        const btnLabel = hasLandingPage ? (canAfford ? 'פרטים ורכישה' : 'צפה בפרטים <i class="fas fa-eye text-xs"></i>') : (canAfford ? 'פרטים ורכישה' : 'צפה בפרטים <i class="fas fa-eye text-xs"></i>');
+                        const btnStyle = canAfford ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg hover:shadow-amber-500/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40';
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl ${btnStyle} font-bold transition-all transform active:scale-95" onclick="openProductLandingPage('${item.id}')">
+                            ${btnLabel}
+                        </button>`;
                     }
                 }
 
@@ -116,10 +117,7 @@ const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}
                     previewHtml = `<i class="fas fa-gift text-5xl text-slate-300"></i>`;
                 }
 
-                let clickAction = '';
-                if (hasLandingPage) {
-                    clickAction = `onclick="openProductLandingPage('${item.id}')" style="cursor:pointer;"`;
-                }
+                const clickAction = `onclick="openProductLandingPage('${item.id}')" style="cursor:pointer;"`;
 
                 let lotteryBadge = '';
                 if (item.item_type === 'lottery' && item.lottery_end_date) {
@@ -222,14 +220,36 @@ const lotteryEntryKey = `torahApp_lottery_${item.id}`;
             </div>`;
     }
 
+    const lotteryEntriesCount = (() => {
+        try { return parseInt(localStorage.getItem(`torahApp_lottery_count_${item.id}`) || '0', 10); } catch(e) { return 0; }
+    })();
+
     let actionBtn = '';
     if (isLottery) {
-        if (hasEnteredLottery) {
-            actionBtn = `<button class="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg cursor-default flex items-center justify-center gap-2"><i class="fas fa-check-circle"></i> נרשמת להגרלה!</button>`;
-        } else if (canAfford) {
-            actionBtn = `<button class="w-full py-4 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-bold text-lg shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2" onclick="joinLottery('${item.id}', ${item.price_zuzim}, this.closest('.modal-overlay'))"><i class="fas fa-ticket-alt"></i> השתתף בהגרלה ב-${item.price_zuzim} זוזים</button>`;
+        if (canAfford) {
+            const maxAffordable = Math.min(10, Math.floor(userPoints / item.price_zuzim));
+            const prevEntries = lotteryEntriesCount > 0 ? `<div class="text-sm text-green-600 dark:text-green-400 font-semibold mb-2 flex items-center gap-1"><i class="fas fa-ticket-alt"></i> יש לך ${lotteryEntriesCount} כרטיסים בהגרלה זו</div>` : '';
+            actionBtn = `
+                ${prevEntries}
+                <div class="flex items-center gap-3 mb-3">
+                    <label class="text-sm font-bold text-slate-700 dark:text-slate-300">כמות כרטיסים:</label>
+                    <div class="flex items-center gap-2">
+                        <button onclick="adjustLotteryQty(-1,'${item.id}',${item.price_zuzim})" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-lg hover:bg-slate-300 transition-colors">−</button>
+                        <span id="lottery-qty-${item.id}" class="w-8 text-center font-black text-xl">1</span>
+                        <button onclick="adjustLotteryQty(1,'${item.id}',${item.price_zuzim})" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-lg hover:bg-slate-300 transition-colors">+</button>
+                    </div>
+                    <span class="text-sm text-slate-500">(מקסימום ${maxAffordable})</span>
+                </div>
+                <div class="text-sm text-amber-600 dark:text-amber-400 mb-3">
+                    סה"כ: <span id="lottery-total-${item.id}">${item.price_zuzim}</span> זוזים
+                    <span id="lottery-max-${item.id}" data-max="${maxAffordable}" data-price="${item.price_zuzim}" style="display:none;"></span>
+                </div>
+                <button class="w-full py-4 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-bold text-lg shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2" onclick="joinLottery('${item.id}', ${item.price_zuzim}, this.closest('.modal-overlay'))">
+                    <i class="fas fa-ticket-alt"></i> השתתף בהגרלה
+                </button>`;
         } else {
-            actionBtn = `<button class="w-full py-4 bg-slate-300 text-slate-500 rounded-xl font-bold text-lg cursor-not-allowed">חסרים ${item.price_zuzim - userPoints} זוזים להשתתפות</button>`;
+            const prevEntries = lotteryEntriesCount > 0 ? `<div class="text-sm text-green-600 dark:text-green-400 font-semibold mb-2 flex items-center gap-1"><i class="fas fa-ticket-alt"></i> יש לך ${lotteryEntriesCount} כרטיסים בהגרלה זו</div>` : '';
+            actionBtn = `${prevEntries}<button class="w-full py-4 bg-slate-300 text-slate-500 rounded-xl font-bold text-lg cursor-not-allowed">חסרים ${item.price_zuzim - userPoints} זוזים להשתתפות</button>`;
         }
     } else if (ownedItem) {
         actionBtn = `<button class="w-full py-4 bg-slate-800 text-white rounded-xl font-bold text-lg cursor-default">המוצר כבר ברשותך</button>`;
@@ -324,45 +344,83 @@ function setProductMainImage(imgEl, src) {
     imgEl.classList.add('border-amber-500', 'shadow-md');
 }
 
+function adjustLotteryQty(delta, itemId, pricePerTicket) {
+    const qtyEl = document.getElementById(`lottery-qty-${itemId}`);
+    const totalEl = document.getElementById(`lottery-total-${itemId}`);
+    const maxEl = document.getElementById(`lottery-max-${itemId}`);
+    if (!qtyEl || !totalEl || !maxEl) return;
+    const max = parseInt(maxEl.dataset.max || '10', 10);
+    let qty = parseInt(qtyEl.textContent || '1', 10) + delta;
+    qty = Math.max(1, Math.min(max, qty));
+    qtyEl.textContent = qty;
+    totalEl.textContent = (qty * pricePerTicket).toLocaleString();
+}
+
 async function joinLottery(itemId, price, modalEl) {
     if (!requireAuth()) return;
     const item = shopItems.find(i => i.id === itemId);
     if (!item) return;
 
+    const qtyEl = document.getElementById(`lottery-qty-${itemId}`);
+    const qty = qtyEl ? Math.max(1, parseInt(qtyEl.textContent || '1', 10)) : 1;
+    const totalCost = qty * price;
+
     const userPts = currentUser?.reward_points || 0;
-    if (userPts < price) {
-        showToast(`חסרים לך ${price - userPts} זוזים`, 'error');
+    if (userPts < totalCost) {
+        showToast(`חסרים לך ${totalCost - userPts} זוזים`, 'error');
         return;
     }
 
-    const confirmed = await customConfirm(`להשתתף בהגרלה "${item.title}" ב-${price} זוזים?`);
+    const confirmed = await customConfirm(`להשתתף בהגרלה "${item.title}" עם ${qty} כרטיסים ב-${totalCost.toLocaleString()} זוזים?`);
     if (!confirmed) return;
 
-    const newPts = await addRewardPointsDB(currentUser.id, -price);
+    const newPts = await addRewardPointsDB(currentUser.id, -totalCost);
     if (newPts === null) { showToast('שגיאה בעדכון נקודות', 'error'); return; }
 
-    const { error: insertErr } = await supabaseClient.from('shop_orders').insert({
+    const rows = Array.from({ length: qty }, () => ({
         user_id: currentUser.id,
         item_id: itemId,
-        order_type: 'lottery_entry'
-    });
+        order_type: 'lottery_entry',
+        quantity: 1
+    }));
+    const { error: insertErr } = await supabaseClient.from('shop_orders').insert(rows);
     if (insertErr) {
-        
-        await addRewardPointsDB(currentUser.id, price);
+        await addRewardPointsDB(currentUser.id, totalCost);
         showToast('שגיאה בשמירת ההרשמה להגרלה: ' + insertErr.message, 'error');
         return;
     }
 
+    const prevCount = parseInt(localStorage.getItem(`torahApp_lottery_count_${itemId}`) || '0', 10);
+    localStorage.setItem(`torahApp_lottery_count_${itemId}`, (prevCount + qty).toString());
     localStorage.setItem(`torahApp_lottery_${itemId}`, 'true');
-    showToast(`נרשמת להגרלה! יתרה: ${newPts.toLocaleString()} זוזים 🎉`, 'success');
+    showToast(`נרשמת עם ${qty} כרטיסים! יתרה: ${newPts.toLocaleString()} זוזים 🎉`, 'success');
 
     if (modalEl) {
-        const btn = modalEl.querySelector('button[onclick*="joinLottery"]');
-        if (btn) {
-            btn.outerHTML = `<button class="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg cursor-default flex items-center justify-center gap-2"><i class="fas fa-check-circle"></i> נרשמת להגרלה!</button>`;
-        }
         const balanceEl = modalEl.querySelector(`[id^="product-balance-"]`);
         if (balanceEl) balanceEl.textContent = newPts.toLocaleString();
+        const totalTickets = prevCount + qty;
+        const actionArea = modalEl.querySelector('.p-4.border-t');
+        if (actionArea) {
+            const maxAffordable = Math.min(10, Math.floor(newPts / price));
+            if (maxAffordable > 0) {
+                actionArea.innerHTML = `
+                    <div class="text-sm text-green-600 dark:text-green-400 font-semibold mb-2 flex items-center gap-1"><i class="fas fa-ticket-alt"></i> יש לך ${totalTickets} כרטיסים בהגרלה זו</div>
+                    <div class="flex items-center gap-3 mb-3">
+                        <label class="text-sm font-bold text-slate-700 dark:text-slate-300">כמות נוספת:</label>
+                        <div class="flex items-center gap-2">
+                            <button onclick="adjustLotteryQty(-1,'${itemId}',${price})" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-lg hover:bg-slate-300 transition-colors">−</button>
+                            <span id="lottery-qty-${itemId}" class="w-8 text-center font-black text-xl">1</span>
+                            <button onclick="adjustLotteryQty(1,'${itemId}',${price})" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-lg hover:bg-slate-300 transition-colors">+</button>
+                        </div>
+                    </div>
+                    <div class="text-sm text-amber-600 dark:text-amber-400 mb-3">סה"כ: <span id="lottery-total-${itemId}">${price}</span> זוזים <span id="lottery-max-${itemId}" data-max="${maxAffordable}" data-price="${price}" style="display:none;"></span></div>
+                    <button class="w-full py-4 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-bold text-lg shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2" onclick="joinLottery('${itemId}', ${price}, this.closest('.modal-overlay'))">
+                        <i class="fas fa-ticket-alt"></i> הוסף כרטיסים
+                    </button>`;
+            } else {
+                actionArea.innerHTML = `<div class="text-sm text-green-600 font-semibold flex items-center gap-1"><i class="fas fa-ticket-alt"></i> יש לך ${totalTickets} כרטיסים בהגרלה זו — אין מספיק זוזים להמשיך</div>`;
+            }
+        }
     }
 }
 
