@@ -705,7 +705,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
             else if (chat.email.includes('@system')) iconHtml = '<i class="fas fa-robot"></i>';
             else if (user?.avatar_url) {
                 const bg = user.background_url ? `background-image:url('${user.background_url}');background-size:cover;background-position:center;` : '';
-                iconHtml = `<img src="${user.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='<span style=\\"font-weight:700;\\">${initial}</span>'">`;
+                iconHtml = `<img src="${user.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`;
                 if (bg) iconExtraStyle = bg;
             } else if (user?.background_url) {
                 iconHtml = `<span style="font-weight:700;position:relative;z-index:1;">${initial}</span>`;

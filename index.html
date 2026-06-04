@@ -1333,7 +1333,14 @@
                     </div>
                     <!-- כפתור פרופיל - משמאל לכפתור 9 הנקודות -->
                     <button class="profile-btn" id="headerProfileBtn" onclick="if(requireAuth()){toggleProfileMenu();}"
-                        title="הפרופיל שלי"><i class="fas fa-user-circle" style="font-size: 1.5rem;"></i></button>
+                        title="הפרופיל שלי">
+                        <span style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
+                            <span id="headerAvatarImg" style="width:30px;height:30px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                                <i class="fas fa-user-circle" style="font-size:1.5rem;"></i>
+                            </span>
+                            <span id="headerAvatarLetter" style="display:none;position:absolute;bottom:-2px;right:-2px;min-width:14px;height:14px;background:var(--accent,#6366f1);border-radius:7px;font-size:8px;font-weight:800;color:white;align-items:center;justify-content:center;border:1.5px solid white;z-index:1;padding:0 2px;"></span>
+                        </span>
+                    </button>
                     <!-- דרופדאון פרופיל -->
                     <div id="profile-dropdown" onclick="event.stopPropagation()"
                         style="display:none;position:absolute;top:55px;left:0;background:var(--card-bg,#fff);color:var(--text-main);border:1px solid var(--border-color,#e2e8f0);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.14);z-index:1001;padding:12px;min-width:200px;animation:dropdownSlideIn 0.18s ease;transform-origin:top left;">

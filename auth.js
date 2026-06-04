@@ -372,6 +372,7 @@ if (user.is_banned) {
         restoreAuthenticatedHeader();
 
         await syncGlobalData();
+        updateHeaderAvatar();
         await loadGoals();
         await loadUserProfile();
         await loadSchedules();
@@ -647,6 +648,24 @@ function updateHeader() {
     if (currentUser.subscription && currentUser.subscription.level > 0) {
         btn.classList.add(`aura-lvl-${currentUser.subscription.level}`);
         btn.title = `מנוי: ${currentUser.subscription.name}`;
+    }
+
+    const letter = (currentUser.displayName || currentUser.email || '?')[0].toUpperCase();
+    const letterEl = document.getElementById('headerAvatarLetter');
+    if (letterEl) {
+        letterEl.textContent = letter;
+        letterEl.style.display = 'flex';
+    }
+}
+
+function updateHeaderAvatar() {
+    if (!currentUser) return;
+    const myGlobalData = (typeof globalUsersData !== 'undefined' ? globalUsersData : []).find(u => u.email === currentUser.email);
+    const avatarUrl = myGlobalData?.avatar_url || null;
+    const avatarEl = document.getElementById('headerAvatarImg');
+    if (!avatarEl) return;
+    if (avatarUrl) {
+        avatarEl.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`;
     }
 }
 

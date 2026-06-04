@@ -209,6 +209,7 @@ let activeSession = null;
                         restoreAuthenticatedHeader();
 
                         await syncGlobalData();
+                        updateHeaderAvatar();
                         await loadGoals();
                         await loadUserProfile();
                         getDafYomi();
@@ -246,6 +247,7 @@ let activeSession = null;
         restoreAuthenticatedHeader();
 
         await syncGlobalData();
+        updateHeaderAvatar();
 
         await loadGoals();
         await loadUserProfile();
@@ -1004,7 +1006,7 @@ let all = currentUser
             <div style="display:flex; align-items:center; gap:1rem;">
                 <div style="${rankColorClass} width:2rem; text-align:center;">${rank}</div>
                 <div style="position:relative; width:3rem; height:3rem; border-radius:50%; background:var(--bg); display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                    ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='<i class=\\"fas fa-user\\" style=\\"color:var(--border-color);\\"></i>'">` : `<i class="fas fa-user" style="color:var(--border-color);"></i>`}
+                    ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">` : `<i class="fas fa-user" style="color:var(--border-color);"></i>`}
                     ${rankIcon}
                 </div>
                 <div>
@@ -1403,7 +1405,7 @@ const avatarInner = avatarDiv.querySelector('div');
         (typeof getUserAvatarUrl === 'function' ? getUserAvatarUrl(user.id || uid) : null);
     if (avatarInner) {
         if (avatarUrl) {
-            avatarInner.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<i class=\\"fas fa-user text-gray-400 text-5xl\\"></i>'">`;
+            avatarInner.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<i class=&quot;fas fa-user text-gray-400 text-5xl&quot;></i>'">`;
         } else {
             avatarInner.innerHTML = '<i class="fas fa-user text-gray-400 text-5xl"></i>';
         }
@@ -4305,10 +4307,18 @@ function toggleProfileMenu() {
     // Populate with current user info
     const displayName = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.displayName || currentUser.email || '') : '';
     const email = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.email || '') : '';
+    const myGD = (typeof globalUsersData !== 'undefined' ? globalUsersData : []).find(u => u.email === email);
+    const avatarUrl = myGD?.avatar_url || null;
+    const avatarHtml = avatarUrl
+        ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`
+        : `<i class="fas fa-user" style="font-size:1.1rem;color:var(--text-muted,#94a3b8);"></i>`;
     menu.innerHTML = `
-        <div onclick="toggleProfileMenu();switchScreen('my-profile');" style="cursor:pointer;padding:12px 14px;background:var(--bg,#f8fafc);border-radius:10px;margin-bottom:8px;border:1px solid var(--border-color,#e2e8f0);transition:background .15s;" onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,0.04))'" onmouseleave="this.style.background='var(--bg,#f8fafc)'">
-            <div style="font-weight:800;font-size:0.95rem;color:var(--text-main);margin-bottom:2px;">${displayName || 'משתמש'}</div>
-            <div style="font-size:0.75rem;color:var(--text-muted,#64748b);" dir="ltr">${email}</div>
+        <div onclick="toggleProfileMenu();switchScreen('my-profile');" style="cursor:pointer;padding:12px 14px;background:var(--bg,#f8fafc);border-radius:10px;margin-bottom:8px;border:1px solid var(--border-color,#e2e8f0);transition:background .15s;display:flex;align-items:center;gap:10px;" onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,0.04))'" onmouseleave="this.style.background='var(--bg,#f8fafc)'">
+            <div style="width:38px;height:38px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--border-color,#e2e8f0);display:flex;align-items:center;justify-content:center;">${avatarHtml}</div>
+            <div>
+                <div style="font-weight:800;font-size:0.95rem;color:var(--text-main);margin-bottom:2px;">${displayName || 'משתמש'}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted,#64748b);" dir="ltr">${email}</div>
+            </div>
         </div>
         <div onclick="toggleProfileMenu();logout();" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;color:#ef4444;font-size:0.85rem;font-weight:600;transition:background .15s;" onmouseenter="this.style.background='rgba(239,68,68,0.06)'" onmouseleave="this.style.background='transparent'">
             <i class="fas fa-sign-out-alt"></i> התנתק
@@ -4337,6 +4347,8 @@ function toggleGridMenu(e) {
     if (e) e.stopPropagation();
     const notifDropdown = document.getElementById('notif-dropdown');
     if (notifDropdown) notifDropdown.style.display = 'none';
+    const profileDropdown = document.getElementById('profile-dropdown');
+    if (profileDropdown) profileDropdown.style.display = 'none';
     const menu = document.getElementById('grid-menu-dropdown');
     if (!menu) return;
     const isOpen = menu.style.display === 'block';
@@ -5619,7 +5631,7 @@ async function loadMyProfileScreen() {
     const myGlobalData = globalUsersData.find(u => u.email === currentUser.email);
 
     if (avatarEl && myGlobalData?.avatar_url) {
-        avatarEl.innerHTML = `<img src="${myGlobalData.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='<i class=\\"fas fa-user\\" style=\\"font-size:2rem;color:var(--text-muted,#94a3b8);\\"></i>'">`;
+        avatarEl.innerHTML = `<img src="${myGlobalData.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`;
     }
 
     if (badgesEl && myGlobalData) badgesEl.innerHTML = getFullUserBadges(myGlobalData);
