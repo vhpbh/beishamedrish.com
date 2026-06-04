@@ -2310,6 +2310,8 @@ function removeNotification(index) {
 function toggleNotifications() {
     const profileDropdown = document.getElementById('profile-dropdown');
     if (profileDropdown) profileDropdown.style.display = 'none';
+    const gridMenu = document.getElementById('grid-menu-dropdown');
+    if (gridMenu) gridMenu.style.display = 'none';
     const dropdown = document.getElementById('notif-dropdown');
     const isOpening = dropdown.style.display === 'none' || dropdown.style.display === '';
     if (isOpening) {

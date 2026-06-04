@@ -472,6 +472,7 @@ async function equipItem(itemId, type) {
                 await supabaseClient.from('profiles_public').update({ avatar_url: avatarUrl }).eq('id', currentUser.id);
             } catch(e) {  }
         }
+        if (avatarUrl) applyAvatarToMyProfile(avatarUrl);
     }
 
     if (type === 'background') {
@@ -530,23 +531,31 @@ const glassPanel = document.querySelector('.glass-panel');
         document.body.style.setProperty('--user-bg', `url('${storedBg}')`);
     }
     
-    if (equippedAvatarUrl && currentUser?.id && !window._avatarSynced) {
-        window._avatarSynced = true;
-        try {
-            await supabaseClient.from('profiles_public').update({ avatar_url: equippedAvatarUrl }).eq('id', currentUser.id);
-        } catch(e) {  }
+    if (equippedAvatarUrl) {
+        applyAvatarToMyProfile(equippedAvatarUrl);
+        if (currentUser?.id && !window._avatarSynced) {
+            window._avatarSynced = true;
+            try {
+                await supabaseClient.from('profiles_public').update({ avatar_url: equippedAvatarUrl }).eq('id', currentUser.id);
+            } catch(e) {  }
+        }
     }
 }
 
 function applyAvatarToMyProfile(avatarUrl) {
     const avatarDiv = document.getElementById('modalUserAvatar');
     if (!avatarUrl) return;
-    
-    const navAvatarEl = document.getElementById('navUserAvatar');
-    if (navAvatarEl) {
-        navAvatarEl.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover rounded-full" onerror="this.style.display='none'">`;
+
+    const headerAvatarEl = document.getElementById('headerAvatarImg');
+    if (headerAvatarEl) {
+        headerAvatarEl.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`;
     }
-    
+
+    if (typeof globalUsersData !== 'undefined' && currentUser?.email) {
+        const me = globalUsersData.find(u => u.email === currentUser.email);
+        if (me) me.avatar_url = avatarUrl;
+    }
+
     if (avatarDiv && document.getElementById('userModal')?.style.display === 'flex') {
         const avatarInner = avatarDiv.querySelector('div');
         if (avatarInner) avatarInner.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover" onerror="this.style.display='none'">`;
