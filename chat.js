@@ -654,7 +654,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
         systemChats.forEach(sysEmail => {
             if (!chats.some(c => c.email === sysEmail)) {
                 let desc = '';
-                if (sysEmail === 'admin@system') desc = 'הודעות מערכת והנהלה';
+                if (sysEmail === 'admin@system') desc = 'תמיכה ועזרה מהצוות';
                 else if (sysEmail === 'updates@system') desc = 'עדכונים ממשתמשים שאני עוקב אחריהם';
                 else if (sysEmail === 'mentions@system') desc = 'אזכורים ותיוגים אישיים';
                 chats.push({
@@ -698,6 +698,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
 
             let iconHtml = initial;
             let iconExtraStyle = '';
+            let avatarInitialBadge = '';
             if (chat.email.startsWith('book:')) iconHtml = '<i class="fas fa-book"></i>';
             else if (chat.email === 'admin@system') iconHtml = '<i class="fas fa-headset" style="color:#0ea5e9;"></i>';
             else if (chat.email === 'updates@system') iconHtml = '<i class="fas fa-bullhorn text-amber-500"></i>';
@@ -706,6 +707,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
             else if (user?.avatar_url) {
                 const bg = user.background_url ? `background-image:url('${user.background_url}');background-size:cover;background-position:center;` : '';
                 iconHtml = `<img src="${user.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">`;
+                avatarInitialBadge = `<span style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:var(--card-bg,#fff);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:var(--text-main,#1e293b);box-shadow:0 1px 3px rgba(0,0,0,.25);border:1px solid rgba(0,0,0,.06);z-index:3;">${initial}</span>`;
                 if (bg) iconExtraStyle = bg;
             } else if (user?.background_url) {
                 iconHtml = `<span style="font-weight:700;position:relative;z-index:1;">${initial}</span>`;
@@ -722,6 +724,7 @@ const partnersNeedingFallback = unseenPartners.filter(partnerEmail => {
                         ${iconHtml}
                     </div>
                     ${isOnline ? `<span class="absolute bottom-0 left-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></span>` : ''}
+                    ${avatarInitialBadge}
                 </div>
 
                 <div class="flex-1 min-w-0">

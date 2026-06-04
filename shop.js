@@ -84,9 +84,42 @@ const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}
                 const isEquipped = ownedItem && ownedItem.is_equipped;
                 const canAfford = currentUser && currentUser.reward_points >= item.price_zuzim;
                 const hasLandingPage = !!item.html_content;
+                const isLottery = item.item_type === 'lottery';
+                const isStreakFreeze = item.item_type === 'streak_freeze';
+                const lotteryCount = isLottery ? parseInt(localStorage.getItem(`torahApp_lottery_count_${item.id}`) || '0', 10) : 0;
+                const freezeDaysOwned = isStreakFreeze ? parseInt(localStorage.getItem('torahApp_streak_freeze_days') || '0') : 0;
 
                 let btnHtml = '';
-                if (isOwned) {
+                if (isStreakFreeze) {
+                    if (canAfford) {
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold hover:shadow-lg hover:shadow-cyan-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2" onclick="purchaseItem('${item.id}', ${item.price_zuzim})">
+                            🧊 רכוש יום הקפאה
+                            ${freezeDaysOwned > 0 ? `<span class="inline-flex items-center justify-center bg-white/25 rounded-full px-2 py-0.5 text-xs font-bold">${freezeDaysOwned}</span>` : ''}
+                        </button>`;
+                    } else {
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-700 font-bold cursor-not-allowed">
+                            חסרים ${item.price_zuzim - (currentUser?.reward_points || 0)} זוזים
+                        </button>`;
+                    }
+                } else if (isLottery) {
+                    if (lotteryCount > 0) {
+                        const btnStyle = canAfford
+                            ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:shadow-lg hover:shadow-purple-500/30'
+                            : 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-700';
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl ${btnStyle} font-bold transition-all transform active:scale-95 flex items-center justify-center gap-2" onclick="openProductLandingPage('${item.id}')">
+                            <i class="fas fa-ticket-alt"></i> לרכישת כרטיס נוסף
+                            <span class="inline-flex items-center justify-center bg-white/25 rounded-full px-2 py-0.5 text-xs font-bold">${lotteryCount}</span>
+                        </button>`;
+                    } else if (canAfford) {
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white font-bold hover:shadow-lg hover:shadow-purple-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2" onclick="openProductLandingPage('${item.id}')">
+                            <i class="fas fa-ticket-alt"></i> השתתף בהגרלה
+                        </button>`;
+                    } else {
+                        btnHtml = `<button class="w-full py-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-700 font-bold transition-all transform active:scale-95" onclick="openProductLandingPage('${item.id}')">
+                            צפה בפרטים <i class="fas fa-eye text-xs"></i>
+                        </button>`;
+                    }
+                } else if (isOwned) {
                     if (isEquipped) {
                         btnHtml = `<button class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-default font-bold flex items-center justify-center gap-2"><i class="fas fa-check-circle"></i> בשימוש</button>`;
                     } else {
@@ -141,6 +174,7 @@ const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}
                         ${item.item_type === 'background' ? '<div class="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm">רקע</div>' : ''}
                         ${item.item_type === 'icon' ? '<div class="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm">אייקון</div>' : ''}
                         ${item.item_type === 'lottery' ? '<div class="absolute bottom-2 right-2 bg-amber-500 text-white text-[10px] px-2 py-1 rounded shadow-sm">הגרלה</div>' : ''}
+                        ${item.item_type === 'streak_freeze' ? '<div class="absolute bottom-2 right-2 bg-cyan-500 text-white text-[10px] px-2 py-1 rounded shadow-sm">🧊 הקפאה</div>' : ''}
                     </div>
                     
                     <div class="flex-1 flex flex-col">
@@ -380,8 +414,7 @@ async function joinLottery(itemId, price, modalEl) {
     const rows = Array.from({ length: qty }, () => ({
         user_id: currentUser.id,
         item_id: itemId,
-        order_type: 'lottery_entry',
-        quantity: 1
+        order_type: 'lottery_entry'
     }));
     const { error: insertErr } = await supabaseClient.from('shop_orders').insert(rows);
     if (insertErr) {
@@ -440,6 +473,14 @@ async function purchaseItem(itemId, price) {
 
     const newPts = await addRewardPointsDB(currentUser.id, -price);
     if (newPts === null) { showToast('שגיאה בעדכון נקודות', 'error'); return; }
+
+    if (item.item_type === 'streak_freeze') {
+        const currentFreeze = parseInt(localStorage.getItem('torahApp_streak_freeze_days') || '0');
+        localStorage.setItem('torahApp_streak_freeze_days', (currentFreeze + 1).toString());
+        showToast(`🧊 יום הקפאה נרכש! יש לך ${currentFreeze + 1} ימי הקפאה. יתרה: ${newPts.toLocaleString()} זוזים`, 'success');
+        renderShop();
+        return;
+    }
 
     const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}');
     ownedData[itemId] = { purchasedAt: new Date().toISOString(), equipped: false };

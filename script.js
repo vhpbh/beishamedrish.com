@@ -602,7 +602,17 @@ async function updateDailyStreak() {
                     const gapDate = new Date(lastDay.getTime() + d * 86400000);
                     if (!isShabbatOrYomTov(gapDate)) { allExempt = false; break; }
                 }
-                if (allExempt) streakContinued = true;
+                if (allExempt) {
+                    streakContinued = true;
+                } else if (daysDiff === 2) {
+                    const freezeDays = parseInt(localStorage.getItem('torahApp_streak_freeze_days') || '0');
+                    if (freezeDays > 0) {
+                        const newFreeze = freezeDays - 1;
+                        localStorage.setItem('torahApp_streak_freeze_days', newFreeze.toString());
+                        streakContinued = true;
+                        showToast(`יום הקפאה שמר על הרצף שלך! נותרו ${newFreeze} ימי הקפאה 🧊`, 'success');
+                    }
+                }
             }
         }
 
@@ -633,6 +643,70 @@ function renderStreakDisplay(streak) {
     if (badge) badge.innerHTML = streak >= 2
         ? `<i class="fas fa-fire" style="color:#f97316;margin-left:3px;"></i>${streak}`
         : '';
+}
+
+function showStreakPopup() {
+    const streak = parseInt(localStorage.getItem('torahApp_streak_count') || '0');
+    const existing = document.getElementById('streak-popup-overlay');
+    if (existing) existing.remove();
+
+    const tips = [
+        'למד לפחות דף אחד כל יום כדי לשמור על הרצף',
+        'אפילו 5 דקות ביום שומרים את הרצף פעיל',
+        'הגדר תזכורת יומית לשעה קבועה',
+        'חברותא טובה עוזרת לשמור על הרצף — פגשו יחד',
+        'הרצף לא נשבר בשבת וחג — האתר שומר את זה אוטומטית'
+    ];
+    const tip = tips[streak % tips.length];
+
+    const messages = streak === 0
+        ? { title: 'עדיין אין רצף', sub: 'התחל ללמוד היום ותצבור בונוס מחר!' }
+        : streak < 7
+        ? { title: `${streak} ימי רצף!`, sub: 'יפה! אתה בדרך הנכונה — אל תפסיק' }
+        : streak < 30
+        ? { title: `${streak} ימי רצף!`, sub: 'מרשים! שבוע ויותר של לימוד יומי רצוף' }
+        : streak < 100
+        ? { title: `${streak} ימי רצף!`, sub: 'מדהים! חודש ויותר — אתה בין הטובים' }
+        : { title: `${streak} ימי רצף!`, sub: 'גדול עצום! אתה מהלומדים המופלאים ביותר' };
+
+    const goals = [7, 30, 100, 365];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'streak-popup-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+    overlay.innerHTML = `
+        <div style="background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);border:1px solid #334155;border-radius:24px;padding:32px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;overflow:hidden;" dir="rtl">
+            <div style="position:absolute;inset:0;opacity:0.08;background:radial-gradient(circle at 50% -10%,#f97316,transparent 65%);pointer-events:none;"></div>
+            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="position:absolute;top:14px;left:14px;background:rgba(255,255,255,.08);border:none;color:#94a3b8;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+
+            <div style="font-size:4.5rem;line-height:1;margin-bottom:6px;filter:drop-shadow(0 0 24px rgba(249,115,22,.8));">🔥</div>
+            <div style="font-size:3.2rem;font-weight:900;color:#fff;line-height:1;margin-bottom:2px;">${streak}</div>
+            <div style="font-size:0.85rem;color:#f97316;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:16px;">ימי רצף לימוד</div>
+
+            <div style="background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);border-radius:14px;padding:12px 16px;margin-bottom:18px;">
+                <div style="color:#fff;font-weight:800;font-size:1.05rem;margin-bottom:3px;">${messages.title}</div>
+                <div style="color:#94a3b8;font-size:0.82rem;">${messages.sub}</div>
+            </div>
+
+            <div style="display:flex;justify-content:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+                ${goals.map(g => {
+                    const done = streak >= g;
+                    return `<div style="padding:5px 13px;border-radius:99px;font-size:0.75rem;font-weight:700;background:${done ? 'rgba(249,115,22,.2)' : 'rgba(255,255,255,.05)'};color:${done ? '#fb923c' : '#475569'};border:1px solid ${done ? 'rgba(249,115,22,.35)' : 'rgba(255,255,255,.07)'};">${done ? '✓ ' : ''}${g} ימים</div>`;
+                }).join('')}
+            </div>
+
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px 14px;text-align:right;margin-bottom:20px;">
+                <div style="font-size:0.68rem;color:#64748b;margin-bottom:4px;font-weight:600;">💡 טיפ ליציבות הרצף</div>
+                <div style="font-size:0.82rem;color:#cbd5e1;line-height:1.5;">${tip}</div>
+            </div>
+
+            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="background:linear-gradient(135deg,#f97316,#dc2626);color:#fff;border:none;border-radius:14px;padding:13px 28px;font-weight:700;font-size:0.95rem;cursor:pointer;width:100%;letter-spacing:.3px;box-shadow:0 4px 20px rgba(249,115,22,.4);">
+                <i class="fas fa-fire" style="margin-left:6px;"></i>יאללה ללמוד!
+            </button>
+        </div>`;
+    document.body.appendChild(overlay);
 }
 
 function showLotteryAnimation(ann) {
@@ -1005,9 +1079,12 @@ let all = currentUser
         <div class="lb-card" style="animation-delay:${i * 0.05}s" onclick="showUserDetails('${idToSend}')">
             <div style="display:flex; align-items:center; gap:1rem;">
                 <div style="${rankColorClass} width:2rem; text-align:center;">${rank}</div>
-                <div style="position:relative; width:3rem; height:3rem; border-radius:50%; background:var(--bg); display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                    ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">` : `<i class="fas fa-user" style="color:var(--border-color);"></i>`}
-                    ${rankIcon}
+                <div style="position:relative; width:3rem; height:3rem;">
+                    <div style="width:3rem;height:3rem;border-radius:50%;background:var(--bg);overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                        ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : `<i class="fas fa-user" style="color:var(--border-color);"></i>`}
+                        ${rankIcon}
+                    </div>
+                    ${u.avatar_url ? `<span style="position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;background:var(--card-bg,#fff);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#1e293b;box-shadow:0 1px 3px rgba(0,0,0,.3);border:1px solid rgba(0,0,0,.07);z-index:2;">${u.name?.charAt(0)||'?'}</span>` : ''}
                 </div>
                 <div>
                     <h3 style="font-weight:bold; color:var(--text-main); margin:0; ${rank > 3 ? 'opacity:0.8;' : ''}">${u.name} ${badge}</h3>
@@ -1032,8 +1109,11 @@ let all = currentUser
                 <div class="lb-me-card">
                     <div style="display:flex; align-items:center; gap:1rem;">
                         <div style="color:var(--accent); font-weight:900; font-size:1.25rem; width:2rem; text-align:center;">${myRank}</div>
-                        <div style="width:3.5rem; height:3.5rem; border-radius:50%; background:var(--border-color); display:flex; align-items:center; justify-content:center; border:2px solid var(--card-bg); box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
-                            <i class="fas fa-user" style="color:var(--text-main); opacity:0.6; font-size:1.5rem;"></i>
+                        <div style="position:relative;width:3.5rem;height:3.5rem;">
+                            <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:var(--border-color);overflow:hidden;display:flex;align-items:center;justify-content:center;border:2px solid var(--card-bg);box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+                                ${localStorage.getItem('torahApp_equipped_avatar') ? `<img src="${localStorage.getItem('torahApp_equipped_avatar')}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : `<i class="fas fa-user" style="color:var(--text-main); opacity:0.6; font-size:1.5rem;"></i>`}
+                            </div>
+                            ${localStorage.getItem('torahApp_equipped_avatar') ? `<span style="position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;background:var(--card-bg,#fff);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#1e293b;box-shadow:0 1px 3px rgba(0,0,0,.3);border:1px solid rgba(0,0,0,.07);">${meUser.name?.charAt(0)||'?'}</span>` : ''}
                         </div>
                         <div>
                             <h3 style="font-weight:bold; color:var(--text-main); margin:0;">${meUser.name} ${getUserBadgeHtml(meUser)}</h3>
@@ -1662,18 +1742,26 @@ async function toggleFollow(targetIdOrEmail) {
             btn.innerHTML = '<i class="fas fa-user-plus"></i> עקוב';
             btn.className = 'w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm bg-yellow-500/90 hover:bg-yellow-500 text-white';
             showToast("הסרת עוקב", "info");
-            
             supabaseClient.from('rating_log').insert({ user_id: targetUser.id, source: 'unfollow', points: -25, ref_id: currentUser.id }).then(() => {}).catch(() => {});
+            (async () => {
+                const { data: p } = await supabaseClient.from('profiles_public').select('chat_rating').eq('id', targetUser.id).maybeSingle();
+                const newRating = Math.max(0, (p?.chat_rating || 0) - 25);
+                await supabaseClient.from('profiles_public').update({ chat_rating: newRating }).eq('id', targetUser.id);
+            })().catch(() => {});
         } else {
             await supabaseClient.from('user_followers')
                 .insert([{ follower_id: currentUser.id, following_id: targetUser.id }]);
             btn.innerHTML = '<i class="fas fa-user-minus"></i> הסר עוקב';
             btn.className = 'w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm bg-gray-200 hover:bg-gray-300 text-gray-700';
             showToast("אתה עוקב כעת!", "success");
-            
             supabaseClient.from('rating_log').insert({ user_id: targetUser.id, source: 'follow', points: 25, ref_id: currentUser.id }).then(() => {}).catch(() => {});
+            (async () => {
+                const { data: p } = await supabaseClient.from('profiles_public').select('chat_rating').eq('id', targetUser.id).maybeSingle();
+                const newRating = (p?.chat_rating || 0) + 25;
+                await supabaseClient.from('profiles_public').update({ chat_rating: newRating }).eq('id', targetUser.id);
+            })().catch(() => {});
         }
-        
+
         if (currentUser?.id) updateFollowersCount(currentUser.id);
     } catch (e) {
         console.error("Error updating follow status:", e);
@@ -2307,6 +2395,19 @@ function removeNotification(index) {
     updateNotifUI();
 }
 
+function toggleChatArchiveMenu(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('chat-archive-menu');
+    if (!menu) return;
+    const isOpen = menu.style.display !== 'none';
+    if (isOpen) {
+        menu.style.display = 'none';
+    } else {
+        menu.style.display = 'block';
+        menu.style.animation = 'dropdownSlideIn .18s ease';
+    }
+}
+
 function toggleNotifications() {
     const profileDropdown = document.getElementById('profile-dropdown');
     if (profileDropdown) profileDropdown.style.display = 'none';
@@ -2315,10 +2416,15 @@ function toggleNotifications() {
     const dropdown = document.getElementById('notif-dropdown');
     const isOpening = dropdown.style.display === 'none' || dropdown.style.display === '';
     if (isOpening) {
+        dropdown.style.animation = 'dropdownSlideIn 0.18s ease';
         dropdown.style.display = 'flex';
         switchNotifTab(notifTab);
     } else {
-        dropdown.style.display = 'none';
+        dropdown.style.animation = 'dropdownSlideOut 0.15s ease forwards';
+        setTimeout(() => {
+            dropdown.style.display = 'none';
+            dropdown.style.animation = 'dropdownSlideIn 0.18s ease';
+        }, 140);
     }
 }
 
@@ -2800,10 +2906,16 @@ function openDonationModal() {
 
     const progress = localStorage.getItem('torahApp_campaign_progress') || 60;
     const percentage = parseFloat(progress) || 0;
-    const goalAmount = 6500;
+    let goalAmount = parseFloat(localStorage.getItem('torahApp_campaign_goal')) || 6500;
+    try {
+        const { data: gd } = await supabaseClient.from('settings').select('value').eq('key', 'campaign_goal').maybeSingle();
+        if (gd?.value) { goalAmount = parseFloat(gd.value) || goalAmount; localStorage.setItem('torahApp_campaign_goal', gd.value); }
+    } catch(e) {}
     const currentAmount = Math.round((percentage / 100) * goalAmount);
     document.getElementById('campaignProgressText').innerText = `גייסנו ${currentAmount.toLocaleString()} ₪ מתוך ${goalAmount.toLocaleString()} ₪ (${percentage}%)`;
     document.getElementById('campaignProgressBar').style.width = progress + '%';
+    const goalDisplay = document.getElementById('campaignGoalDisplay');
+    if (goalDisplay) goalDisplay.innerText = goalAmount.toLocaleString();
 
     document.getElementById('customDonationAmount').addEventListener('input', function () {
         document.querySelectorAll('.tier-card').forEach(c => c.classList.remove('selected'));
@@ -4197,6 +4309,27 @@ function switchAdminTab(tabName) {
     if (tabName === 'reports') renderAdminReports();
     if (tabName === 'inbox') renderAdminInbox();
     if (tabName === 'suggestions') renderAdminSuggestions();
+    if (tabName === 'donations') loadCampaignAdminInputs();
+}
+
+async function loadCampaignAdminInputs() {
+    try {
+        const { data } = await supabaseClient.from('settings').select('key, value').in('key', ['campaign_goal', 'campaign_progress']);
+        if (data) {
+            data.forEach(row => {
+                if (row.key === 'campaign_goal') {
+                    const el = document.getElementById('adminCampaignGoalInput');
+                    if (el) el.value = row.value;
+                    localStorage.setItem('torahApp_campaign_goal', row.value);
+                }
+                if (row.key === 'campaign_progress') {
+                    const el = document.getElementById('adminCampaignInput');
+                    if (el) el.value = row.value;
+                    localStorage.setItem('torahApp_campaign_progress', row.value);
+                }
+            });
+        }
+    } catch(e) { console.error(e); }
 }
 
 
@@ -4264,6 +4397,20 @@ async function saveCampaignProgress() {
     } catch (e) {
         console.error(e);
         customAlert('ההתקדמות נשמרה מקומית, אך אירעה שגיאה בשמירה לענן.');
+    }
+}
+
+async function saveCampaignGoal() {
+    const val = document.getElementById('adminCampaignGoalInput').value;
+    if (!val || isNaN(val) || parseFloat(val) <= 0) { showToast('נא להזין סכום תקין', 'error'); return; }
+    localStorage.setItem('torahApp_campaign_goal', val);
+    try {
+        const { error } = await supabaseClient.from('settings').upsert({ key: 'campaign_goal', value: val }, { onConflict: 'key' });
+        if (error) throw error;
+        showToast('יעד הקמפיין עודכן!', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('נשמר מקומית, שגיאה בשמירה לענן', 'error');
     }
 }
 
@@ -4924,7 +5071,7 @@ function computeDafYomiToday() {
         { name: 'תמורה', pages: 33 }, { name: 'כריתות', pages: 27 }, { name: 'מעילה', pages: 21 },
         { name: 'תמיד', pages: 9 }, { name: 'נידה', pages: 72 }
     ];
-    const cycleStart = new Date('2023-01-08T00:00:00');
+    const cycleStart = new Date('2023-01-05T00:00:00');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     cycleStart.setHours(0, 0, 0, 0);

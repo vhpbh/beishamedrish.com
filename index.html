@@ -878,7 +878,7 @@
                 <div
                     style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:15px; text-align:center; margin-bottom:15px;">
                     <h4 style="color:#16a34a; font-weight:bold; margin-bottom:5px;"> 📢 מחזקים את היכל בית המדרש!</h4>
-                    <p style="font-size:0.9rem; color:#435e49;">יעד הקמפיין: 6,500 ש"ח לשדרוג "בית המדרש"</p>
+                    <p style="font-size:0.9rem; color:#435e49;">יעד הקמפיין: <span id="campaignGoalDisplay">6,500</span> ש"ח לשדרוג "בית המדרש"</p>
                     <p style="font-size:0.85rem; color:#435e49; margin-bottom:10px;">אנחנו מזמינים אתכם להיות שותפים
                         בקומה הבאה של האתר שלנו.</p>
                     <p style="font-size:0.85rem; color:#435e49; margin-bottom:5px;">מה יתווסף לאתר כשנגיע ליעד?</p>
@@ -1266,7 +1266,7 @@
                                 <i class="fas fa-medal" style="color:#f59e0b;font-size:1.3rem;"></i>
                                 <span>הישגים</span>
                             </button>
-                            <button class="grid-menu-cell" onclick="closeGridMenu();" id="grid-streak-cell"
+                            <button class="grid-menu-cell" onclick="closeGridMenu(); showStreakPopup();" id="grid-streak-cell"
                                 title="רצף יומי">
                                 <i class="fas fa-fire" style="color:#ef4444;font-size:1.3rem;"></i>
                                 <span>רצף <span id="profile-streak-badge"
@@ -1816,13 +1816,28 @@
                             <span class="material-icons-round" style="font-size:1.1rem;">close</span>
                         </button>
                     </div>
-                    <div class="chat-tabs">
-                        <div class="chat-tabs-inner">
+                    <div class="chat-tabs" style="display:flex;align-items:center;">
+                        <div class="chat-tabs-inner" style="flex:1;">
                             <div class="chat-tab active" onclick="renderChatList('personal', this)">אישי</div>
                             <div class="chat-tab" onclick="renderChatList('public', this)">ציבורי</div>
                             <div class="chat-tab" onclick="renderChatList('other', this)">אחר</div>
-                            <div class="chat-tab" onclick="renderChatList('archive', this)" title="שיחות קודמות"><i
-                                    class="fas fa-archive" style="font-size:0.75em; opacity:0.8;"></i> ארכיון</div>
+                        </div>
+                        <div style="position:relative;display:flex;align-items:center;flex-shrink:0;padding-right:4px;">
+                            <button onclick="toggleChatArchiveMenu(event)" title="עוד אפשרויות"
+                                style="background:none;border:none;cursor:pointer;padding:6px 8px;color:var(--text-muted,#64748b);font-size:1rem;display:flex;align-items:center;border-radius:8px;transition:background .15s;"
+                                onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,.06))'"
+                                onmouseleave="this.style.background='none'">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div id="chat-archive-menu" onclick="event.stopPropagation()"
+                                style="display:none;position:absolute;top:36px;left:0;background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:200;min-width:160px;padding:6px;animation:dropdownSlideIn .18s ease;transform-origin:top left;">
+                                <button onclick="renderChatList('archive', null); document.getElementById('chat-archive-menu').style.display='none';"
+                                    style="width:100%;text-align:right;background:none;border:none;cursor:pointer;padding:8px 12px;border-radius:8px;font-size:0.875rem;color:var(--text-main,#1e293b);display:flex;align-items:center;gap:8px;transition:background .1s;"
+                                    onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,.05))'"
+                                    onmouseleave="this.style.background='none'">
+                                    <i class="fas fa-archive" style="color:#64748b;width:16px;"></i> ארכיון שיחות
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div id="chat-list-container" style="flex: 1; overflow-y: auto;"></div>
@@ -2328,6 +2343,23 @@
                             </div>
 
                             <div id="admin-sec-donations" class="admin-section">
+                                <div style="background:#0f1623; border:1px solid #2d3a55; border-radius:12px; padding:16px; margin-bottom:16px;">
+                                    <h4 style="color:#e2e8f0; font-weight:bold; margin-bottom:12px;">🎯 הגדרות קמפיין</h4>
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
+                                        <div>
+                                            <label style="color:#64748b; font-size:0.75rem; display:block; margin-bottom:4px;">יעד הקמפיין (₪)</label>
+                                            <input type="number" id="adminCampaignGoalInput" placeholder="6500" min="1" style="width:100%; background:#1a2236; border:1px solid #2d3a55; border-radius:8px; padding:8px 12px; color:#e2e8f0; font-size:0.9rem;">
+                                        </div>
+                                        <div>
+                                            <label style="color:#64748b; font-size:0.75rem; display:block; margin-bottom:4px;">התקדמות נוכחית (%)</label>
+                                            <input type="number" id="adminCampaignInput" placeholder="60" min="0" max="100" style="width:100%; background:#1a2236; border:1px solid #2d3a55; border-radius:8px; padding:8px 12px; color:#e2e8f0; font-size:0.9rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; gap:8px;">
+                                        <button onclick="saveCampaignGoal()" style="flex:1; background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; border:none; border-radius:8px; padding:8px; font-weight:bold; cursor:pointer;">💾 שמור יעד</button>
+                                        <button onclick="saveCampaignProgress()" style="flex:1; background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; border:none; border-radius:8px; padding:8px; font-weight:bold; cursor:pointer;">📊 שמור התקדמות</button>
+                                    </div>
+                                </div>
                                 <div id="adminDonationsList"></div>
                             </div>
 
