@@ -400,7 +400,7 @@ async function syncUnreadMessages() {
 
         const { data } = await supabaseClient
             .from('chat_private')
-            .select('connection_id, sender_id')
+            .select('connection_id, sender_id, created_at')
             .in('connection_id', connIds)
             .neq('sender_id', currentUser.id)
             .eq('is_read', false);
@@ -413,7 +413,10 @@ async function syncUnreadMessages() {
             if (conn?.email) {
                 const emailKey = conn.email.startsWith('book:') ? conn.email : conn.email.toLowerCase();
                 const lastRead = (typeof lastReadTimes !== 'undefined' && lastReadTimes[emailKey]) || 0;
-                if (Date.now() - lastRead < 30000 && !unreadMessages[emailKey]) return;
+                if (lastRead) {
+                    const msgTime = msg.created_at ? new Date(msg.created_at).getTime() : 0;
+                    if (msgTime <= lastRead + 5000) return;
+                }
                 newUnread[emailKey] = (newUnread[emailKey] || 0) + 1;
             }
         });
