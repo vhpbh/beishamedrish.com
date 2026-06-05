@@ -414,7 +414,8 @@ async function joinLottery(itemId, price, modalEl) {
     const rows = Array.from({ length: qty }, () => ({
         user_id: currentUser.id,
         item_id: itemId,
-        order_type: 'lottery_entry'
+        order_type: 'lottery_entry',
+        cost_paid: price
     }));
     const { error: insertErr } = await supabaseClient.from('shop_orders').insert(rows);
     if (insertErr) {
