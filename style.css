@@ -161,7 +161,7 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            border-radius: 0 2.5rem 2.5rem 0;
+            border-radius: 2.5rem 0 0 2.5rem;
         }
 
         body.dark-mode .auth-logo-col {
@@ -705,6 +705,9 @@
         .profile-container {
             position: relative;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .profile-btn {
@@ -1422,6 +1425,7 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
             pointer-events: auto;
             gap: 0.5rem;
+            overflow: visible;
         }
 
         .floating-nav-container {
@@ -1512,11 +1516,22 @@
 
         .screen {
             display: none;
-            animation: fadeIn 0.4s;
+            animation: screenEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
         .screen.active {
             display: block;
+        }
+
+        @keyframes screenEnter {
+            from {
+                opacity: 0;
+                transform: translateY(14px) scale(0.985);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
         }
 
         @keyframes fadeIn {
@@ -1957,6 +1972,11 @@
         .chat-window.minimized .chat-header span,
         .chat-window.minimized .chat-header strong {
             font-size: 0.85rem !important;
+        }
+
+        .chat-window.minimized .chat-header button[onclick*="openReportModal"],
+        .chat-window.minimized .chat-header button[onclick*="Report"] {
+            display: none !important;
         }
 
         .chat-messages-area {
@@ -4449,10 +4469,21 @@
                 max-width: 100%;
                 padding: 0 0.5rem;
                 bottom: 0.5rem;
+                overflow: visible;
             }
 
             .floating-nav {
-                padding: 0.75rem 1.5rem;
+                padding: 0.75rem 1rem;
+                overflow: visible;
+            }
+
+            .floating-nav-item-center {
+                margin-top: -2.25rem;
+            }
+
+            .floating-nav-add-btn {
+                width: 50px !important;
+                height: 50px !important;
             }
 
             /* כפתורי ניווט - קטן יותר */

@@ -202,6 +202,16 @@ updateRankProgressBar(totalLearned);
 const stats = { books: activeBooksCount, pages: totalScore, completed: completedBooksCount };
     localStorage.setItem('torahApp_stats', JSON.stringify(stats));
 
+    const ratingEl = document.getElementById('stat-rating');
+    if (ratingEl && currentUser) {
+        const myGlobalData = (typeof globalUsersData !== 'undefined' ? globalUsersData : []).find(u => u.email === currentUser.email);
+        const myRating = myGlobalData?.chat_rating ?? currentUser.chat_rating ?? parseFloat(localStorage.getItem('torahApp_rating') || '0');
+        if (myRating !== undefined && myRating !== null) {
+            ratingEl.innerText = myRating;
+            localStorage.setItem('torahApp_rating', myRating);
+        }
+    }
+
 window.justCompletedDailyGoal = null;
     window.newGoalId = null;
 }

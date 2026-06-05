@@ -1817,26 +1817,26 @@
                         </button>
                     </div>
                     <div class="chat-tabs" style="display:flex;align-items:center;">
-                        <div class="chat-tabs-inner" style="flex:1;">
-                            <div class="chat-tab active" onclick="renderChatList('personal', this)">אישי</div>
-                            <div class="chat-tab" onclick="renderChatList('public', this)">ציבורי</div>
-                            <div class="chat-tab" onclick="renderChatList('other', this)">אחר</div>
-                        </div>
-                        <div style="position:relative;display:flex;align-items:center;flex-shrink:0;padding-right:4px;">
-                            <button onclick="toggleChatArchiveMenu(event)" title="עוד אפשרויות"
-                                style="background:none;border:none;cursor:pointer;padding:6px 8px;color:var(--text-muted,#64748b);font-size:1rem;display:flex;align-items:center;border-radius:8px;transition:background .15s;"
-                                onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,.06))'"
-                                onmouseleave="this.style.background='none'">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                            <div id="chat-archive-menu" onclick="event.stopPropagation()"
-                                style="display:none;position:absolute;top:36px;left:0;background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:200;min-width:160px;padding:6px;animation:dropdownSlideIn .18s ease;transform-origin:top left;">
-                                <button onclick="renderChatList('archive', null); document.getElementById('chat-archive-menu').style.display='none';"
-                                    style="width:100%;text-align:right;background:none;border:none;cursor:pointer;padding:8px 12px;border-radius:8px;font-size:0.875rem;color:var(--text-main,#1e293b);display:flex;align-items:center;gap:8px;transition:background .1s;"
-                                    onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,.05))'"
+                        <div class="chat-tabs-inner" style="flex:1;display:flex;align-items:center;">
+                            <div class="chat-tab active" style="flex:1;" onclick="renderChatList('personal', this)">אישי</div>
+                            <div class="chat-tab" style="flex:1;" onclick="renderChatList('public', this)">ציבורי</div>
+                            <div class="chat-tab" style="flex:1;" onclick="renderChatList('other', this)">אחר</div>
+                            <div style="position:relative;display:flex;align-items:center;flex-shrink:0;">
+                                <button onclick="toggleChatArchiveMenu(event)" title="עוד אפשרויות"
+                                    style="background:none;border:none;cursor:pointer;padding:5px 7px;color:#64748b;font-size:0.9rem;display:flex;align-items:center;border-radius:7px;transition:background .15s;"
+                                    onmouseenter="this.style.background='rgba(0,0,0,.08)'"
                                     onmouseleave="this.style.background='none'">
-                                    <i class="fas fa-archive" style="color:#64748b;width:16px;"></i> ארכיון שיחות
+                                    <i class="fas fa-ellipsis-v"></i>
                                 </button>
+                                <div id="chat-archive-menu" onclick="event.stopPropagation()"
+                                    style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:200;min-width:160px;padding:6px;animation:dropdownSlideIn .18s ease;transform-origin:top left;">
+                                    <button onclick="renderChatList('archive', null); document.getElementById('chat-archive-menu').style.display='none';"
+                                        style="width:100%;text-align:right;background:none;border:none;cursor:pointer;padding:8px 12px;border-radius:8px;font-size:0.875rem;color:var(--text-main,#1e293b);display:flex;align-items:center;gap:8px;transition:background .1s;"
+                                        onmouseenter="this.style.background='var(--bg-hover,rgba(0,0,0,.05))'"
+                                        onmouseleave="this.style.background='none'">
+                                        <i class="fas fa-archive" style="color:#64748b;width:16px;"></i> ארכיון שיחות
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

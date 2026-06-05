@@ -702,6 +702,11 @@ function restoreAuthenticatedHeader() {
     }
 }
 
+async function logoutWithConfirm() {
+    const confirmed = await customConfirm('האם אתה בטוח שברצונך להתנתק מבית המדרש?');
+    if (confirmed) logout();
+}
+
 async function logout() {
     try {
         await supabaseClient.auth.signOut({ scope: 'global' });
@@ -765,7 +770,7 @@ function setupGuestHeader() {
     const donateButton = document.querySelector('.btn-donate-header');
 
     if (profileContainer) {
-        profileContainer.style.display = '';
+        profileContainer.style.display = 'flex';
         const profileBtn = document.getElementById('headerProfileBtn');
         if (profileBtn) {
             profileBtn.onclick = toggleGuestProfileMenu;

@@ -34,7 +34,7 @@
             justify-content: center;
             font-family: 'Assistant', 'Segoe UI', Arial, sans-serif;
             color: var(--text-main);
-            padding: 2rem 1rem;
+            padding: 1rem;
         }
 
         /* floating Hebrew letters */
@@ -66,16 +66,16 @@
             align-items: center;
             gap: 0.6rem;
             justify-content: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1.25rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.875rem;
             border-bottom: 1px solid var(--border);
         }
         .logo-bar img {
-            height: 36px;
+            height: 30px;
             width: auto;
         }
         .logo-bar span {
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 800;
             color: var(--primary);
         }
@@ -86,18 +86,18 @@
             z-index: 1;
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 1.5rem;
-            padding: 2.5rem 3rem;
-            max-width: 520px;
+            border-radius: 1.25rem;
+            padding: 1.5rem 2rem;
+            max-width: 480px;
             width: 100%;
             text-align: center;
             box-shadow: 0 4px 24px rgba(15,23,42,0.08), 0 1px 4px rgba(15,23,42,0.04);
         }
 
         .scroll-icon {
-            font-size: 4rem;
+            font-size: 2.5rem;
             display: block;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.25rem;
             animation: sway 3s ease-in-out infinite;
         }
         @keyframes sway {
@@ -106,70 +106,70 @@
         }
 
         .error-code {
-            font-size: 6rem;
+            font-size: 4.5rem;
             font-weight: 900;
             line-height: 1;
             color: var(--primary);
             letter-spacing: -4px;
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.15rem;
             position: relative;
             display: inline-block;
         }
         .error-code::after {
             content: '';
             position: absolute;
-            bottom: 6px;
+            bottom: 4px;
             left: 50%;
             transform: translateX(-50%);
             width: 60%;
-            height: 4px;
+            height: 3px;
             background: var(--accent);
             border-radius: 2px;
         }
 
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             font-weight: 800;
             color: var(--primary);
-            margin: 0.75rem 0 0.4rem;
+            margin: 0.5rem 0 0.25rem;
         }
 
         .subtitle {
-            font-size: 0.95rem;
+            font-size: 0.875rem;
             color: var(--text-muted);
-            margin-bottom: 1.5rem;
-            line-height: 1.7;
+            margin-bottom: 1rem;
+            line-height: 1.6;
         }
 
         /* quote box */
         .quote-box {
             background: var(--accent-light);
             border: 1px solid rgba(202,138,4,0.3);
-            border-radius: 0.875rem;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1.5rem;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
             text-align: right;
             position: relative;
         }
         .quote-box::before {
             content: '"';
             position: absolute;
-            top: -0.5rem;
-            right: 1rem;
-            font-size: 2.5rem;
+            top: -0.4rem;
+            right: 0.75rem;
+            font-size: 2rem;
             color: var(--accent);
             line-height: 1;
             font-family: Georgia, serif;
         }
         .quote-text {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: #78350f;
             font-weight: 600;
-            line-height: 1.7;
-            margin-bottom: 0.3rem;
+            line-height: 1.6;
+            margin-bottom: 0.2rem;
         }
         .quote-source {
-            font-size: 0.78rem;
+            font-size: 0.75rem;
             color: #92400e;
         }
 
@@ -177,15 +177,15 @@
         .suggestions {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
-            margin-bottom: 1.75rem;
+            gap: 0.4rem;
+            margin-bottom: 1.25rem;
             text-align: right;
         }
         .suggestion-item {
             display: flex;
             align-items: center;
             gap: 0.55rem;
-            font-size: 0.875rem;
+            font-size: 0.85rem;
             color: var(--text-muted);
         }
         .suggestion-item i {
@@ -205,11 +205,11 @@
             display: inline-flex;
             align-items: center;
             gap: 0.45rem;
-            padding: 0.75rem 1.75rem;
+            padding: 0.65rem 1.5rem;
             background: var(--primary);
             color: #ffffff;
             font-weight: 700;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             border: none;
             border-radius: 0.75rem;
             cursor: pointer;
@@ -224,11 +224,11 @@
             display: inline-flex;
             align-items: center;
             gap: 0.45rem;
-            padding: 0.75rem 1.5rem;
+            padding: 0.65rem 1.25rem;
             background: var(--accent-light);
             color: #78350f;
             font-weight: 700;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             border: 1px solid rgba(202,138,4,0.4);
             border-radius: 0.75rem;
             cursor: pointer;
@@ -238,17 +238,9 @@
         }
         .btn-secondary:hover { transform: translateY(-2px); background: #fef3c7; }
 
-        .footer-note {
-            position: relative;
-            z-index: 1;
-            margin-top: 1.5rem;
-            font-size: 0.75rem;
-            color: #94a3b8;
-        }
-
         @media (max-width: 480px) {
-            .card { padding: 2rem 1.5rem; }
-            .error-code { font-size: 5rem; }
+            .card { padding: 1.25rem 1.25rem; }
+            .error-code { font-size: 3.5rem; }
         }
     </style>
 </head>
@@ -271,23 +263,23 @@
 
         <div class="quote-box">
             <p class="quote-text">
-                "הלך ומצא — תחילת כל תיקון"
+                "מי שאיבד את דרכו — יעמוד, יחשוב, וישוב לבית המדרש; שם תמצא את הדרך"
             </p>
-            <p class="quote-source">— חזרה לדף הבית תפתור הכל</p>
+            <p class="quote-source">— הרב שך זצ"ל (מפי השמועה)</p>
         </div>
 
         <div class="suggestions">
             <div class="suggestion-item">
-                <i class="fas fa-map-signs"></i>
-                <span>בדוק שהכתובת מוקלדת נכון</span>
+                <i class="fas fa-spell-check"></i>
+                <span>בדוק שלא קראת את הכתובת מימין לשמאל — אנחנו מבינים, הרגלים קשה לשנות</span>
             </div>
             <div class="suggestion-item">
-                <i class="fas fa-history"></i>
-                <span>הדף אולי הועבר או הוסר</span>
+                <i class="fas fa-archive"></i>
+                <span>הדף הזה גנוז — כנראה ביחד עם כמה מסכתות שנחפש עד ביאת גואל צדק</span>
             </div>
             <div class="suggestion-item">
-                <i class="fas fa-graduation-cap"></i>
-                <span>בינתיים אפשר ללמוד דף יומי בבית המדרש</span>
+                <i class="fas fa-book-open"></i>
+                <span>פתח גמרא בינתיים — הפסד קוואלי, אבל ניצלת את הנפילה</span>
             </div>
         </div>
 
@@ -302,8 +294,6 @@
             </a>
         </div>
     </div>
-
-    <p class="footer-note">שגיאה 404 · בית המדרש · הדף לא נמצא</p>
 
     <script>
         const letters = 'אבגדהוזחטיכלמנסעפצקרשת';

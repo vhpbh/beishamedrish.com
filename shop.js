@@ -1,5 +1,6 @@
 let shopItems = [];
 let userInventory = [];
+let activeShopFilter = 'all';
 
 async function renderShop() {
     const container = document.getElementById('screen-shop');
@@ -69,6 +70,32 @@ async function renderShop() {
 const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}');
         userInventory = Object.keys(ownedData).map(id => ({ item_id: id, is_equipped: ownedData[id]?.equipped || false }));
 
+        const filterDefs = [
+            { key: 'all',        label: 'הכל',            icon: 'fa-th-large' },
+            { key: 'product',    label: 'מוצרים',          icon: 'fa-box-open' },
+            { key: 'lottery',    label: 'הגרלות',          icon: 'fa-ticket-alt' },
+            { key: 'background', label: 'רקעים',           icon: 'fa-image' },
+            { key: 'icon',       label: 'אייקוני פרופיל',  icon: 'fa-user-circle' },
+        ];
+        html += `
+        <div class="flex flex-wrap gap-2 mb-6" id="shop-filter-bar">
+            ${filterDefs.map(f => `
+                <button
+                    class="shop-filter-btn flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all border ${activeShopFilter === f.key
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-200 dark:shadow-amber-900/30'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-600'}"
+                    onclick="setShopFilter('${f.key}')">
+                    <i class="fas ${f.icon} text-xs"></i> ${f.label}
+                </button>
+            `).join('')}
+        </div>
+        `;
+
+        const visibleItems = activeShopFilter === 'all' ? shopItems : shopItems.filter(item => {
+            if (activeShopFilter === 'product') return item.item_type !== 'lottery' && item.item_type !== 'background' && item.item_type !== 'icon';
+            return item.item_type === activeShopFilter;
+        });
+
         html += `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">`;
 
         if (shopItems.length === 0) {
@@ -77,8 +104,14 @@ const ownedData = JSON.parse(localStorage.getItem('torahApp_owned_items') || '{}
                 <p class="font-semibold">אין מוצרים זמינים כרגע</p>
                 <p class="text-sm mt-1">בקרוב יתווספו מוצרים חדשים!</p>
             </div>`;
+        } else if (visibleItems.length === 0) {
+            html += `<div class="col-span-full text-center text-slate-500 py-16 bg-white dark:bg-slate-800 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
+                <i class="fas fa-filter text-4xl mb-4 opacity-40"></i>
+                <p class="font-semibold">אין פריטים בקטגוריה זו</p>
+                <p class="text-sm mt-1 opacity-70">נסה קטגוריה אחרת</p>
+            </div>`;
         } else {
-            shopItems.forEach(item => {
+            visibleItems.forEach(item => {
                 const ownedItem = userInventory.find(i => i.item_id === item.id);
                 const isOwned = !!ownedItem;
                 const isEquipped = ownedItem && ownedItem.is_equipped;
@@ -602,6 +635,11 @@ function applyAvatarToMyProfile(avatarUrl) {
         const avatarInner = avatarDiv.querySelector('div');
         if (avatarInner) avatarInner.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover" onerror="this.style.display='none'">`;
     }
+}
+
+function setShopFilter(filter) {
+    activeShopFilter = filter;
+    renderShop();
 }
 
 function getUserAvatarUrl(userId) {

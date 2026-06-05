@@ -1,6 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     setupInterfaceChanges();
+    loadDonationTiersFromDB();
 });
+
+async function loadDonationTiersFromDB() {
+    try {
+        const { data, error } = await supabaseClient.from('site_config').select('value').eq('key', 'donation_tiers').maybeSingle();
+        if (error || !data?.value) return;
+        const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+        if (parsed.sub && Array.isArray(parsed.sub) && parsed.sub.length > 0) {
+            SUBSCRIPTION_TIERS.length = 0;
+            parsed.sub.forEach(t => SUBSCRIPTION_TIERS.push(t));
+        }
+        if (parsed.one && Array.isArray(parsed.one) && parsed.one.length > 0) {
+            ONE_TIME_TIERS.length = 0;
+            parsed.one.forEach(t => ONE_TIME_TIERS.push(t));
+        }
+    } catch(e) {}
+}
 
 let currentUser = null;
 let currentUserPermissions = {};
@@ -307,6 +324,11 @@ updateChatBadge();
         }
         if (new URLSearchParams(window.location.search).get('bonus')) {
             setTimeout(() => handleBonusLink(), 2000);
+        }
+
+        const _initHash = window.location.hash.substring(1).split('?')[0];
+        if (_initHash === 'chats' && typeof renderChatList === 'function') {
+            setTimeout(() => renderChatList(typeof currentChatFilter !== 'undefined' ? currentChatFilter : 'personal'), 600);
         }
     } else {
         userGoals = [];
@@ -673,37 +695,37 @@ function showStreakPopup() {
 
     const overlay = document.createElement('div');
     overlay.id = 'streak-popup-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
     overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
 
     overlay.innerHTML = `
-        <div style="background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);border:1px solid #334155;border-radius:24px;padding:32px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;overflow:hidden;" dir="rtl">
-            <div style="position:absolute;inset:0;opacity:0.08;background:radial-gradient(circle at 50% -10%,#f97316,transparent 65%);pointer-events:none;"></div>
-            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="position:absolute;top:14px;left:14px;background:rgba(255,255,255,.08);border:none;color:#94a3b8;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:32px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.18);position:relative;overflow:hidden;" dir="rtl">
+            <div style="position:absolute;inset:0;opacity:0.06;background:radial-gradient(circle at 50% -10%,#f97316,transparent 65%);pointer-events:none;"></div>
+            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="position:absolute;top:14px;left:14px;background:rgba(0,0,0,.06);border:none;color:#64748b;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
 
-            <div style="font-size:4.5rem;line-height:1;margin-bottom:6px;filter:drop-shadow(0 0 24px rgba(249,115,22,.8));">🔥</div>
-            <div style="font-size:3.2rem;font-weight:900;color:#fff;line-height:1;margin-bottom:2px;">${streak}</div>
+            <div style="width:80px;height:80px;margin:0 auto 6px;line-height:1;filter:drop-shadow(0 0 16px rgba(249,115,22,.5));"><img src="https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif" alt="🔥" style="width:80px;height:80px;object-fit:contain;" loading="eager"></div>
+            <div style="font-size:3.2rem;font-weight:900;color:#1e293b;line-height:1;margin-bottom:2px;">${streak}</div>
             <div style="font-size:0.85rem;color:#f97316;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:16px;">ימי רצף לימוד</div>
 
-            <div style="background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);border-radius:14px;padding:12px 16px;margin-bottom:18px;">
-                <div style="color:#fff;font-weight:800;font-size:1.05rem;margin-bottom:3px;">${messages.title}</div>
-                <div style="color:#94a3b8;font-size:0.82rem;">${messages.sub}</div>
+            <div style="background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);border-radius:14px;padding:12px 16px;margin-bottom:18px;">
+                <div style="color:#1e293b;font-weight:800;font-size:1.05rem;margin-bottom:3px;">${messages.title}</div>
+                <div style="color:#64748b;font-size:0.82rem;">${messages.sub}</div>
             </div>
 
             <div style="display:flex;justify-content:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
                 ${goals.map(g => {
                     const done = streak >= g;
-                    return `<div style="padding:5px 13px;border-radius:99px;font-size:0.75rem;font-weight:700;background:${done ? 'rgba(249,115,22,.2)' : 'rgba(255,255,255,.05)'};color:${done ? '#fb923c' : '#475569'};border:1px solid ${done ? 'rgba(249,115,22,.35)' : 'rgba(255,255,255,.07)'};">${done ? '✓ ' : ''}${g} ימים</div>`;
+                    return `<div style="padding:5px 13px;border-radius:99px;font-size:0.75rem;font-weight:700;background:${done ? 'rgba(249,115,22,.12)' : '#f1f5f9'};color:${done ? '#ea6010' : '#64748b'};border:1px solid ${done ? 'rgba(249,115,22,.35)' : '#e2e8f0'};">${done ? '✓ ' : ''}${g} ימים</div>`;
                 }).join('')}
             </div>
 
-            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px 14px;text-align:right;margin-bottom:20px;">
-                <div style="font-size:0.68rem;color:#64748b;margin-bottom:4px;font-weight:600;">💡 טיפ ליציבות הרצף</div>
-                <div style="font-size:0.82rem;color:#cbd5e1;line-height:1.5;">${tip}</div>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:11px 14px;text-align:right;margin-bottom:20px;">
+                <div style="font-size:0.68rem;color:#94a3b8;margin-bottom:4px;font-weight:600;">💡 טיפ ליציבות הרצף</div>
+                <div style="font-size:0.82rem;color:#475569;line-height:1.5;">${tip}</div>
             </div>
 
-            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="background:linear-gradient(135deg,#f97316,#dc2626);color:#fff;border:none;border-radius:14px;padding:13px 28px;font-weight:700;font-size:0.95rem;cursor:pointer;width:100%;letter-spacing:.3px;box-shadow:0 4px 20px rgba(249,115,22,.4);">
-                <i class="fas fa-fire" style="margin-left:6px;"></i>יאללה ללמוד!
+            <button onclick="document.getElementById('streak-popup-overlay').remove()" style="background:linear-gradient(135deg,#f97316,#dc2626);color:#fff;border:none;border-radius:14px;padding:13px 28px;font-weight:700;font-size:0.95rem;cursor:pointer;width:100%;letter-spacing:.3px;box-shadow:0 4px 20px rgba(249,115,22,.35);">
+                <i class="fas fa-fire" style="margin-left:6px;"></i>בואו נלמד!
             </button>
         </div>`;
     document.body.appendChild(overlay);
@@ -2939,7 +2961,17 @@ async function openDonationModal() {
 }
 
 function closeDonationModal() {
-    document.getElementById('donationModal').style.display = 'none';
+    const modal = document.getElementById('donationModal');
+    if (!modal) return;
+    modal.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+    modal.style.opacity = '0';
+    modal.style.transform = 'scale(0.93)';
+    setTimeout(() => {
+        modal.style.display = 'none';
+        modal.style.opacity = '';
+        modal.style.transform = '';
+        modal.style.transition = '';
+    }, 360);
 }
 
 function setDonationType(type) {
@@ -4469,7 +4501,7 @@ function toggleProfileMenu() {
                 <div style="font-size:0.75rem;color:var(--text-muted,#64748b);" dir="ltr">${email}</div>
             </div>
         </div>
-        <div onclick="toggleProfileMenu();logout();" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;color:#ef4444;font-size:0.85rem;font-weight:600;transition:background .15s;" onmouseenter="this.style.background='rgba(239,68,68,0.06)'" onmouseleave="this.style.background='transparent'">
+        <div onclick="toggleProfileMenu();logoutWithConfirm();" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;color:#ef4444;font-size:0.85rem;font-weight:600;transition:background .15s;" onmouseenter="this.style.background='rgba(239,68,68,0.06)'" onmouseleave="this.style.background='transparent'">
             <i class="fas fa-sign-out-alt"></i> התנתק
         </div>
     `;
