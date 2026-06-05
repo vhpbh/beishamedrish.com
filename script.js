@@ -2896,7 +2896,7 @@ function showClickFeedback(btn, change) {
 let currentDonationType = 'sub';
 let selectedTierPrice = 0;
 
-function openDonationModal() {
+async function openDonationModal() {
     const modal = document.getElementById('donationModal');
     modal.style.display = 'flex';
     bringToFront(modal);
