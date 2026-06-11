@@ -262,6 +262,31 @@ function downloadAsTxt(filename, text) {
     URL.revokeObjectURL(url);
 }
 
+function _animateModalOut(el, onDone) {
+    if (!el || el.style.display === 'none' || el.style.display === '') { if (onDone) onDone(); return; }
+    el.style.transition = 'opacity 0.22s ease, background-color 0.22s ease';
+    el.style.opacity = '0';
+    el.style.pointerEvents = 'none';
+    const content = el.querySelector('.modal-content');
+    if (content) {
+        content.style.transition = 'transform 0.22s ease, opacity 0.22s ease';
+        content.style.transform = 'scale(0.95) translateY(8px)';
+        content.style.opacity = '0';
+    }
+    setTimeout(() => {
+        el.style.display = 'none';
+        el.style.opacity = '';
+        el.style.pointerEvents = '';
+        el.style.transition = '';
+        if (content) {
+            content.style.transform = '';
+            content.style.opacity = '';
+            content.style.transition = '';
+        }
+        if (onDone) onDone();
+    }, 230);
+}
+
 function closeModal() {
     const userModal = document.getElementById('userModal');
     const chavrutaModal = document.getElementById('chavrutaModal');
@@ -270,30 +295,36 @@ function closeModal() {
     const bookReaderModal = document.getElementById('bookReaderModal');
     const suggestionModal = document.getElementById('suggestionModal');
 
-    if (userModal) userModal.style.display = 'none';
-    if (document.getElementById('adminNotesModal')) document.getElementById('adminNotesModal').style.display = 'none';
-    if (chavrutaModal) chavrutaModal.style.display = 'none';
-    if (scheduleModal) scheduleModal.style.display = 'none';
-    if (adminChatModal) adminChatModal.style.display = 'none';
-    if (bookReaderModal) {
-        bookReaderModal.style.display = 'none';
-        const frame = document.getElementById('bookReaderFrame');
-        if (frame) frame.src = 'about:blank';
+    _animateModalOut(userModal);
+    const adminNotesModal = document.getElementById('adminNotesModal');
+    if (adminNotesModal) _animateModalOut(adminNotesModal);
+    _animateModalOut(chavrutaModal);
+    _animateModalOut(scheduleModal);
+    _animateModalOut(adminChatModal);
+    if (bookReaderModal && bookReaderModal.style.display !== 'none') {
+        _animateModalOut(bookReaderModal, () => {
+            const frame = document.getElementById('bookReaderFrame');
+            if (frame) frame.src = 'about:blank';
+        });
         if (document.body.classList.contains('focus-mode')) toggleFocusMode();
     }
-    if (document.getElementById('donationModal')) document.getElementById('donationModal').style.display = 'none';
-    if (suggestionModal) suggestionModal.style.display = 'none';
-    if (document.getElementById('achievementsModal')) document.getElementById('achievementsModal').style.display = 'none';
-    if (document.getElementById('followersModal')) document.getElementById('followersModal').style.display = 'none';
-
-    if (document.getElementById('completionsModal')) document.getElementById('completionsModal').style.display = 'none';
+    const donationModal = document.getElementById('donationModal');
+    if (donationModal) _animateModalOut(donationModal);
+    _animateModalOut(suggestionModal);
+    const achievementsModal = document.getElementById('achievementsModal');
+    if (achievementsModal) _animateModalOut(achievementsModal);
+    const followersModal = document.getElementById('followersModal');
+    if (followersModal) _animateModalOut(followersModal);
+    const completionsModal = document.getElementById('completionsModal');
+    if (completionsModal) _animateModalOut(completionsModal);
     if (chatInterval) clearInterval(chatInterval);
-    if (document.getElementById('notesModal')) document.getElementById('notesModal').style.display = 'none';
+    const notesModal = document.getElementById('notesModal');
+    if (notesModal) _animateModalOut(notesModal);
 }
 
 function closeFollowersModal() {
     const modal = document.getElementById('followersModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) _animateModalOut(modal);
 }
 
 function truncateHtmlText(htmlString, maxLength) {

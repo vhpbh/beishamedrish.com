@@ -1400,6 +1400,21 @@
             }
         }
 
+        @keyframes popOut {
+            from {
+                transform: scale(1);
+                opacity: 1;
+            }
+            to {
+                transform: scale(0.92) translateY(8px);
+                opacity: 0;
+            }
+        }
+
+        .modal-overlay {
+            transition: background-color 0.28s ease;
+        }
+
         body.modal-open {
             overflow: hidden;
         }

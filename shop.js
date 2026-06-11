@@ -267,6 +267,7 @@ function openProductLandingPage(itemId) {
     modal.style.display = 'flex';
     modal.style.zIndex = '5000';
     modal.style.padding = '0';
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeShopModal(modal); });
 
     const ownedItem = userInventory.find(i => i.item_id === item.id);
     const userPoints = currentUser ? (currentUser.reward_points || 0) : 0;
@@ -355,7 +356,7 @@ const providerInfo = item.provider_info || {};
 
     modal.innerHTML = `
         <div class="bg-white dark:bg-slate-900 w-full h-full md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-3xl shadow-2xl relative flex flex-col overflow-hidden">
-            <button class="absolute top-4 left-4 z-20 w-10 h-10 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-sm" onclick="this.closest('.modal-overlay').remove()">
+            <button class="absolute top-4 left-4 z-20 w-10 h-10 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-sm" onclick="closeShopModal(this.closest('.modal-overlay'))">
                 <i class="fas fa-times"></i>
             </button>
 
@@ -395,6 +396,19 @@ const providerInfo = item.provider_info || {};
     `;
 
     document.body.appendChild(modal);
+}
+
+function closeShopModal(el) {
+    if (!el) return;
+    const inner = el.querySelector('.bg-white, .bg-slate-900, [class*="bg-white"], [class*="bg-slate-9"]');
+    el.style.transition = 'background-color 0.28s ease';
+    el.style.backgroundColor = 'rgba(0,0,0,0)';
+    if (inner) {
+        inner.style.transition = 'opacity 0.28s ease, transform 0.28s ease';
+        inner.style.opacity = '0';
+        inner.style.transform = 'scale(0.95) translateY(12px)';
+    }
+    setTimeout(() => el.remove(), 290);
 }
 
 function setProductMainImage(imgEl, src) {
@@ -448,7 +462,8 @@ async function joinLottery(itemId, price, modalEl) {
         user_id: currentUser.id,
         item_id: itemId,
         order_type: 'lottery_entry',
-        cost_paid: price
+        cost_paid: price,
+        created_at: new Date().toISOString()
     }));
     const { error: insertErr } = await supabaseClient.from('shop_orders').insert(rows);
     if (insertErr) {
