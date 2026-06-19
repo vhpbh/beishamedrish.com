@@ -361,7 +361,7 @@ function openChat(partnerEmail, partnerName, startMinimized = false, forceFloati
             `<footer class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
                     <div class="max-w-5xl mx-auto relative flex items-center gap-3">
                         <div id="mentions-popup-${partnerEmail}" class="mentions-popup"></div>
-                        ${!isBook && !isSystem && !isUpdates && !isMentions ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" onclick="sendVideoCallInvite('${partnerEmail}','${partnerName.replace(/'/g, "\\'")}')" title="שיחת וידאו" style="background:#dbeafe; color:#1d4ed8; border:none; cursor:pointer; transition:background 0.15s;" onmouseover="this.style.background='#1d4ed8';this.style.color='#fff'" onmouseout="this.style.background='#dbeafe';this.style.color='#1d4ed8'"><i class="fas fa-video text-sm"></i></button>` : ''}
+                        ${!isBook && !isSystem && !isUpdates && !isMentions ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" onclick="showToast('שיחות וידאו אינן זמינות כרגע','info')" title="שיחות וידאו — בקרוב" style="background:#f1f5f9; color:#94a3b8; border:none; cursor:not-allowed; opacity:0.6;"><i class="fas fa-video-slash text-sm"></i></button>` : ''}
                         <input type="text" id="input-${partnerEmail}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..."
                         oninput="handleTyping('${partnerEmail}'); handleMentionInput(event, '${partnerEmail}')"
                         onkeyup="saveChatDraft('${partnerEmail}', this.value)"
@@ -859,7 +859,7 @@ async function loadChatIntoMainArea(email, name, el) {
                 <div id="reply-preview-${email}" class="reply-preview"></div>
                 <div class="max-w-5xl mx-auto relative flex items-center gap-3">
                     <div id="mentions-popup-${email}" class="mentions-popup"></div>
-                    ${!isBook && !isSystem && !isArchived ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" onclick="sendVideoCallInvite('${email}','${name.replace(/'/g, "\\'")}')" title="שיחת וידאו" style="background:#dbeafe; color:#1d4ed8; transition:background 0.15s;" onmouseover="this.style.background='#1d4ed8';this.style.color='#fff'" onmouseout="this.style.background='#dbeafe';this.style.color='#1d4ed8'"><i class="fas fa-video text-sm"></i></button>` : ''}
+                    ${!isBook && !isSystem && !isArchived ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl shrink-0" onclick="showToast('שיחות וידאו אינן זמינות כרגע','info')" title="שיחות וידאו — בקרוב" style="background:#f1f5f9; color:#94a3b8; border:none; cursor:not-allowed; opacity:0.6;"><i class="fas fa-video-slash text-sm"></i></button>` : ''}
                     ${hasPermission('announce') && isBook ? `<button class="w-10 h-10 flex items-center justify-center rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors shrink-0" onclick="sendSystemAnnouncement('${email}')" title="שלח הודעת מערכת"><i class="fas fa-bullhorn text-sm"></i></button>` : ''}
                     <input type="text" id="input-${email}" autocomplete="off" class="w-full h-12 bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-5 text-sm focus:ring-2 focus:ring-blue-500/50 dark:text-white dark:placeholder-slate-500" placeholder="הקלד הודעה..."
                         oninput="handleTyping('${email}'); handleMentionInput(event, '${email}')"
@@ -1474,8 +1474,8 @@ if (isDeletedMsg) {
                 </div>
                 <div style="font-size:0.82rem;opacity:0.85;">${isSentByMe ? 'שלחת הזמנה לשיחת וידאו' : 'הוזמנת לשיחת וידאו'}</div>
                 ${videoBook && videoBook !== 'לימוד חברותא' ? `<div style="font-size:0.78rem;opacity:0.75;"><i class="fas fa-book-open" style="margin-left:4px;"></i>${videoBook}</div>` : ''}
-                <button onclick="window.open('${joinUrl}','_blank')" style="background:white;color:#0369a1;border:none;padding:8px 16px;border-radius:8px;font-weight:800;cursor:pointer;font-family:Assistant,sans-serif;font-size:0.87rem;display:flex;align-items:center;gap:6px;justify-content:center;transition:background 0.15s;" onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='white'">
-                    <i class="fas fa-video"></i> ${isSentByMe ? 'פתח שיחה' : 'הצטרף לשיחה'}
+                <button onclick="showToast('שיחות וידאו אינן זמינות כרגע','info')" style="background:rgba(255,255,255,0.4);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:800;cursor:not-allowed;font-family:Assistant,sans-serif;font-size:0.87rem;display:flex;align-items:center;gap:6px;justify-content:center;opacity:0.7;">
+                    <i class="fas fa-video-slash"></i> אינו זמין כרגע
                 </button>
             </div>
         `;
@@ -2284,28 +2284,5 @@ function handleReactionRealtime(payload) {
 }
 
 async function sendVideoCallInvite(partnerEmail, partnerName) {
-    if (!currentUser) return;
-    const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
-    const bookName = (() => {
-        if (typeof chavrutaConnections !== 'undefined') {
-            const conn = chavrutaConnections.find(c => c.email === partnerEmail);
-            return conn?.book || 'לימוד חברותא';
-        }
-        return 'לימוד חברותא';
-    })();
-    const msgContent = `__VIDEO_INVITE__:${roomId}:${encodeURIComponent(bookName)}`;
-
-    const conn = typeof chavrutaConnections !== 'undefined' ? chavrutaConnections.find(c => c.email === partnerEmail) : null;
-    if (!conn?.id) { showToast('לא נמצאה חברותא פעילה עם משתמש זה', 'error'); return; }
-
-    await supabaseClient.from('chat_private').insert({
-        connection_id: conn.id,
-        sender_id: currentUser.id,
-        content: msgContent,
-        created_at: new Date().toISOString()
-    });
-
-    const videoUrl = `video-study.html?room=${encodeURIComponent(roomId)}&book=${encodeURIComponent(bookName)}&partner=${encodeURIComponent(partnerName || '')}&mode=chavruta`;
-    window.open(videoUrl, '_blank');
-    showToast('הזמנה נשלחה לשיחת וידאו!', 'success');
+    showToast('שיחות וידאו אינן זמינות כרגע', 'info');
 }

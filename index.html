@@ -1303,9 +1303,8 @@
             </div>
 
             <div class="header-group-right">
-                <button id="btn-video-classes" class="btn-video-header" onclick="openVideoClassesModal()" title="שיעורי וידאו" style="position:relative;">
+                <button id="btn-video-classes" class="btn-video-header" onclick="showToast('שיחות וידאו אינן זמינות כרגע','info')" title="שיעורי וידאו — בקרוב" style="position:relative;opacity:0.5;cursor:not-allowed;">
                     <i class="fas fa-play-circle"></i> <span class="video-btn-text">שיעורי וידאו</span>
-                    <span id="video-live-dot" style="display:none;position:absolute;top:4px;right:4px;width:9px;height:9px;background:#ef4444;border-radius:50%;border:2px solid var(--card-bg);animation:pulse 1.4s infinite;"></span>
                 </button>
                 <button class="btn-donate-header" onclick="openDonationModal()"><i class="fas fa-crown"></i> מנוי /
                     תרומה</button>
@@ -1313,10 +1312,9 @@
                     style="display:none; position:relative;">
                     <i class="fas fa-crown" style="color:#f59e0b; font-size:1.1rem;"></i>
                 </button>
-                <button class="btn-video-mobile header-action-btn" onclick="openVideoClassesModal()" title="שיעורי וידאו"
-                    style="display:none; position:relative;">
-                    <i class="fas fa-play-circle" style="color:#ef4444; font-size:1.1rem;"></i>
-                    <span id="video-live-dot-mobile" style="display:none;position:absolute;top:0;right:0;width:9px;height:9px;background:#ef4444;border-radius:50%;border:2px solid var(--card-bg);animation:pulse 1.4s infinite;"></span>
+                <button class="btn-video-mobile header-action-btn" onclick="showToast('שיחות וידאו אינן זמינות כרגע','info')" title="שיעורי וידאו — בקרוב"
+                    style="display:none; position:relative; opacity:0.5; cursor:not-allowed;">
+                    <i class="fas fa-play-circle" style="color:#94a3b8; font-size:1.1rem;"></i>
                 </button>
                 <div id="notif-container" class="header-action-btn" onclick="toggleNotifications()">
                     <span class="material-icons-round">notifications</span>

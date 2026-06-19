@@ -337,9 +337,9 @@ const uniquePartners = new Map();
                             <span class="text-[10px] font-bold">ספר</span>
                         </button>
                     </div>
-                    <button class="btn-video-call" onclick="openVideoStudy('${partnerId}','${safeBook}','${safeName}')" title="שיחת וידאו עם ${safeName}">
-                        <i class="fas fa-video"></i>
-                        שיחת וידאו
+                    <button class="btn-video-call" onclick="openVideoStudy('${partnerId}','${safeBook}','${safeName}')" title="שיחות וידאו אינן זמינות כרגע" style="opacity:0.45;cursor:not-allowed;">
+                        <i class="fas fa-video-slash"></i>
+                        וידאו — בקרוב
                     </button>
                     <button class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 font-bold hover:bg-red-50 transition-colors text-sm flex items-center justify-center gap-2" onclick="cancelChavruta('${partnerId}')">
                         <i class="fas fa-times-circle text-base"></i>
@@ -453,14 +453,5 @@ function startAddNewChavrutaFlow() {
 
 // ===== שיחת וידאו =====
 function openVideoStudy(partnerId, book, partnerName) {
-    if (typeof sendVideoCallInvite === 'function') {
-        const partnerUser = globalUsersData.find(u => u.id === partnerId);
-        const email = partnerUser?.email || partnerId;
-        const name = partnerName || partnerUser?.name || partnerUser?.display_name || email;
-        sendVideoCallInvite(email, name);
-    } else {
-        const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
-        const videoUrl = `video-study.html?room=${encodeURIComponent(roomId)}&book=${encodeURIComponent(book || 'לימוד חברותא')}&partner=${encodeURIComponent(partnerName || '')}&mode=chavruta`;
-        window.open(videoUrl, '_blank');
-    }
+    showToast('שיחות וידאו אינן זמינות כרגע', 'info');
 }

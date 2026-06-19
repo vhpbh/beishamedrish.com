@@ -2553,19 +2553,11 @@ async function renderVideoSessions() {
 }
 
 function joinVideoSession(roomId) {
-    if (!roomId) { showToast('לא נמצא חדר לצפייה', 'error'); return; }
-    window.open(`video-study.html?room=${encodeURIComponent(roomId)}&mode=shiur_viewer`, '_blank');
+    showToast('שיחות וידאו אינן זמינות כרגע', 'info');
 }
 
 function openCreateShiurFromMain() {
-    if (!requireAuth()) return;
-    const bookName = prompt('שם הספר / נושא השיעור:');
-    if (!bookName) return;
-    const title = prompt('כותרת השיעור:');
-    if (!title) return;
-    const newRoomId = 'beithamidrash-shiur-' + Date.now();
-    const url = `video-study.html?room=${encodeURIComponent(newRoomId)}&book=${encodeURIComponent(bookName)}&mode=shiur_teacher&partner=${encodeURIComponent(title)}`;
-    window.open(url, '_blank');
+    showToast('שיחות וידאו אינן זמינות כרגע', 'info');
 }
 
 /* === להפעלת מסך "אינו זמין" מחדש, החלף את הפונקציות מעל בקוד הבא: ===
