@@ -7,22 +7,22 @@
     <title>הסרה מרשימת תפוצה - בית המדרש</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'Heebo', system-ui, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            font-family: 'Assistant', system-ui, sans-serif;
+            background: #f8fafc;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #e2e8f0;
-            padding: 1rem;
+            color: #334155;
+            padding: 1.5rem;
         }
 
         .site-header {
@@ -35,44 +35,40 @@
             align-items: center;
             gap: 0.75rem;
             text-decoration: none;
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid rgba(251, 191, 36, 0.15);
+            background: #fff;
+            border: 1px solid #e2e8f0;
             border-radius: 1rem;
-            padding: 0.5rem 1rem 0.5rem 0.75rem;
-            backdrop-filter: blur(8px);
-            transition: border-color 0.2s;
+            padding: 0.5rem 1.25rem 0.5rem 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            transition: box-shadow 0.2s, border-color 0.2s;
         }
-        .site-logo-wrap:hover { border-color: rgba(251, 191, 36, 0.4); }
+        .site-logo-wrap:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-color: #fcd34d; }
 
         .site-logo-img {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: 8px;
             object-fit: contain;
         }
 
         .site-logo {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: #fbbf24;
-            text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #ca8a04;
         }
 
-        .site-logo span {
-            color: #e2e8f0;
-        }
+        .site-logo span { color: #0f172a; }
 
         .card {
-            background: rgba(30, 41, 59, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(251, 191, 36, 0.2);
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
             padding: 2.5rem;
             border-radius: 1.5rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(251, 191, 36, 0.05);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
             text-align: center;
             max-width: 460px;
             width: 100%;
-            transition: all 0.3s ease;
+            transition: box-shadow 0.3s;
         }
 
         .status-icon {
@@ -82,15 +78,15 @@
         }
 
         h1 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #f1f5f9;
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: #0f172a;
             margin-bottom: 0.75rem;
         }
 
         p {
             line-height: 1.7;
-            color: #94a3b8;
+            color: #64748b;
             font-size: 0.95rem;
         }
 
@@ -98,23 +94,23 @@
             width: 100%;
             padding: 0.85rem 1rem;
             margin-top: 1.25rem;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(251, 191, 36, 0.25);
+            background: #f8fafc;
+            border: 1.5px solid #e2e8f0;
             border-radius: 0.75rem;
             font-size: 1rem;
-            color: #e2e8f0;
-            font-family: 'Heebo', sans-serif;
+            color: #0f172a;
+            font-family: 'Assistant', sans-serif;
             direction: ltr;
             text-align: left;
             transition: border-color 0.2s, box-shadow 0.2s;
         }
 
-        .email-input::placeholder { color: #475569; }
+        .email-input::placeholder { color: #94a3b8; }
 
         .email-input:focus {
             outline: none;
-            border-color: rgba(251, 191, 36, 0.6);
-            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+            border-color: #ca8a04;
+            box-shadow: 0 0 0 3px rgba(202, 138, 4, 0.12);
         }
 
         .btn-unsubscribe {
@@ -124,13 +120,13 @@
             padding: 0.85rem 1.5rem;
             border-radius: 0.75rem;
             font-size: 1rem;
-            font-weight: 600;
-            font-family: 'Heebo', sans-serif;
+            font-weight: 700;
+            font-family: 'Assistant', sans-serif;
             cursor: pointer;
             margin-top: 1.25rem;
             width: 100%;
             transition: all 0.2s ease;
-            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.3);
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.25);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -139,36 +135,36 @@
 
         .btn-unsubscribe:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.35);
         }
 
         .btn-unsubscribe:active { transform: translateY(0); }
 
         .btn-primary {
             background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #0f172a;
+            color: #fff;
             border: none;
             padding: 0.85rem 1.5rem;
             border-radius: 0.75rem;
             font-size: 1rem;
             font-weight: 700;
-            font-family: 'Heebo', sans-serif;
+            font-family: 'Assistant', sans-serif;
             cursor: pointer;
             margin-top: 1.25rem;
             width: 100%;
             transition: all 0.2s ease;
-            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.25);
             text-decoration: none;
             display: inline-block;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
         }
 
         .back-link {
-            color: #64748b;
+            color: #94a3b8;
             text-decoration: none;
             font-size: 0.9rem;
             display: inline-flex;
@@ -178,25 +174,23 @@
             transition: color 0.2s;
         }
 
-        .back-link:hover { color: #fbbf24; }
+        .back-link:hover { color: #ca8a04; }
 
         .loader {
             width: 44px;
             height: 44px;
-            border: 3px solid rgba(251, 191, 36, 0.15);
-            border-top-color: #fbbf24;
+            border: 3px solid #e2e8f0;
+            border-top-color: #ca8a04;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin: 0 auto 1.5rem;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .divider {
             border: none;
-            border-top: 1px solid rgba(251, 191, 36, 0.1);
+            border-top: 1px solid #e2e8f0;
             margin: 1.5rem 0 0;
         }
 
@@ -204,13 +198,13 @@
             display: inline-flex;
             align-items: center;
             gap: 0.4rem;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.25);
-            color: #4ade80;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #16a34a;
             padding: 0.35rem 0.8rem;
             border-radius: 999px;
             font-size: 0.85rem;
-            font-weight: 500;
+            font-weight: 600;
             margin-bottom: 1rem;
         }
 
@@ -218,21 +212,23 @@
             display: inline-flex;
             align-items: center;
             gap: 0.4rem;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.25);
-            color: #f87171;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
             padding: 0.35rem 0.8rem;
             border-radius: 999px;
             font-size: 0.85rem;
-            font-weight: 500;
+            font-weight: 600;
             margin-bottom: 1rem;
         }
+
+        strong { color: #ca8a04; }
     </style>
 </head>
 
 <body>
     <div class="site-header">
-        <a href="index.html" class="site-logo-wrap">
+        <a href="https://beishamedrish.com" class="site-logo-wrap">
             <img src="logo-remove.png" alt="בית המדרש" class="site-logo-img" onerror="this.style.display='none'">
             <span class="site-logo">בית<span> המדרש</span></span>
         </a>
@@ -248,7 +244,7 @@
             הסר אותי מהרשימה
         </button>
         <hr class="divider">
-        <a href="index.html" class="back-link">
+        <a href="https://beishamedrish.com" class="back-link">
             <i class="fas fa-arrow-right"></i>
             חזרה לאתר
         </a>
@@ -286,7 +282,7 @@
                         <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> אינה רשומה במערכת שלנו.</p>
                         <button onclick="location.reload()" class="btn-primary">נסה שוב</button>
                         <hr class="divider">
-                        <a href="index.html" class="back-link"><i class="fas fa-arrow-right"></i> חזרה לאתר</a>
+                        <a href="https://beishamedrish.com" class="back-link"><i class="fas fa-arrow-right"></i> חזרה לאתר</a>
                     `;
                     return;
                 }
@@ -296,7 +292,7 @@
                         <span class="success-badge"><i class="fas fa-check-circle"></i> כבר הוסרת</span>
                         <h1>כבר מוסר מהרשימה</h1>
                         <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> כבר הוסרה מרשימת התפוצה בעבר.</p>
-                        <a href="index.html" class="btn-primary">חזרה לאתר</a>
+                        <a href="https://beishamedrish.com" class="btn-primary">חזרה לאתר</a>
                     `;
                     return;
                 }
@@ -327,7 +323,7 @@
                     <span class="success-badge"><i class="fas fa-check-circle"></i> הוסרת בהצלחה</span>
                     <h1>הוסרת מהרשימה</h1>
                     <p>כתובת האימייל <strong style="color:#fbbf24">${email}</strong> הוסרה מרשימת התפוצה. לא תקבל מאיתנו הודעות נוספות.</p>
-                    <a href="index.html" class="btn-primary">חזרה לאתר</a>
+                    <a href="https://beishamedrish.com" class="btn-primary">חזרה לאתר</a>
                 `;
             } catch (err) {
                 card.innerHTML = `

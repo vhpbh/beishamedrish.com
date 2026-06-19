@@ -86,8 +86,8 @@ if (window.justCompletedDailyGoal === goal.id) {
                         </div>
                     </div>
                 </div>
-                <div class="flex items-center justify-between md:justify-end gap-3">
-                    <div class="flex items-center gap-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between md:justify-end gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="deleteGoal('${goal.id}')" title="מחק">
                             <i class="fas fa-trash-alt"></i>
                         </button>
@@ -244,6 +244,7 @@ userGoals.unshift(newGoal);
     window.newGoalId = newGoal.id;
     window.isNewGoalAnimation = true;
 
+    if (typeof closeAddDialog === 'function') closeAddDialog();
     renderGoals();
 
     if (nextActionAfterGoalCreation === 'findChavruta') {

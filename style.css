@@ -63,6 +63,7 @@
             margin: 0;
             padding-bottom: 90px;
             overflow-y: scroll;
+            padding-top: 74px;
         }
 
         body {
@@ -170,7 +171,7 @@
 
         .auth-form-col {
             flex: 1;
-            padding: 2rem 2.5rem;
+            padding: 2rem 3.5rem 2rem 2.5rem;
             overflow-y: auto;
             max-height: 90vh;
         }
@@ -535,9 +536,11 @@
         }
 
         .sticky-header {
-            position: sticky;
+            position: fixed;
             top: 0;
-            z-index: 50;
+            left: 0;
+            right: 0;
+            z-index: 200;
             padding: 1rem 1.5rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
@@ -1477,6 +1480,9 @@
 
         .floating-nav-item-center {
             margin-top: -3rem;
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
         }
 
         .floating-nav-add-btn {
@@ -1547,6 +1553,31 @@
                 opacity: 1;
                 transform: translateY(0) scale(1);
             }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.93); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes addDialogBgOut {
+            from { opacity: 1; }
+            to   { opacity: 0; }
+        }
+
+        @keyframes addDialogScaleOut {
+            from { opacity: 1; transform: scale(1); }
+            to   { opacity: 0; transform: scale(0.93); }
+        }
+
+        @keyframes addDialogSlideDown {
+            from { opacity: 1; transform: translateY(0); }
+            to   { opacity: 0; transform: translateY(40px); }
         }
 
         @keyframes fadeIn {
@@ -2198,25 +2229,47 @@
             }
         }
 
+        .btn-video-header {
+            background: linear-gradient(45deg, #ef4444, #dc2626);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+            transition: box-shadow 0.2s, transform 0.15s;
+            white-space: nowrap;
+        }
+        .btn-video-header:hover {
+            box-shadow: 0 6px 18px rgba(239, 68, 68, 0.5);
+            transform: translateY(-1px);
+        }
+        .btn-video-mobile { display: none !important; }
+
         .btn-donate-header {
             background: linear-gradient(45deg, #f59e0b, #d97706, #fbbf24, #d97706);
             background-size: 300% 300%;
             animation: btn-shimmer 3s ease infinite, btn-pulse 2s infinite;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 7px 16px;
             border-radius: 25px;
             font-weight: bold;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
             transition: all 0.3s;
             margin-left: 10px;
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            height: 38px;
         }
 
         .btn-donate-header:hover {
@@ -4418,6 +4471,8 @@
             .header-group-middle { flex: 0 1 220px; max-width: 220px; }
             .btn-donate-header { display: none; }
             .btn-donate-mobile { display: flex !important; }
+            .btn-video-header { display: none; }
+            .btn-video-mobile { display: flex !important; }
         }
 
         @media (max-width: 768px) {
@@ -4649,7 +4704,7 @@
                 border-left: none !important;
                 border-bottom: none !important;
                 border-radius: 0 !important;
-                z-index: 100 !important;
+                z-index: 300 !important;
                 transform: translateX(0);
                 transition: transform 0.3s ease-in-out;
                 padding-bottom: 80px;
@@ -5167,3 +5222,87 @@ body.dark-mode .maggid-shiur-badge {
     box-shadow: 0 2px 8px rgba(245,158,11,0.35);
 }
 .session-create-btn:hover { opacity: 0.9; }
+
+/* ═══════════════════════════════════════════════════════════════
+   תיקוני מצב לילה מקיפים — עוקפים צבעים מוקשים במקומות שונים
+   ═══════════════════════════════════════════════════════════════ */
+body.dark-mode .modal-content,
+body.dark-mode .modal-overlay > div,
+body.dark-mode #add-dialog-menu,
+body.dark-mode #add-dialog-modal > div {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+body.dark-mode #roadmapModal > div,
+body.dark-mode #videoClassesModal > div {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+body.dark-mode .grid-menu-dropdown {
+    background: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+body.dark-mode .grid-menu-cell {
+    background: var(--bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+body.dark-mode .grid-menu-cell:hover {
+    background: #334155 !important;
+}
+body.dark-mode #notif-dropdown {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+body.dark-mode #notif-tab-unread {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
+}
+body.dark-mode #notif-tab-read {
+    background: transparent !important;
+    color: #64748b !important;
+}
+body.dark-mode .switch-tab,
+body.dark-mode .tab-btn {
+    color: var(--text-main) !important;
+}
+body.dark-mode input[type="text"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="password"],
+body.dark-mode input[type="number"],
+body.dark-mode input[type="tel"],
+body.dark-mode textarea,
+body.dark-mode select {
+    background: var(--input-bg, #0f172a) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+body.dark-mode .profile-dropdown {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+/* כרטיסים ורקעים כלליים */
+body.dark-mode .card,
+body.dark-mode .stat-card,
+body.dark-mode .leaderboard-table,
+body.dark-mode .add-track-btn-wrapper > div,
+body.dark-mode .cycle-card-modern {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+body.dark-mode table thead {
+    background: #1e293b !important;
+}
+body.dark-mode table tbody tr:hover {
+    background: #334155 !important;
+}
+body.dark-mode .roadmap-tab {
+    color: #94a3b8 !important;
+}
+/* pulse animation for live dot */
+@keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}

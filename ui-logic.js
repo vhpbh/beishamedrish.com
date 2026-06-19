@@ -382,7 +382,6 @@ function renderCyclesSection(container) {
                 חזרה לתפריט
             </a>
         </div>
-        <div class="h-1 bg-[#e8951a] w-full mt-2"></div>
         <div class="p-4 md:p-6">
             <div class="flex items-center gap-2 mb-6">
                 <div class="bg-[#e8951a]/10 p-1.5 rounded-lg">
@@ -409,7 +408,6 @@ function renderQuickSection(container) {
                 חזרה לתפריט
             </a>
         </div>
-        <div class="h-1 bg-[#e8951a] w-full mt-2"></div>
         <div class="p-4 md:p-6">
             <div class="flex items-center gap-2 mb-6">
                 <div class="bg-[#e8951a]/10 p-1.5 rounded-lg">

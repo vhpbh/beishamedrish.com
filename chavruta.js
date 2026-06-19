@@ -118,6 +118,19 @@ async function respondToRequest(reqId, action) {
                 if (!partnerEmail && partnerUser) partnerEmail = partnerUser.email;
                 const partnerName = partnerUser ? partnerUser.name : (partnerEmail ? partnerEmail.split('@')[0] : 'חברותא');
 
+                // הודעה לצד המאשר (בפעמון)
+                const myDisplayName = currentUser?.displayName || 'לומד';
+                addNotification(`🎉 החברותא שלך עם ${partnerName} על "${reqData.book_name}" נקבעה! קיבלת 15 זוזים.`);
+
+                // הודעה מתמשכת בDB לצד השני (גם אם לא פעיל)
+                supabaseClient.from('notifications').insert({
+                    user_id: reqData.sender_id,
+                    title: `${myDisplayName} אישר את בקשת החברותא שלך!`,
+                    content: `🎉 ${myDisplayName} אישר את בקשת החברותא שלך על "${reqData.book_name}"! קיבלת 15 זוזים.`,
+                    is_read: false,
+                    created_at: new Date().toISOString()
+                }).then(() => {}).catch(e => console.warn('chavruta notif error', e));
+
                 switchScreen('chats', document.querySelector('.floating-nav-item[onclick*="chats"]'));
                 if (typeof openChat === 'function') {
                     openChat(partnerEmail, partnerName);
@@ -324,9 +337,9 @@ const uniquePartners = new Map();
                             <span class="text-[10px] font-bold">ספר</span>
                         </button>
                     </div>
-                    <button class="btn-video-call" disabled title="פונקציה זו אינה זמינה כעת" style="opacity:0.45; cursor:not-allowed; filter:grayscale(1);">
-                        <i class="fas fa-video-slash"></i>
-                        שיחת וידאו — בקרוב
+                    <button class="btn-video-call" onclick="openVideoStudy('${partnerId}','${safeBook}','${safeName}')" title="שיחת וידאו עם ${safeName}">
+                        <i class="fas fa-video"></i>
+                        שיחת וידאו
                     </button>
                     <button class="w-full py-2.5 rounded-xl border border-red-200 text-red-600 font-bold hover:bg-red-50 transition-colors text-sm flex items-center justify-center gap-2" onclick="cancelChavruta('${partnerId}')">
                         <i class="fas fa-times-circle text-base"></i>
@@ -439,6 +452,15 @@ function startAddNewChavrutaFlow() {
 }
 
 // ===== שיחת וידאו =====
-function openVideoStudy(connectionIdOrPartnerId, book, partner) {
-    if (typeof showToast === 'function') showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
+function openVideoStudy(partnerId, book, partnerName) {
+    if (typeof sendVideoCallInvite === 'function') {
+        const partnerUser = globalUsersData.find(u => u.id === partnerId);
+        const email = partnerUser?.email || partnerId;
+        const name = partnerName || partnerUser?.name || partnerUser?.display_name || email;
+        sendVideoCallInvite(email, name);
+    } else {
+        const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
+        const videoUrl = `video-study.html?room=${encodeURIComponent(roomId)}&book=${encodeURIComponent(book || 'לימוד חברותא')}&partner=${encodeURIComponent(partnerName || '')}&mode=chavruta`;
+        window.open(videoUrl, '_blank');
+    }
 }

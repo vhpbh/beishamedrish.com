@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     setupInterfaceChanges();
     loadDonationTiersFromDB();
+    checkLiveClasses();
 });
 
 async function loadDonationTiersFromDB() {
@@ -8,13 +9,14 @@ async function loadDonationTiersFromDB() {
         const { data, error } = await supabaseClient.from('site_config').select('value').eq('key', 'donation_tiers').maybeSingle();
         if (error || !data?.value) return;
         const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+        const normTier = t => ({ ...t, price: t.price ?? t.amount ?? t.value ?? 0 });
         if (parsed.sub && Array.isArray(parsed.sub) && parsed.sub.length > 0) {
             SUBSCRIPTION_TIERS.length = 0;
-            parsed.sub.forEach(t => SUBSCRIPTION_TIERS.push(t));
+            parsed.sub.map(normTier).forEach(t => SUBSCRIPTION_TIERS.push(t));
         }
         if (parsed.one && Array.isArray(parsed.one) && parsed.one.length > 0) {
             ONE_TIME_TIERS.length = 0;
-            parsed.one.forEach(t => ONE_TIME_TIERS.push(t));
+            parsed.one.map(normTier).forEach(t => ONE_TIME_TIERS.push(t));
         }
     } catch(e) {}
 }
@@ -37,11 +39,16 @@ let realtimeSubscription = null;
 
 async function addRewardPointsDB(userId, amount) {
     try {
-        const { data: cur } = await supabaseClient.from('profiles_public').select('reward_points').eq('id', userId).maybeSingle();
+        const { data: cur } = await supabaseClient.from('profiles_public').select('reward_points,lifetime_zuzim').eq('id', userId).maybeSingle();
         const newPts = Math.max(0, (cur?.reward_points || 0) + amount);
-        const { error } = await supabaseClient.from('profiles_public').update({ reward_points: newPts }).eq('id', userId);
+        const updateData = { reward_points: newPts };
+        if (amount > 0) {
+            updateData.lifetime_zuzim = (cur?.lifetime_zuzim || 0) + amount;
+        }
+        const { error } = await supabaseClient.from('profiles_public').update(updateData).eq('id', userId);
         if (!error && userId === currentUser?.id) {
             currentUser.reward_points = newPts;
+            if (amount > 0) currentUser.lifetime_zuzim = (currentUser.lifetime_zuzim || 0) + amount;
             localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
             const el = document.getElementById('user-points-display');
             if (el) el.textContent = newPts.toLocaleString();
@@ -348,6 +355,9 @@ updateChatBadge();
 
 const gloCleanup = document.getElementById('google-loading-overlay');
     if (gloCleanup) gloCleanup.style.display = 'none';
+
+    const splash = document.getElementById('app-splash');
+    if (splash) { splash.style.transition = 'opacity 0.3s'; splash.style.opacity = '0'; setTimeout(() => { splash.style.display = 'none'; }, 300); }
 
 const screenFromHash = window.location.hash.substring(1).split('?')[0].split('&')[0];
     if (screenFromHash && document.getElementById('screen-' + screenFromHash)) {
@@ -1010,9 +1020,9 @@ let all = currentUser
         ? globalUsersData.filter(u => u.email !== currentUser.email && u.id !== currentUser.id)
         : [...globalUsersData];
 
-    const myScore = userGoals.reduce((sum, g) => sum + g.currentUnit, 0);
-    const myRewardPoints = currentUser ? (currentUser.reward_points || 0) : 0;
-    const myTotalScore = myScore + myRewardPoints;
+    const myScore = currentUser ? (currentUser.rank_score || userGoals.reduce((sum, g) => sum + g.currentUnit, 0)) : 0;
+    const myLifetimeZuzim = currentUser ? (currentUser.lifetime_zuzim || currentUser.reward_points || 0) : 0;
+    const myTotalScore = myScore + myLifetimeZuzim;
     const myActiveBooks = userGoals.filter(g => g.status === 'active').map(g => g.bookName);
 
     if (currentUser) {
@@ -2158,6 +2168,227 @@ async function toggleNewsletterSubscription() {
     }
 }
 
+function openAddDialog() {
+    if (!requireAuth()) return;
+
+    // אם add-section-new נמצא בתוך דיאלוג קודם — מחזיר אותו למקומו לפני שמאפסים את ה-innerHTML
+    const newSecPre = document.getElementById('add-section-new');
+    if (newSecPre && newSecPre._dialogOriginalParent) {
+        const bl = newSecPre.querySelector('a[data-orig-onclick]');
+        if (bl) { bl.setAttribute('onclick', bl.dataset.origOnclick); delete bl.dataset.origOnclick; }
+        newSecPre.style.display = 'none';
+        newSecPre._dialogOriginalParent.appendChild(newSecPre);
+        delete newSecPre._dialogOriginalParent;
+    }
+
+    const isDesktop = window.innerWidth > 768;
+    let modal = document.getElementById('add-dialog-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'add-dialog-modal';
+        document.body.appendChild(modal);
+        // מוסיף event listener פעם אחת בלבד
+        modal.addEventListener('click', e => { if (e.target === modal) closeAddDialog(); });
+    }
+    modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9990;display:flex;animation:fadeIn 0.18s ease;${isDesktop ? 'align-items:center;justify-content:center;' : 'align-items:flex-end;justify-content:center;'}`;
+    const boxRadius = isDesktop ? '16px' : '24px 24px 0 0';
+    const boxAnim = isDesktop ? 'scaleIn 0.2s ease' : 'slideUp 0.25s ease';
+    const boxWidth = isDesktop ? 'calc(100% - 40px)' : '100%';
+    const boxMaxW = isDesktop ? '480px' : '540px';
+    const boxMaxH = isDesktop ? '80vh' : '90vh';
+    modal.innerHTML = `
+        <div id="add-dialog-box" style="background:var(--card-bg,#fff);width:${boxWidth};max-width:${boxMaxW};border-radius:${boxRadius};padding:0;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.22);animation:${boxAnim};max-height:${boxMaxH};display:flex;flex-direction:column;">
+            <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border-color,#f1f5f9);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                <div style="font-size:1.05rem;font-weight:800;color:var(--text-main);">הוספת לימוד חדש</div>
+                <button onclick="closeAddDialog()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.3rem;line-height:1;padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="overflow-y:auto;flex:1;" id="add-dialog-body">
+                <div id="add-dialog-menu" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <button class="add-dialog-tile" onclick="showAddDialogSection('cycles')" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:16px;padding:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent,#f59e0b)'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)'">
+                        <i class="fas fa-sync-alt" style="font-size:1.8rem;color:var(--primary,#0f172a);"></i>
+                        <div style="font-weight:700;color:var(--text-main);font-size:0.95rem;">מחזורי לימוד</div>
+                        <div style="font-size:0.78rem;color:#64748b;text-align:center;">דף היומי, משנה יומית, רמב"ם ועוד</div>
+                    </button>
+                    <button class="add-dialog-tile" onclick="showAddDialogSection('quick')" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:16px;padding:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;transition:all 0.15s;" onmouseover="this.style.borderColor='#f59e0b'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)'">
+                        <i class="fas fa-bolt" style="font-size:1.8rem;color:#f59e0b;"></i>
+                        <div style="font-weight:700;color:var(--text-main);font-size:0.95rem;">הוספה מהירה</div>
+                        <div style="font-size:0.78rem;color:#64748b;text-align:center;">הוספת דפים/שעות ללא ספר מוגדר</div>
+                    </button>
+                    <button class="add-dialog-tile" onclick="showAddDialogSection('browse')" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:16px;padding:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;transition:all 0.15s;" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)'">
+                        <i class="fas fa-list-ul" style="font-size:1.8rem;color:#6366f1;"></i>
+                        <div style="font-weight:700;color:var(--text-main);font-size:0.95rem;">בחר לפי קטגוריה</div>
+                        <div style="font-size:0.78rem;color:#64748b;text-align:center;">תנ"ך, גמרא, משנה, הלכה ועוד</div>
+                    </button>
+                    <button class="add-dialog-tile" onclick="showAddDialogSection('new')" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:16px;padding:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;transition:all 0.15s;" onmouseover="this.style.borderColor='#10b981'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)'">
+                        <i class="fas fa-plus-circle" style="font-size:1.8rem;color:#10b981;"></i>
+                        <div style="font-weight:700;color:var(--text-main);font-size:0.95rem;">לימוד חדש</div>
+                        <div style="font-size:0.78rem;color:#64748b;text-align:center;">בחירת ספר מהספרייה או הגדרה אישית</div>
+                    </button>
+                </div>
+                <div id="add-dialog-section" style="display:none;"></div>
+            </div>
+        </div>`;
+    document.body.style.overflow = 'hidden';
+}
+
+function showAddDialogMenu() {
+    // מחזיר את add-section-new למקומו המקורי בדף
+    const newSec = document.getElementById('add-section-new');
+    if (newSec && newSec._dialogOriginalParent) {
+        const bl = newSec.querySelector('a[data-orig-onclick]');
+        if (bl) { bl.setAttribute('onclick', bl.dataset.origOnclick); delete bl.dataset.origOnclick; }
+        newSec.style.display = 'none';
+        newSec._dialogOriginalParent.appendChild(newSec);
+        delete newSec._dialogOriginalParent;
+    }
+    const secEl = document.getElementById('add-dialog-section');
+    if (secEl) { secEl.style.display = 'none'; secEl.innerHTML = ''; }
+    const menuEl = document.getElementById('add-dialog-menu');
+    if (menuEl) menuEl.style.display = 'grid';
+}
+
+function closeAddDialog() {
+    const modal = document.getElementById('add-dialog-modal');
+    if (!modal || modal.style.display === 'none') { document.body.style.overflow = ''; return; }
+    const box = document.getElementById('add-dialog-box');
+    const isDesktop = window.innerWidth > 768;
+    if (modal) modal.style.animation = 'addDialogBgOut 0.22s ease forwards';
+    if (box) box.style.animation = isDesktop ? 'addDialogScaleOut 0.2s ease forwards' : 'addDialogSlideDown 0.22s ease forwards';
+    setTimeout(() => {
+        showAddDialogMenu();
+        if (modal) { modal.style.display = 'none'; modal.style.animation = ''; }
+        if (box) box.style.animation = '';
+        document.body.style.overflow = '';
+    }, 220);
+}
+
+function showAddDialogSection(section) {
+    document.getElementById('add-dialog-menu').style.display = 'none';
+    const secEl = document.getElementById('add-dialog-section');
+    secEl.innerHTML = '';
+    secEl.style.display = 'block';
+    secEl.style.padding = '0';
+
+    if (section === 'cycles' || section === 'quick') {
+        // משתמש בפונקציות הרינדור הקיימות על div זמני, ומחליף את כפתור "חזרה" שלהן
+        // כך שיחזור לתפריט הדיאלוג במקום למסך הרקע
+        const tmp = document.createElement('div');
+        if (section === 'cycles') renderCyclesSection(tmp);
+        else renderQuickSection(tmp);
+        const backLink = tmp.querySelector('a[onclick*="showAddSection"]');
+        if (backLink) backLink.setAttribute('onclick', 'showAddDialogMenu()');
+        secEl.innerHTML = tmp.innerHTML;
+    } else if (section === 'new') {
+        const newSec = document.getElementById('add-section-new');
+        if (newSec) {
+            newSec._dialogOriginalParent = newSec.parentNode;
+            secEl.appendChild(newSec);
+            newSec.style.display = 'block';
+            const backLink = newSec.querySelector('a[onclick*="showAddSection"]');
+            if (backLink && !backLink.dataset.origOnclick) {
+                backLink.dataset.origOnclick = backLink.getAttribute('onclick') || '';
+                backLink.setAttribute('onclick', 'showAddDialogMenu()');
+            }
+            if (typeof populateAllBooks === 'function') populateAllBooks();
+        }
+    } else if (section === 'browse') {
+        renderBookBrowseMain(secEl);
+    }
+}
+
+function renderBookBrowseMain(container) {
+    const categories = [
+        { id: 'tanach', label: 'תנ"ך', icon: 'fas fa-scroll', color: '#7c3aed', desc: 'תורה, נביאים וכתובים' },
+        { id: 'bavli', label: 'תלמוד בבלי', icon: 'fas fa-book', color: '#1d4ed8', desc: 'כל מסכתות הש"ס' },
+        { id: 'yerushalmi', label: 'תלמוד ירושלמי', icon: 'fas fa-book-open', color: '#0369a1', desc: 'תלמוד ירושלמי' },
+        { id: 'mishnah', label: 'משנה', icon: 'fas fa-layer-group', color: '#059669', desc: 'ששה סדרי משנה' },
+        { id: 'halacha', label: 'הלכה', icon: 'fas fa-gavel', color: '#b45309', desc: 'שו"ע ומשנה ברורה' },
+    ];
+    container.style.padding = '16px';
+    container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <button onclick="showAddDialogMenu()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:0.85rem;display:flex;align-items:center;gap:5px;padding:4px 0;">
+                <i class="fas fa-arrow-right"></i> חזרה
+            </button>
+            <div style="font-weight:800;font-size:1rem;color:var(--text-main);">בחר קטגוריה</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            ${categories.map(c => `
+            <button onclick="renderBookBrowseCategory('${c.id}')" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:14px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:14px;text-align:right;transition:all 0.15s;width:100%;" onmouseover="this.style.borderColor='${c.color}';this.style.background='${c.color}11'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)';this.style.background='var(--bg,#f8fafc)'">
+                <div style="width:42px;height:42px;background:${c.color}18;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="${c.icon}" style="color:${c.color};font-size:1.2rem;"></i>
+                </div>
+                <div>
+                    <div style="font-weight:700;color:var(--text-main);font-size:0.95rem;">${c.label}</div>
+                    <div style="font-size:0.77rem;color:#64748b;">${c.desc}</div>
+                </div>
+                <i class="fas fa-chevron-left" style="margin-right:auto;color:#94a3b8;font-size:0.8rem;"></i>
+            </button>`).join('')}
+        </div>`;
+}
+
+const _TANACH_SUBS = {
+    'תורה': ['בראשית','שמות','ויקרא','במדבר','דברים'],
+    'נביאים ראשונים': ['יהושע','שופטים','שמואל א','שמואל ב','מלכים א','מלכים ב'],
+    'נביאים אחרונים': ['ישעיהו','ירמיהו','יחזקאל','הושע','יואל','עמוס','עובדיה','יונה','מיכה','נחום','חבקוק','צפניה','חגי','זכריה'],
+    'כתובים': ['תהילים','משלי','איוב','שיר השירים','רות','איכה','קהלת','אסתר','דניאל','עזרא','נחמיה','דברי הימים א','דברי הימים ב'],
+};
+
+function renderBookBrowseCategory(catId) {
+    const secEl = document.getElementById('add-dialog-section');
+    if (!secEl) return;
+    secEl.style.padding = '16px';
+
+    if (catId === 'tanach') {
+        secEl.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <button onclick="renderBookBrowseMain(document.getElementById('add-dialog-section'))" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:0.85rem;display:flex;align-items:center;gap:5px;padding:4px 0;">
+                    <i class="fas fa-arrow-right"></i> חזרה
+                </button>
+                <div style="font-weight:800;font-size:1rem;color:var(--text-main);">תנ"ך</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                ${Object.entries(_TANACH_SUBS).map(([sub, books]) => `
+                <div>
+                    <div style="font-size:0.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">${sub}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:7px;">
+                        ${books.map(b => `<button onclick="pickBookFromBrowse('${b.replace(/'/g,"\\'")}',true)" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:10px;padding:7px 13px;cursor:pointer;font-size:0.84rem;font-weight:600;color:var(--text-main);transition:all 0.12s;" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)';this.style.color='var(--text-main)'">${b}</button>`).join('')}
+                    </div>
+                </div>`).join('')}
+            </div>`;
+        return;
+    }
+
+    const catMap = { bavli: 'תלמוד בבלי', yerushalmi: 'תלמוד ירושלמי', mishnah: 'משנה', halacha: 'הלכה' };
+    const catColors = { bavli: '#1d4ed8', yerushalmi: '#0369a1', mishnah: '#059669', halacha: '#b45309' };
+    const catLabels = { bavli: 'תלמוד בבלי', yerushalmi: 'תלמוד ירושלמי', mishnah: 'משנה', halacha: 'הלכה' };
+    const dbCat = catMap[catId];
+    const color = catColors[catId] || '#1e293b';
+    const label = catLabels[catId] || dbCat;
+
+    const books = (typeof BOOKS_DB !== 'undefined' ? BOOKS_DB : []).filter(b => b.category === dbCat);
+    secEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <button onclick="renderBookBrowseMain(document.getElementById('add-dialog-section'))" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:0.85rem;display:flex;align-items:center;gap:5px;padding:4px 0;">
+                <i class="fas fa-arrow-right"></i> חזרה
+            </button>
+            <div style="font-weight:800;font-size:1rem;color:var(--text-main);">${label}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;">
+            ${books.map(b => `<button onclick="pickBookFromBrowse('${b.name.replace(/'/g,"\\'")}',true)" style="background:var(--bg,#f8fafc);border:1.5px solid var(--border-color,#e2e8f0);border-radius:10px;padding:7px 13px;cursor:pointer;font-size:0.84rem;font-weight:600;color:var(--text-main);transition:all 0.12s;" onmouseover="this.style.borderColor='${color}';this.style.color='${color}'" onmouseout="this.style.borderColor='var(--border-color,#e2e8f0)';this.style.color='var(--text-main)'">${b.name}</button>`).join('')}
+        </div>`;
+}
+
+async function pickBookFromBrowse(bookName, fromDialog) {
+    showAddDialogSection('new');
+    await new Promise(r => setTimeout(r, 80));
+    const searchInput = document.getElementById('newBookSearch');
+    if (searchInput) {
+        searchInput.value = bookName;
+    }
+    if (typeof selectBookFromSearch === 'function') selectBookFromSearch(bookName);
+}
+
 function switchScreen(name, el, chatFilter) {
 
     if (name === 'chats' && !requireAuth()) return;
@@ -2261,13 +2492,90 @@ const routeScreens = ['dashboard', 'chavrutas', 'chats', 'add', 'community', 'pr
 }
 
 // ===== מסך שיחות וידאו =====
-function renderVideoSessions() {
+async function renderVideoSessions() {
     const container = document.getElementById('videoSessionsList');
     if (!container) return;
 
     container.innerHTML = `
+    <div class="max-w-2xl mx-auto w-full px-4 py-6">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;gap:12px;flex-wrap:wrap;">
+            <h2 style="font-size:1.4rem;font-weight:800;color:var(--text-main);display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-video" style="color:#6366f1;"></i> שיחות וידאו
+            </h2>
+            <button onclick="openCreateShiurFromMain()" style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:8px 18px;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-plus"></i> פתח שיעור חדש
+            </button>
+        </div>
+        <div id="video-sessions-live-list" style="display:flex;flex-direction:column;gap:12px;">
+            <div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-circle-notch fa-spin" style="font-size:1.5rem;"></i></div>
+        </div>
+    </div>`;
+
+    try {
+        const { data, error } = await supabaseClient.from('live_rooms')
+            .select('*')
+            .eq('is_active', true)
+            .eq('is_public', true)
+            .order('started_at', { ascending: false })
+            .limit(30);
+
+        const listEl = document.getElementById('video-sessions-live-list');
+        if (!listEl) return;
+
+        if (error || !data || data.length === 0) {
+            listEl.innerHTML = `
+                <div style="background:var(--bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:2rem;text-align:center;color:#94a3b8;">
+                    <i class="fas fa-video" style="font-size:2rem;margin-bottom:0.75rem;display:block;color:#c7d2fe;"></i>
+                    <div style="font-weight:700;margin-bottom:4px;color:var(--text-main);">אין שיעורים פעילים כרגע</div>
+                    <div style="font-size:0.85rem;">פתח שיעור חדש כדי להתחיל</div>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = data.map(room => `
+            <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:14px;padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;cursor:pointer;transition:box-shadow 0.15s;" onclick="joinVideoSession('${room.id}')" onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,0.09)'" onmouseleave="this.style.boxShadow='none'">
+                <div style="width:48px;height:48px;background:#ede9fe;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-chalkboard-teacher" style="color:#6366f1;font-size:1.2rem;"></i>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizeChatHtml(room.title || room.book || 'שיעור')}</div>
+                    <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">${room.host_name ? 'מגיד שיעור: ' + sanitizeChatHtml(room.host_name) : ''} ${room.book ? '· ' + sanitizeChatHtml(room.book) : ''}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                    ${room.viewers_count ? `<span style="font-size:0.75rem;color:#64748b;"><i class="fas fa-eye"></i> ${room.viewers_count}</span>` : ''}
+                    <span style="background:#ef4444;color:#fff;border-radius:999px;padding:2px 10px;font-size:0.7rem;font-weight:800;">● LIVE</span>
+                </div>
+            </div>`).join('');
+    } catch(e) {
+        const listEl = document.getElementById('video-sessions-live-list');
+        if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">שגיאה בטעינת השיעורים</div>';
+    }
+}
+
+function joinVideoSession(roomId) {
+    if (!roomId) { showToast('לא נמצא חדר לצפייה', 'error'); return; }
+    window.open(`video-study.html?room=${encodeURIComponent(roomId)}&mode=shiur_viewer`, '_blank');
+}
+
+function openCreateShiurFromMain() {
+    if (!requireAuth()) return;
+    const bookName = prompt('שם הספר / נושא השיעור:');
+    if (!bookName) return;
+    const title = prompt('כותרת השיעור:');
+    if (!title) return;
+    const newRoomId = 'beithamidrash-shiur-' + Date.now();
+    const url = `video-study.html?room=${encodeURIComponent(newRoomId)}&book=${encodeURIComponent(bookName)}&mode=shiur_teacher&partner=${encodeURIComponent(title)}`;
+    window.open(url, '_blank');
+}
+
+/* === להפעלת מסך "אינו זמין" מחדש, החלף את הפונקציות מעל בקוד הבא: ===
+
+function renderVideoSessions() {
+    const container = document.getElementById('videoSessionsList');
+    if (!container) return;
+    container.innerHTML = `
     <main class="max-w-2xl mx-auto w-full px-4 py-16 flex flex-col items-center gap-6 text-center">
-        <div style="width:80px; height:80px; background:#f1f5f9; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2.5rem; color:#94a3b8;">
+        <div style="width:80px; height:80px; background:#f1f5f9; border-radius:50%; display:flex; align-items:center; justify-content:justify-content:center; font-size:2.5rem; color:#94a3b8;">
             <i class="fas fa-video-slash"></i>
         </div>
         <div>
@@ -2280,14 +2588,10 @@ function renderVideoSessions() {
         </div>
     </main>`;
 }
+function joinVideoSession() { showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info'); }
+function openCreateShiurFromMain() { showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info'); }
 
-function joinVideoSession() {
-    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
-}
-
-function openCreateShiurFromMain() {
-    showToast('שיחות וידאו אינן זמינות כעת — בקרוב!', 'info');
-}
+=== סוף קוד חסימה === */
 
 function formatDuration(startTime) {
     if (!startTime) return '';
@@ -2488,8 +2792,8 @@ function renderGoalCard(goal, container, isActive) {
                 </div>
             </div>
         </div>
-        <div class="flex items-center justify-between md:justify-end gap-3">
-            <div class="flex items-center gap-2">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between md:justify-end gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
                 <button class="w-10 h-10 rounded-full glass hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center text-slate-500 dark:text-slate-400" onclick="deleteGoal('${goal.id}')" title="מחק">
                     <i class="fas fa-trash-alt"></i>
                 </button>
@@ -2618,38 +2922,207 @@ async function openNotes(goalId) {
     const container = document.getElementById('notesContainer');
     if (container) container.remove();
 
-    let frame = document.getElementById('notesFrame');
-    if (!frame) {
-        frame = document.createElement('iframe');
-        frame.id = 'notesFrame';
-        frame.style.cssText = "width:100%; height:100%; border:none; border-radius: 16px;";
-        modalContent.appendChild(frame);
-    }
-    frame.style.display = 'block';
-    frame.src = 'notes.html';
-
     document.getElementById('notesModal').style.display = 'flex';
     bringToFront(document.getElementById('notesModal'));
+    notesApp_init();
 }
 
 function saveNotesFromModal() {
-    const frame = document.getElementById('notesFrame');
-    if (frame && frame.contentWindow && typeof frame.contentWindow.saveNotes === 'function') {
-        frame.contentWindow.saveNotes();
+    notesApp_saveNotes(true);
+}
 
-        const btn = document.querySelector('#notesModal .btn-outline');
-        if (btn) {
-            const originalHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-check"></i> נשמר!';
-            btn.style.borderColor = '#22c55e';
-            btn.style.color = '#22c55e';
-            setTimeout(() => {
-                btn.innerHTML = originalHtml;
-                btn.style.borderColor = 'white';
-                btn.style.color = 'white';
-            }, 2000);
+// ─── Notes App (inline, replaces notes.html iframe) ────────────────────────
+let _notesApp = { notes: [], activeId: null, context: null, saveDebounce: null };
+
+async function notesApp_init() {
+    _notesApp.context = currentNotesData;
+    _notesApp.notes = [];
+    _notesApp.activeId = null;
+
+    const editor = document.getElementById('notes-editor');
+    if (editor) { editor.innerHTML = ''; editor.contentEditable = 'true'; }
+    document.getElementById('notes-empty-state').style.display = 'flex';
+    document.getElementById('notes-editor').style.display = 'none';
+    document.getElementById('notes-toolbar').style.display = 'none';
+    document.getElementById('notes-list').innerHTML = '<div style="text-align:center;color:#94a3b8;padding:1rem;font-size:0.85rem;">טוען...</div>';
+
+    if (supabaseClient && currentUser && _notesApp.context?.bookName) {
+        await _notesApp_loadFromDB();
+    } else if (Array.isArray(_notesApp.context?.notes)) {
+        _notesApp.notes = _notesApp.context.notes.map((n, i) => ({
+            id: n.id || ('local-' + Date.now() + i),
+            title: n.title || `חידוש ${i + 1}`,
+            content: (n.content || n) === '<div>התחל לכתוב כאן...</div>' ? '' : (n.content || n || ''),
+            date: n.date || new Date().toISOString()
+        }));
+    }
+
+    _notesApp_renderList();
+    if (_notesApp.notes.length > 0) _notesApp_loadNote(_notesApp.notes[0].id);
+}
+
+async function _notesApp_loadFromDB() {
+    const bk = _notesApp.context.bookName;
+    const email = currentUser.email;
+    const [{ data }, { data: shared }] = await Promise.all([
+        supabaseClient.from('notes').select('*').eq('book_name', bk).eq('user_email', email),
+        supabaseClient.from('notes').select('*, note_collaborators!inner(permission_level)').eq('note_collaborators.collaborator_email', email).eq('book_name', bk)
+    ]);
+    let dbNotes = [...(data || [])];
+    (shared || []).forEach(n => {
+        n.is_shared_with_me = true;
+        n.permission = n.note_collaborators[0]?.permission_level;
+        dbNotes.push(n);
+    });
+    if (dbNotes.length > 0) {
+        _notesApp.notes = dbNotes;
+    } else if (_notesApp.context.notes?.length > 0) {
+        for (const n of _notesApp.context.notes) {
+            const content = (n.content || n) === '<div>התחל לכתוב כאן...</div>' ? '' : (n.content || n || '');
+            const { data: ins } = await supabaseClient.from('notes').insert({ user_email: email, book_name: bk, title: n.title || 'חידוש חדש', content }).select().single();
+            if (ins) _notesApp.notes.push(ins);
         }
     }
+}
+
+function _notesApp_renderList() {
+    const list = document.getElementById('notes-list');
+    if (!list) return;
+    if (!_notesApp.notes.length) {
+        list.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:1rem;font-size:0.85rem;">אין עדיין דפים במחברת זו.</div>';
+        return;
+    }
+    list.innerHTML = _notesApp.notes.map(n => `
+        <div class="notes-item${n.id === _notesApp.activeId ? ' notes-active' : ''}" onclick="notesApp_loadNoteEl(event,'${String(n.id).replace(/'/g, "\\'")}',this)"
+            style="display:flex;align-items:center;justify-content:space-between;padding:0.65rem 0.85rem;border-radius:8px;cursor:pointer;margin-bottom:3px;transition:background 0.15s;border:2px solid transparent;${n.id === _notesApp.activeId ? 'background:#eff6ff;border-color:#3b82f6;color:#1e40af;font-weight:700;' : ''}">
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.88rem;">${n.title}</span>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+                <button onclick="event.stopPropagation();notesApp_renameNote('${String(n.id).replace(/'/g, "\\'")}',this)" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:2px 4px;" title="שנה שם"><i class="fas fa-pen" style="font-size:0.75rem;"></i></button>
+                <button onclick="event.stopPropagation();notesApp_deleteNote('${String(n.id).replace(/'/g, "\\'")}',this)" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:2px 4px;" title="מחק"><i class="fas fa-trash-alt" style="font-size:0.75rem;"></i></button>
+            </div>
+        </div>`).join('');
+}
+
+function notesApp_loadNoteEl(event, id) { notesApp_loadNote(id); }
+
+function notesApp_loadNote(id) {
+    _notesApp.activeId = id;
+    const note = _notesApp.notes.find(n => String(n.id) === String(id));
+    const editor = document.getElementById('notes-editor');
+    const emptyState = document.getElementById('notes-empty-state');
+    const toolbar = document.getElementById('notes-toolbar');
+    if (!note) {
+        _notesApp.activeId = null;
+        emptyState.style.display = 'flex';
+        editor.style.display = 'none';
+        toolbar.style.display = 'none';
+        _notesApp_renderList();
+        return;
+    }
+    emptyState.style.display = 'none';
+    toolbar.style.display = 'flex';
+    editor.style.display = 'block';
+    editor.contentEditable = (note.is_shared_with_me && note.permission === 'view') ? 'false' : 'true';
+    editor.innerHTML = note.content || '';
+    _notesApp_renderList();
+    editor.focus();
+}
+
+function notesApp_createNewNote() {
+    const modal = document.getElementById('notes-new-modal');
+    const inp = document.getElementById('notes-new-title');
+    if (modal && inp) { inp.value = 'חידוש חדש'; modal.style.display = 'flex'; setTimeout(() => { inp.focus(); inp.select(); }, 60); }
+}
+
+function notesApp_confirmNewNote() {
+    const modal = document.getElementById('notes-new-modal');
+    const title = (document.getElementById('notes-new-title')?.value || '').trim() || 'חידוש חדש';
+    if (modal) modal.style.display = 'none';
+    const newNote = { id: 'temp-' + Date.now(), title, content: '', date: new Date().toISOString() };
+    _notesApp.notes.unshift(newNote);
+    _notesApp_renderList();
+    notesApp_loadNote(newNote.id);
+    notesApp_saveNotes();
+}
+
+async function notesApp_deleteNote(id) {
+    if (!confirm('האם למחוק דף זה?')) return;
+    _notesApp.notes = _notesApp.notes.filter(n => String(n.id) !== String(id));
+    if (supabaseClient && !String(id).startsWith('temp-') && !String(id).startsWith('local-')) {
+        await supabaseClient.from('notes').delete().eq('id', id);
+    }
+    if (String(_notesApp.activeId) === String(id)) {
+        _notesApp.activeId = null;
+        document.getElementById('notes-editor').style.display = 'none';
+        document.getElementById('notes-toolbar').style.display = 'none';
+        document.getElementById('notes-empty-state').style.display = 'flex';
+    }
+    _notesApp_renderList();
+}
+
+async function notesApp_renameNote(id) {
+    const note = _notesApp.notes.find(n => String(n.id) === String(id));
+    if (!note) return;
+    const newTitle = await customPrompt('ערוך שם:', note.title);
+    if (newTitle?.trim()) { note.title = newTitle.trim(); _notesApp_renderList(); notesApp_saveNotes(); }
+}
+
+function notesApp_handleInput() {
+    if (!_notesApp.activeId) return;
+    const note = _notesApp.notes.find(n => String(n.id) === String(_notesApp.activeId));
+    if (note) {
+        note.content = document.getElementById('notes-editor').innerHTML;
+        const st = document.getElementById('notes-save-status');
+        if (st) { st.textContent = 'עורך...'; st.style.opacity = '1'; }
+        clearTimeout(_notesApp.saveDebounce);
+        _notesApp.saveDebounce = setTimeout(() => notesApp_saveNotes(), 2000);
+    }
+}
+
+async function notesApp_saveNotes(showFeedback) {
+    const id = _notesApp.activeId;
+    if (!id) return;
+    const note = _notesApp.notes.find(n => String(n.id) === String(id));
+    if (!note) return;
+
+    if (supabaseClient && currentUser) {
+        if (note.is_shared_with_me && note.permission === 'view') return;
+        const payload = { title: note.title, content: note.content, updated_at: new Date().toISOString() };
+        if (String(note.id).startsWith('temp-') || String(note.id).startsWith('local-')) {
+            payload.user_email = currentUser.email;
+            payload.book_name = _notesApp.context?.bookName || '';
+            const { data: ins } = await supabaseClient.from('notes').insert(payload).select().single();
+            if (ins) note.id = ins.id;
+        } else {
+            await supabaseClient.from('notes').update(payload).eq('id', note.id);
+        }
+    }
+
+    if (_notesApp.context?.goalId && typeof updateGoalNotes === 'function') {
+        updateGoalNotes(_notesApp.context.goalId, _notesApp.notes);
+    }
+
+    const st = document.getElementById('notes-save-status');
+    if (st) { st.textContent = 'נשמר ✓'; st.style.opacity = '1'; setTimeout(() => { st.style.opacity = '0'; }, 2000); }
+
+    if (showFeedback) {
+        const btn = document.querySelector('#notesModal .btn-outline');
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> נשמר!';
+            btn.style.borderColor = '#22c55e'; btn.style.color = '#22c55e';
+            setTimeout(() => { btn.innerHTML = orig; btn.style.borderColor = 'white'; btn.style.color = 'white'; }, 2000);
+        }
+    }
+}
+
+function notesApp_downloadNote() {
+    if (!_notesApp.activeId) return;
+    const note = _notesApp.notes.find(n => String(n.id) === String(_notesApp.activeId));
+    if (!note) return;
+    const tmp = document.createElement('div'); tmp.innerHTML = note.content;
+    const blob = new Blob([tmp.innerText], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${note.title}.txt`; a.click(); URL.revokeObjectURL(a.href);
 }
 
 function toggleFocusMode() {
@@ -2922,6 +3395,111 @@ function showClickFeedback(btn, change) {
     setTimeout(() => {
         if (span.parentNode) span.parentNode.removeChild(span);
     }, 800);
+}
+
+// ─── מפת דרכים ───────────────────────────────────────────────────────────────
+let _roadmapFilter = 'בטיפול';
+function openRoadmapModal() {
+    const modal = document.getElementById('roadmapModal');
+    modal.style.display = 'flex';
+    setRoadmapFilter(_roadmapFilter, modal.querySelector('.roadmap-tab'));
+}
+async function setRoadmapFilter(status, btn) {
+    _roadmapFilter = status;
+    const modal = document.getElementById('roadmapModal');
+    modal.querySelectorAll('.roadmap-tab').forEach(b => {
+        b.style.background = 'transparent'; b.style.color = '#64748b';
+    });
+    if (btn) { btn.style.background = 'var(--card-bg)'; btn.style.color = 'var(--text-main)'; }
+    const area = document.getElementById('roadmap-list-area');
+    if (!area) return;
+    area.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">טוען...</div>';
+    const { data, error } = await supabaseClient.from('roadmap').select('*').eq('status', status).order('created_at', { ascending: false });
+    if (error || !data?.length) {
+        area.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">אין פריטים בקטגוריה זו</div>';
+        return;
+    }
+    const statusColors = { 'בוצע': '#16a34a', 'בטיפול': '#f59e0b', 'בתכנון': '#6366f1' };
+    const statusIcons = { 'בוצע': '✅', 'בטיפול': '🔄', 'בתכנון': '📋' };
+    area.innerHTML = data.map(item => `
+        <div style="background:var(--bg,#f8fafc);border-radius:0.75rem;padding:1rem;border:1px solid var(--border-color);display:flex;gap:0.75rem;align-items:flex-start;">
+            <span style="font-size:1.3rem;flex-shrink:0;">${statusIcons[item.status] || '📌'}</span>
+            <div style="flex:1;">
+                <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.25rem;">${sanitizeChatHtml(item.title || '')}</div>
+                ${item.description ? `<div style="font-size:0.82rem;color:#64748b;">${sanitizeChatHtml(item.description)}</div>` : ''}
+            </div>
+            <span style="background:${statusColors[item.status] || '#94a3b8'}22;color:${statusColors[item.status] || '#94a3b8'};border-radius:999px;padding:2px 10px;font-size:0.72rem;font-weight:700;white-space:nowrap;flex-shrink:0;">${item.status}</span>
+        </div>`).join('');
+    modal.querySelectorAll('.roadmap-tab').forEach(b => {
+        if (b.textContent.trim() === status) { b.style.background = 'var(--card-bg)'; b.style.color = 'var(--text-main)'; }
+    });
+}
+
+// ─── שיעורי וידאו ─────────────────────────────────────────────────────────────
+async function openVideoClassesModal() {
+    const modal = document.getElementById('videoClassesModal');
+    modal.style.display = 'flex';
+    await loadVideoClasses();
+}
+async function loadVideoClasses() {
+    const area = document.getElementById('video-classes-list');
+    if (!area) return;
+    area.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:1rem;padding:1rem 0;">
+            <div style="background:var(--card-bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;padding:0.875rem 1rem;display:flex;align-items:center;gap:0.75rem;">
+                <i class="fas fa-tools" style="color:var(--accent,#f59e0b);font-size:1rem;flex-shrink:0;"></i>
+                <span style="font-size:0.875rem;color:var(--text-muted,#64748b);line-height:1.5;">שיעורי הווידאו בשלבי פיתוח — ייתכן ולא יהיו שיעורים זמינים כרגע</span>
+            </div>
+            ${[1,2,3].map(()=>`
+            <div style="display:flex;gap:0.75rem;align-items:center;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:200% 100%;animation:vc-shimmer 1.5s infinite;border-radius:0.75rem;padding:0.75rem;border:1px solid #e2e8f0;">
+                <div style="width:80px;height:54px;border-radius:8px;background:rgba(0,0,0,0.07);flex-shrink:0;"></div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                    <div style="height:14px;background:rgba(0,0,0,0.08);border-radius:4px;width:70%;"></div>
+                    <div style="height:11px;background:rgba(0,0,0,0.05);border-radius:4px;width:45%;"></div>
+                </div>
+            </div>`).join('')}
+        </div>
+        <style>@keyframes vc-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
+    `;
+    const { data, error } = await supabaseClient.from('shiurim').select('*').order('created_at', { ascending: false }).limit(30);
+    if (error || !data?.length) {
+        area.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:1rem;padding:1rem 0;">
+                <div style="background:var(--card-bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;padding:0.875rem 1rem;display:flex;align-items:center;gap:0.75rem;">
+                    <i class="fas fa-tools" style="color:var(--accent,#f59e0b);font-size:1rem;flex-shrink:0;"></i>
+                    <span style="font-size:0.875rem;color:var(--text-muted,#64748b);line-height:1.5;">שיעורי הווידאו בשלבי פיתוח — ייתכן ולא יהיו שיעורים זמינים כרגע</span>
+                </div>
+                <div style="text-align:center;padding:1.5rem;color:#94a3b8;"><i class="fas fa-video" style="font-size:2rem;margin-bottom:0.5rem;display:block;"></i>אין שיעורים זמינים כרגע</div>
+            </div>
+        `;
+        return;
+    }
+    const banner = `
+        <div style="background:var(--card-bg,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:0.75rem;padding:0.875rem 1rem;display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+            <i class="fas fa-tools" style="color:var(--accent,#f59e0b);font-size:1rem;flex-shrink:0;"></i>
+            <span style="font-size:0.875rem;color:var(--text-muted,#64748b);line-height:1.5;">שיעורי הווידאו בשלבי פיתוח — ייתכן ולא יהיו שיעורים זמינים כרגע</span>
+        </div>
+    `;
+    area.innerHTML = banner + data.map(s => {
+        const isLive = s.is_live;
+        const thumb = s.thumbnail_url ? `<img src="${s.thumbnail_url}" style="width:80px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : `<div style="width:80px;height:54px;background:#1e293b;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fas fa-play-circle" style="color:#ef4444;font-size:1.4rem;"></i></div>`;
+        return `<div onclick="window.open('${s.video_url || '#'}','_blank')" style="display:flex;gap:0.75rem;align-items:center;background:var(--bg,#f8fafc);border-radius:0.75rem;padding:0.75rem;border:1px solid var(--border-color);cursor:pointer;transition:box-shadow 0.15s;" onmouseenter="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)'" onmouseleave="this.style.boxShadow='none'">
+            ${thumb}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizeChatHtml(s.title || 'שיעור')}</div>
+                ${s.rabbi_name ? `<div style="font-size:0.78rem;color:#64748b;margin-top:2px;">הרב ${sanitizeChatHtml(s.rabbi_name)}</div>` : ''}
+            </div>
+            ${isLive ? `<span style="background:#ef4444;color:white;border-radius:999px;padding:2px 10px;font-size:0.7rem;font-weight:800;flex-shrink:0;">● LIVE</span>` : ''}
+        </div>`;
+    }).join('');
+}
+async function checkLiveClasses() {
+    const { data } = await supabaseClient.from('shiurim').select('id').eq('is_live', true).limit(1);
+    const hasLive = data && data.length > 0;
+    ['video-live-dot','video-live-dot-mobile'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = hasLive ? 'block' : 'none';
+    });
 }
 
 let currentDonationType = 'sub';
@@ -3767,23 +4345,32 @@ async function cancelChavrutaBook(partnerIdentifier, bookName) {
 async function renderMazalTovInMainArea() {
     const main = document.getElementById('chat-main-area');
     main.innerHTML = `
-        <div class="chat-header" style="border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; padding: 15px; background: var(--primary); color: white;">
-            <div style="display:flex; align-items:center; gap:5px;">
-                <i class="fas fa-glass-cheers"></i>
-                <span>לוח סיומים</span>
+        <div class="chat-header" style="border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; padding: 15px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; position:relative; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:8px; position:relative; z-index:1;">
+                <span style="font-size:1.4rem;">🎊</span>
+                <span style="font-weight:800; font-size:1.05rem;">לוח סיומים — מזל טוב!</span>
+                <span style="font-size:1.4rem;">🎉</span>
             </div>
-            <div style="font-size:1.1rem; display:flex; gap:15px; align-items:center;">
-                <i class="fas fa-times" onclick="closeMainChat()" title="סגור" style="cursor:pointer;"></i>
+            <div style="position:relative; z-index:1;">
+                <i class="fas fa-times" onclick="closeMainChat()" title="סגור" style="cursor:pointer; font-size:1.1rem;"></i>
             </div>
+            <div style="position:absolute;inset:0;background:url('data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Ccircle cx=\'10\' cy=\'10\' r=\'2\' fill=\'white\' opacity=\'0.2\'/%3E%3Ccircle cx=\'30\' cy=\'20\' r=\'1.5\' fill=\'white\' opacity=\'0.15\'/%3E%3Ccircle cx=\'70\' cy=\'15\' r=\'2.5\' fill=\'white\' opacity=\'0.18\'/%3E%3Ccircle cx=\'90\' cy=\'8\' r=\'1\' fill=\'white\' opacity=\'0.25\'/%3E%3C/svg%3E') repeat;"></div>
         </div>
-        <div class="chat-body" style="border-radius: 0 0 12px 12px; overflow-y:auto; padding:20px;">
+        <div class="chat-body" id="mazaltov-chat-body" style="border-radius: 0 0 12px 12px; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; background:linear-gradient(180deg, #fffbeb 0%, #fefce8 100%);">
             <div id="mazaltov-main-container"></div>
         </div>
     `;
 
     const container = document.getElementById('mazaltov-main-container');
-    const siyumSkel = Array.from({length: 3}, () => `<div class="card siyum-card" style="margin-bottom:15px;text-align:center;padding:20px;"><div class="skeleton skeleton-line" style="width:60%;height:18px;margin:0 auto 12px;"></div><div class="skeleton skeleton-line" style="width:80%;height:14px;margin:0 auto 10px;"></div><div class="skeleton skeleton-line" style="width:40%;height:12px;margin:0 auto 14px;"></div><div class="skeleton" style="width:160px;height:38px;border-radius:25px;margin:0 auto;"></div></div>`).join('');
-    container.innerHTML = siyumSkel;
+    const skelHtml = Array.from({length: 3}, (_, i) => `
+        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:14px; ${i%2===1?'flex-direction:row-reverse;':''}">
+            <div class="skeleton" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;"></div>
+            <div style="flex:1; max-width:75%;">
+                <div class="skeleton skeleton-line" style="height:16px; width:70%; border-radius:12px; margin-bottom:8px;"></div>
+                <div class="skeleton skeleton-line" style="height:12px; width:50%; border-radius:8px;"></div>
+            </div>
+        </div>`).join('');
+    container.innerHTML = skelHtml;
 
 let siyumin = null;
     const { data: rawSiyumin, error } = await supabaseClient
@@ -3836,28 +4423,44 @@ const siyumIds = rawSiyumin.map(s => s.id);
     }
 
     if (!siyumin || siyumin.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:#94a3b8;">עדיין אין סיומים בלוח. היה הראשון לסיים!</p>';
+        container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;"><span style="font-size:3rem;">📖</span><br>עדיין אין סיומים בלוח. היה הראשון לסיים!</div>';
         return;
     }
 
     container.innerHTML = '';
-    siyumin.forEach(siyum => {
+
+    if (typeof confetti === 'function') {
+        confetti({ particleCount: 60, spread: 80, origin: { y: 0.3 }, colors: ['#FFB703', '#f59e0b', '#FCD34D', '#10b981', '#3b82f6'] });
+        setTimeout(() => confetti({ particleCount: 40, spread: 60, origin: { y: 0.4, x: 0.2 }, colors: ['#FFB703', '#ef4444', '#8b5cf6'] }), 600);
+        setTimeout(() => confetti({ particleCount: 40, spread: 60, origin: { y: 0.4, x: 0.8 }, colors: ['#FFB703', '#10b981', '#f97316'] }), 1200);
+    }
+
+    const festiveEmojis = ['🎊','🎉','✨','🏆','📚','🥂','🎗️','⭐','🌟','🎆'];
+    siyumin.forEach((siyum, idx) => {
         const name = siyum.users ? (siyum.users.display_name || 'לומד') : 'לומד';
         const mazalTovCount = siyum.siyum_reactions[0]?.count || 0;
+        const userId = siyum.users ? (siyum.users.id || siyum.users.email) : '';
+        const dateStr = new Date(siyum.completed_at).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+        const emoji = festiveEmojis[idx % festiveEmojis.length];
+        const isAlt = idx % 2 === 1;
+
         const div = document.createElement('div');
-        div.className = 'card siyum-card siyum-festive-bg';
-        div.style.marginBottom = '15px';
+        div.style.cssText = `display:flex; gap:10px; align-items:flex-end; margin-bottom:16px; ${isAlt ? 'flex-direction:row-reverse;' : ''}`;
         div.innerHTML = `
-            <div style="text-align:center; position:relative; z-index:2;">
-                <h3 style="color:#d97706; margin-top:0; font-family:'Secular One', sans-serif; font-size:1.5rem;">🎉 מזל טוב! 🎉</h3>
-                <div style="font-size:1.2rem; margin:10px 0;"><strong style="cursor:pointer; text-decoration:underline;" onclick="showUserDetails('${siyum.users ? (siyum.users.id || siyum.users.email) : ''}')">${name}</strong> סיים את <strong>${siyum.book_name}</strong></div>
-                <div style="font-size:0.85rem; color:#64748b; margin-bottom:15px;">${new Date(siyum.completed_at).toLocaleDateString('he-IL')}</div>
-                <button class="btn" style="width:auto; background:linear-gradient(135deg, #f59e0b, #d97706); border-radius:25px; box-shadow:0 4px 10px rgba(245, 158, 11, 0.3);" onclick="addSiyumReaction(${siyum.id}, this)">
-                    <i class="fas fa-glass-cheers"></i> שלח מזל טוב!
-                    <span id="siyum-count-${siyum.id}" style="background:rgba(255,255,255,0.3); padding: 2px 8px; border-radius:10px; margin-right:5px; font-weight:bold;">${mazalTovCount}</span>
-                </button>
-            </div> 
-        `;
+            <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;box-shadow:0 4px 12px rgba(245,158,11,0.3);">${emoji}</div>
+            <div style="max-width:80%;background:white;border-radius:${isAlt?'18px 18px 4px 18px':'18px 18px 18px 4px'};padding:12px 16px;box-shadow:0 2px 12px rgba(245,158,11,0.15);border:1px solid #fde68a;position:relative;">
+                <div style="font-size:0.7rem;color:#92400e;font-weight:700;margin-bottom:4px;letter-spacing:0.02em;">🎉 לוח הסיומים</div>
+                <div style="font-size:0.97rem;color:#1e293b;line-height:1.5;">
+                    <strong style="cursor:pointer;text-decoration:underline;color:#d97706;" onclick="showUserDetails('${userId}')">${name}</strong>
+                    סיים את <strong style="color:#0f172a;">${siyum.book_name}</strong>! 🏆
+                </div>
+                <div style="font-size:0.72rem;color:#92400e;margin-top:6px;opacity:0.75;">${dateStr}</div>
+                <div style="margin-top:10px;">
+                    <button onclick="addSiyumReaction(${siyum.id}, this)" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;border-radius:20px;padding:6px 14px;font-size:0.82rem;cursor:pointer;font-weight:700;box-shadow:0 3px 8px rgba(245,158,11,0.4);transition:all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        🥂 מזל טוב! <span id="siyum-count-${siyum.id}" style="background:rgba(255,255,255,0.25);padding:1px 7px;border-radius:10px;margin-right:3px;">${mazalTovCount}</span>
+                    </button>
+                </div>
+            </div>`;
         container.appendChild(div);
     });
 }
@@ -3958,8 +4561,8 @@ function setupRealtime() {
                 if (payload.eventType === 'UPDATE' && (newItem.status === 'accepted' || newItem.status === 'approved') && oldItem.status === 'pending' && newItem.sender_id === myId) {
                     const receiverUser = globalUsersData.find(u => u.id === newItem.receiver_id);
                     const receiverName = receiverUser ? receiverUser.name : 'החברותא';
-                    addNotification(`🎉 בקשת החברותא שלך עם ${receiverName} על הספר "${newItem.book_name}" אושרה!`);
-                    showToast(`החברותא עם ${receiverName} אושרה!`, "success");
+                    // הטוסט מיידי; ההודעה בפעמון מגיעה מה-DB (תמיכה גם באופליין)
+                    showToast(`🎉 החברותא עם ${receiverName} אושרה! קיבלת 15 זוזים.`, "success");
                 }
 
                 checkIncomingRequests();
@@ -4103,6 +4706,20 @@ let ctaHtml = '';
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles_public' }, () => {
             syncGlobalData().then(() => renderLeaderboard());
+        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_admin' }, (payload) => {
+            const msg = payload.new;
+            if (!msg || !currentUser) return;
+            if (msg.user_id !== currentUser.id) return;
+            // refresh the admin support chat window if it's open
+            const activeChatEmail = document.getElementById('chat-partner-email')?.textContent || '';
+            if (activeChatEmail === 'admin@system' || activeChatEmail === '') {
+                if (typeof checkNewMessagesFor === 'function') checkNewMessagesFor('admin@system');
+            }
+            // show notification if chat is not open
+            if (msg.sender_email === 'admin@system') {
+                addNotification('💬 תגובת הניהול: ' + (msg.content || '').slice(0, 60));
+            }
         })
         .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
@@ -4702,22 +5319,28 @@ const siyumIds = (rawSiyumin || []).map(s => s.id).filter(Boolean);
     }
 
     container.innerHTML = '';
-    siyumin.forEach(siyum => {
+    const festiveEmojis2 = ['🎊','🎉','✨','🏆','📚','🥂','🎗️','⭐'];
+    siyumin.forEach((siyum, idx) => {
         const name = siyum.displayName || 'לומד';
         const mazalTovCount = siyum.mazalTovCount || 0;
+        const emoji = festiveEmojis2[idx % festiveEmojis2.length];
+        const isAlt = idx % 2 === 1;
         const div = document.createElement('div');
-        div.className = 'card';
+        div.style.cssText = `display:flex; gap:10px; align-items:flex-end; margin-bottom:14px; ${isAlt ? 'flex-direction:row-reverse;' : ''}`;
         div.innerHTML = `
-            <h3 style="text-align:center; color:var(--accent);">🎉 מזל טוב ל<strong>${name}</strong>! 🎉</h3>
-            <p style="text-align:center; font-size:1.1rem;">על סיום לימוד <strong>${siyum.book_name}</strong></p>
-            <p style="text-align:center; font-size:0.8rem; color:#64748b;">בתאריך ${new Date(siyum.completed_at).toLocaleDateString('he-IL')}</p>
-            <div style="text-align:center; margin-top:15px;">
-                <button class="btn" style="width:auto; background:var(--primary);" onclick="addSiyumReaction(${siyum.id}, this)">
-                    <i class="fas fa-glass-cheers"></i> שלח מזל טוב!
-                    <span id="siyum-count-${siyum.id}" style="background:rgba(255,255,255,0.2); padding: 2px 8px; border-radius:10px; margin-right:5px;">${mazalTovCount}</span>
-                </button>
-            </div>
-        `;
+            <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;box-shadow:0 3px 10px rgba(245,158,11,0.3);">${emoji}</div>
+            <div style="max-width:82%;background:var(--card-bg,#fff);border-radius:${isAlt?'16px 16px 4px 16px':'16px 16px 16px 4px'};padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid var(--border-color,#fde68a);">
+                <div style="font-size:0.67rem;color:#92400e;font-weight:700;margin-bottom:3px;">🎉 לוח הסיומים</div>
+                <div style="font-size:0.9rem;color:var(--text-main,#1e293b);line-height:1.5;">
+                    <strong>${name}</strong> סיים את <strong>${siyum.book_name}</strong>! 🏆
+                </div>
+                <div style="font-size:0.7rem;color:#64748b;margin-top:4px;">${new Date(siyum.completed_at).toLocaleDateString('he-IL')}</div>
+                <div style="margin-top:8px;">
+                    <button onclick="addSiyumReaction(${siyum.id}, this)" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;border-radius:16px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-weight:700;">
+                        🥂 מזל טוב! <span id="siyum-count-${siyum.id}" style="background:rgba(255,255,255,0.25);padding:1px 6px;border-radius:8px;margin-right:2px;">${mazalTovCount}</span>
+                    </button>
+                </div>
+            </div>`;
         container.appendChild(div);
     });
 }
@@ -5503,6 +6126,15 @@ document.addEventListener('click', (e) => {
 });
 
 window.onload = async function () {
+    setTimeout(() => {
+        const splash = document.getElementById('app-splash');
+        if (splash && splash.style.opacity !== '0' && splash.style.display !== 'none') {
+            splash.style.transition = 'opacity 0.5s';
+            splash.style.opacity = '0';
+            setTimeout(() => { splash.style.display = 'none'; }, 500);
+        }
+    }, 600);
+
     try {
         await init();
     } catch (e) {

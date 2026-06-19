@@ -484,6 +484,25 @@
 </head>
 
 <body>
+    <!-- Splash / Loading Screen -->
+    <div id="app-splash" style="position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.25rem;pointer-events:none;">
+        <img src="logo-remove.png" alt="בית המדרש" style="height:90px;width:auto;" onerror="this.style.display='none'">
+        <div id="splash-title" style="font-size:2rem;font-weight:900;font-family:'Assistant',sans-serif;letter-spacing:-0.5px;">בית המדרש</div>
+        <div style="width:140px;height:4px;border-radius:999px;overflow:hidden;position:relative;" id="splash-track">
+            <div style="position:absolute;top:0;height:100%;width:56px;border-radius:999px;background:#f59e0b;animation:splash-slide 1.1s ease-in-out infinite;"></div>
+        </div>
+    </div>
+    <style>
+        @keyframes splash-slide{0%{left:-56px}100%{left:140px}}
+        #app-splash { background: #f8fafc; }
+        #splash-title { color: #1e293b; }
+        #splash-track { background: #e2e8f0; }
+        body.dark-mode #app-splash { background: #0f172a; }
+        body.dark-mode #splash-title { color: #f1f5f9; }
+        body.dark-mode #splash-track { background: #1e293b; }
+    </style>
+    <script>if(localStorage.getItem('torahApp_darkMode')==='true'){document.body.classList.add('dark-mode');}</script>
+
     <!-- Google OAuth Loading Overlay -->
     <div id="google-loading-overlay"
         style="display:none; position:fixed; inset:0; z-index:999999; background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%); align-items:center; justify-content:center; flex-direction:column; gap:1.5rem;">
@@ -753,19 +772,59 @@
 
     <div id="notesModal" class="modal-overlay" style="z-index: 2010;">
         <div class="modal-content"
-            style="width: 95%; max-width: 1200px; height: 90vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: transparent; box-shadow: none;">
+            style="width: 95%; max-width: 1200px; height: 90vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; background: white; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border-radius:16px;">
             <div
-                style="display: flex; justify-content: space-between; align-items: center; background: var(--primary); color: white; padding: 10px 15px; border-radius: 12px 12px 0 0;">
+                style="display: flex; justify-content: space-between; align-items: center; background: var(--primary); color: white; padding: 10px 15px; border-radius: 12px 12px 0 0; flex-shrink:0;">
                 <h3 id="notesBookTitle" style="margin: 0; color: white; border: none;">מחברת חידושי תורה</h3>
                 <div>
-                    <button class="btn-outline" onclick="saveNotesFromModal()"
+                    <button class="btn-outline" onclick="notesApp_saveNotes()"
                         style="color:white; border-color:white; font-size:0.8rem; padding:4px 8px;"><i
                             class="fas fa-save"></i> שמור חידושים</button>
                     <span class="close-modal" onclick="closeModal()"
                         style="position: static; color: white; transform: none; margin-right: 15px;">&times;</span>
                 </div>
             </div>
-            <iframe id="notesFrame" style="width:100%; height:100%; border:none; border-radius: 16px;"></iframe>
+            <!-- notes inline UI -->
+            <div id="notes-app-container" style="display:flex;flex:1;overflow:hidden;background:#f8fafc;">
+                <!-- sidebar -->
+                <div id="notes-sidebar" style="width:260px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
+                    <div style="padding:0.9rem 1rem;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+                        <h2 style="margin:0;font-size:1rem;color:#1e293b;font-weight:700;"><i class="fas fa-book-open" style="color:#ca8a04;margin-left:5px;"></i> המחברת שלי</h2>
+                        <button onclick="notesApp_createNewNote()" style="background:#3b82f6;color:#fff;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:1rem;" title="דף חדש"><i class="fas fa-plus"></i></button>
+                    </div>
+                    <div id="notes-list" style="flex:1;overflow-y:auto;padding:0.4rem;"></div>
+                </div>
+                <!-- main -->
+                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                    <div id="notes-toolbar" style="padding:0.4rem 0.8rem;border-bottom:1px solid #e2e8f0;display:flex;gap:6px;align-items:center;background:#fff;flex-shrink:0;">
+                        <button onclick="document.execCommand('bold')" style="background:none;border:none;width:32px;height:32px;border-radius:6px;cursor:pointer;color:#64748b;font-size:0.95rem;" title="הדגשה"><i class="fas fa-bold"></i></button>
+                        <button onclick="document.execCommand('italic')" style="background:none;border:none;width:32px;height:32px;border-radius:6px;cursor:pointer;color:#64748b;font-size:0.95rem;" title="הטיה"><i class="fas fa-italic"></i></button>
+                        <button onclick="document.execCommand('underline')" style="background:none;border:none;width:32px;height:32px;border-radius:6px;cursor:pointer;color:#64748b;font-size:0.95rem;" title="קו תחתון"><i class="fas fa-underline"></i></button>
+                        <div style="width:1px;height:18px;background:#e2e8f0;margin:0 3px;"></div>
+                        <button onclick="notesApp_downloadNote()" style="background:none;border:none;width:32px;height:32px;border-radius:6px;cursor:pointer;color:#64748b;font-size:0.95rem;" title="הורד"><i class="fas fa-download"></i></button>
+                        <span id="notes-save-status" style="font-size:0.75rem;color:#64748b;margin-right:auto;transition:opacity 0.5s;"></span>
+                    </div>
+                    <div id="notes-editor" contenteditable="true" style="flex:1;padding:1.5rem 2rem;outline:none;overflow-y:auto;font-size:1.05rem;line-height:1.75;color:#333;font-family:'Heebo',sans-serif;direction:rtl;" oninput="notesApp_handleInput()"></div>
+                    <div id="notes-empty-state" style="display:flex;flex:1;align-items:center;justify-content:center;flex-direction:column;color:#94a3b8;text-align:center;gap:10px;position:absolute;pointer-events:none;inset:0;margin-top:50px;">
+                        <i class="fas fa-book-open" style="font-size:2.5rem;opacity:0.3;"></i>
+                        <p style="font-size:1rem;font-weight:500;">בחר דף מהרשימה או צור דף חדש</p>
+                    </div>
+                </div>
+            </div>
+            <!-- new note modal (within notes app) -->
+            <div id="notes-new-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:3000;align-items:center;justify-content:center;">
+                <div style="background:#fff;padding:20px;border-radius:14px;width:320px;max-width:90%;box-shadow:0 10px 25px rgba(0,0,0,0.2);text-align:right;border:1px solid #e2e8f0;">
+                    <h3 style="margin-top:0;color:#1e293b;font-size:1rem;">📝 דף חדש</h3>
+                    <input id="notes-new-title" type="text" value="חידוש חדש" dir="rtl"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:1rem;font-family:inherit;outline:none;margin-bottom:14px;color:#1e293b;"
+                        onfocus="this.select()"
+                        onkeydown="if(event.key==='Enter')notesApp_confirmNewNote();if(event.key==='Escape')document.getElementById('notes-new-modal').style.display='none';">
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button onclick="document.getElementById('notes-new-modal').style.display='none'" style="padding:7px 16px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer;">ביטול</button>
+                        <button onclick="notesApp_confirmNewNote()" style="padding:7px 16px;border:none;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer;font-weight:700;">צור דף</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -861,6 +920,41 @@
                 <div style="margin-top: 30px; text-align: center; color: #64748b; font-size: 0.9rem;">
                     ט.ל.ח | עודכן לאחרונה: מרץ 2026
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- מודל מפת דרכים -->
+    <div id="roadmapModal" class="modal-overlay" onclick="if(event.target===this)this.style.display='none'" style="z-index:20000;">
+        <div style="background:var(--card-bg);color:var(--text-main);width:90%;max-width:560px;border-radius:1.5rem;overflow:hidden;position:relative;display:flex;flex-direction:column;max-height:85vh;box-shadow:0 20px 40px rgba(0,0,0,0.15);margin:auto;font-family:'Assistant',sans-serif;">
+            <span onclick="document.getElementById('roadmapModal').style.display='none'" style="position:absolute;top:1rem;left:1rem;z-index:10;font-size:1.4rem;cursor:pointer;color:#94a3b8;line-height:1;">&times;</span>
+            <div style="padding:2rem 2rem 1.25rem;text-align:center;border-bottom:1px solid var(--border-color);">
+                <div style="display:flex;justify-content:center;margin-bottom:0.35rem;">
+                    <h2 style="margin:0;font-size:1.25rem;font-weight:800;color:var(--text-main);">מפת הדרכים שלנו</h2>
+                </div>
+                <p style="margin:0;font-size:0.85rem;color:#64748b;text-align:center;">הצצה לעתיד של בית המדרש - מה עשינו ומה עוד בדרך.</p>
+                <div style="display:flex;gap:0.5rem;background:var(--bg,#f1f5f9);border-radius:0.75rem;padding:0.3rem;margin-top:1rem;">
+                    <button class="roadmap-tab" onclick="setRoadmapFilter('בוצע', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בוצע</button>
+                    <button class="roadmap-tab" onclick="setRoadmapFilter('בטיפול', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בטיפול</button>
+                    <button class="roadmap-tab" onclick="setRoadmapFilter('בתכנון', this)" style="flex:1;padding:0.5rem 0.75rem;border-radius:0.5rem;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;font-family:'Assistant',sans-serif;">בתכנון</button>
+                </div>
+            </div>
+            <div id="roadmap-list-area" style="padding:1.25rem;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.75rem;">
+                <div style="text-align:center;padding:2rem;color:#94a3b8;">טוען...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- מודל שיעורי וידאו -->
+    <div id="videoClassesModal" class="modal-overlay" onclick="if(event.target===this)this.style.display='none'" style="z-index:20000;">
+        <div style="background:var(--card-bg);color:var(--text-main);width:90%;max-width:580px;border-radius:1.5rem;overflow:hidden;position:relative;display:flex;flex-direction:column;max-height:85vh;box-shadow:0 20px 40px rgba(0,0,0,0.15);margin:auto;font-family:'Assistant',sans-serif;">
+            <span onclick="document.getElementById('videoClassesModal').style.display='none'" style="position:absolute;top:1rem;left:1rem;z-index:10;font-size:1.4rem;cursor:pointer;color:#94a3b8;line-height:1;">&times;</span>
+            <div style="padding:1.5rem 2rem 1.25rem;border-bottom:1px solid var(--border-color);text-align:center;">
+                <h2 style="margin:0 0 0.25rem;font-size:1.2rem;font-weight:800;"><i class="fas fa-play-circle" style="color:#ef4444;"></i> שיעורי וידאו</h2>
+                <p style="margin:0;font-size:0.82rem;color:#64748b;">שיעורים מוקלטים ושידורים חיים</p>
+            </div>
+            <div id="video-classes-list" style="padding:1.25rem;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.75rem;">
+                <div style="text-align:center;padding:2rem;color:#94a3b8;">טוען שיעורים...</div>
             </div>
         </div>
     </div>
@@ -1209,11 +1303,20 @@
             </div>
 
             <div class="header-group-right">
+                <button id="btn-video-classes" class="btn-video-header" onclick="openVideoClassesModal()" title="שיעורי וידאו" style="position:relative;">
+                    <i class="fas fa-play-circle"></i> <span class="video-btn-text">שיעורי וידאו</span>
+                    <span id="video-live-dot" style="display:none;position:absolute;top:4px;right:4px;width:9px;height:9px;background:#ef4444;border-radius:50%;border:2px solid var(--card-bg);animation:pulse 1.4s infinite;"></span>
+                </button>
                 <button class="btn-donate-header" onclick="openDonationModal()"><i class="fas fa-crown"></i> מנוי /
                     תרומה</button>
                 <button class="btn-donate-mobile header-action-btn" onclick="openDonationModal()" title="מנוי / תרומה"
                     style="display:none; position:relative;">
                     <i class="fas fa-crown" style="color:#f59e0b; font-size:1.1rem;"></i>
+                </button>
+                <button class="btn-video-mobile header-action-btn" onclick="openVideoClassesModal()" title="שיעורי וידאו"
+                    style="display:none; position:relative;">
+                    <i class="fas fa-play-circle" style="color:#ef4444; font-size:1.1rem;"></i>
+                    <span id="video-live-dot-mobile" style="display:none;position:absolute;top:0;right:0;width:9px;height:9px;background:#ef4444;border-radius:50%;border:2px solid var(--card-bg);animation:pulse 1.4s infinite;"></span>
                 </button>
                 <div id="notif-container" class="header-action-btn" onclick="toggleNotifications()">
                     <span class="material-icons-round">notifications</span>
@@ -1290,11 +1393,9 @@
                                 <i class="fas fa-user-plus" style="color:#8b5cf6;font-size:1.3rem;"></i>
                                 <span>חבר מביא חבר</span>
                             </button>
-                            <button class="grid-menu-cell"
-                                onclick="closeGridMenu();document.getElementById('policyModal').style.display='flex';"
-                                title="תקנון">
-                                <i class="fas fa-file-contract" style="color:#64748b;font-size:1.3rem;"></i>
-                                <span>תקנון</span>
+                            <button class="grid-menu-cell" onclick="closeGridMenu();openRoadmapModal();" title="מפת דרכים">
+                                <i class="fas fa-map-signs" style="color:#10b981;font-size:1.3rem;"></i>
+                                <span>מפת דרכים</span>
                             </button>
                             <button class="grid-menu-cell" onclick="closeGridMenu();openChat('admin@system','תמיכה');"
                                 title="תמיכה">
@@ -1660,7 +1761,6 @@
                     </a>
                 </div>
 
-                <div class="h-1 bg-[#e8951a] w-full mt-2"></div>
 
                 <div class="p-4 md:p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -2550,7 +2650,7 @@
                     <span class="floating-nav-label">חברותות</span>
                 </div>
                 <div class="floating-nav-item-center">
-                    <button class="floating-nav-add-btn" onclick="switchScreen('add', this)">
+                    <button class="floating-nav-add-btn" onclick="openAddDialog()">
                         <span class="material-icons-round">add</span>
                     </button>
                 </div>

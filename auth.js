@@ -74,20 +74,28 @@ window.handleCompleteProfile = async function handleCompleteProfile(e) {
         const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
         if (userError || !user) throw new Error("משתמש לא מזוהה. אנא התחבר שוב.");
 
+        const fullAddress = document.getElementById('compAddress').value.trim();
+        // Extract city: take first comma-separated part, or the whole address if short
+        const cityFromAddress = fullAddress.includes(',')
+            ? fullAddress.split(',').pop().trim()
+            : fullAddress.split(' ').slice(-1)[0] || fullAddress;
+
         const profileData = {
             id: user.id,
             display_name: document.getElementById('compFullName').value.trim(),
             age: parseInt(document.getElementById('compAge').value),
             phone: document.getElementById('compPhone').value,
-            address: document.getElementById('compAddress').value,
-            id: user.id
+            address: fullAddress,
+            city: cityFromAddress,
         };
 
-const { error: pubError } = await supabaseClient
+        const { error: pubError } = await supabaseClient
             .from('profiles_public')
             .upsert({
                 id: user.id,
                 display_name: profileData.display_name,
+                city: profileData.city,
+                marketing_consent: true,
             });
 
         const { error: privError } = await supabaseClient
