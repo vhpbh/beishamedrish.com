@@ -210,16 +210,26 @@ let activeSession = null;
                             userRecord = { id: session.user.id, email: session.user.email, display_name: newUserData.display_name, is_anonymous: newUserData.is_anonymous };
                         } else {
                             userRecord = createdUser;
-                            
+
                             if (typeof handleReferralOnSignup === 'function') {
                                 setTimeout(() => handleReferralOnSignup(session.user.id), 2000);
+                            }
+
+                            if (session.user.app_metadata?.provider === 'google') {
+                                try {
+                                    await supabaseClient.from('newsletter_subscribers').insert({
+                                        email: session.user.email,
+                                        name: userRecord.display_name || '',
+                                        is_new: true
+                                    });
+                                } catch(e) { /* silent */ }
                             }
                         }
                     }
 
                     if (userRecord) {
                         currentUser = mapUserFromDB(userRecord);
-                        currentUser.email = session.user.email; 
+                        currentUser.email = session.user.email;
                         localStorage.setItem('torahApp_user', JSON.stringify(currentUser));
 
                         const isRedirecting = await checkUserProfile(session.user);
@@ -308,7 +318,7 @@ getDafYomi();
         setupRealtime();
         startBackgroundServices();
         checkSystemPopup();
-        
+        setTimeout(checkSitePopup, 3000);
         setTimeout(checkActiveLottery, 2000);
 
 if ("Notification" in window && Notification.permission !== "granted") {
@@ -345,6 +355,7 @@ updateChatBadge();
         await syncGlobalData();
         startBackgroundServices();
         checkSystemPopup();
+        setTimeout(checkSitePopup, 3000);
         renderLeaderboard();
         loadAds();
         getDafYomi();
@@ -450,6 +461,50 @@ async function checkSystemPopup() {
     } catch (e) { console.error("Popup check error:", e); }
 }
 
+async function checkSitePopup() {
+    try {
+        const { data } = await supabaseClient.from('system_announcements').select('*').eq('target_type', 'site_popup').maybeSingle();
+        if (!data) return;
+        let info = {};
+        try { info = JSON.parse(data.content); } catch(e) { return; }
+        if (!info.title) return;
+        const existing = document.getElementById('site-popup-overlay');
+        if (existing) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'site-popup-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+        const timerHtml = info.countdown_end ? `<div id="site-popup-timer" style="font-size:1.5rem;font-weight:900;color:#f59e0b;text-align:center;margin:0.75rem 0;letter-spacing:2px;">--:--:--</div>` : '';
+        const linkHtml = info.link_url ? `<a href="${info.link_url}" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:0.5rem;padding:10px 20px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:10px;text-decoration:none;font-weight:800;font-size:0.95rem;text-align:center;">${info.link_text || 'לחץ כאן'}</a>` : '';
+        overlay.innerHTML = `<div style="background:var(--card-bg,#fff);border-radius:1.25rem;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;font-family:'Assistant',sans-serif;" dir="rtl">
+          <div style="background:linear-gradient(135deg,#1e3a5f,#1e40af);padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:1.1rem;font-weight:800;color:#fff;">${info.title}</div>
+            <button onclick="document.getElementById('site-popup-overlay').remove()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:1rem;line-height:1;">✕</button>
+          </div>
+          <div style="padding:1.25rem 1.5rem;">
+            ${info.body ? `<p style="color:var(--text-main,#334155);font-size:0.95rem;margin:0 0 0.5rem 0;line-height:1.6;">${info.body}</p>` : ''}
+            ${timerHtml}
+            ${linkHtml}
+          </div>
+        </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        if (info.countdown_end) {
+            const end = new Date(info.countdown_end).getTime();
+            function tick() {
+                const timerEl = document.getElementById('site-popup-timer');
+                if (!timerEl) return;
+                const diff = end - Date.now();
+                if (diff <= 0) { timerEl.textContent = 'ההגרלה מתחילה!'; return; }
+                const h = Math.floor(diff / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                timerEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                setTimeout(tick, 1000);
+            }
+            tick();
+        }
+    } catch(e) { console.error('Site popup error:', e); }
+}
 
 const _hebcalCache = {};
 
@@ -3441,10 +3496,14 @@ async function setRoadmapFilter(status, btn) {
         return;
     }
     const statusColors = { 'בוצע': '#16a34a', 'בטיפול': '#f59e0b', 'בתכנון': '#6366f1' };
-    const statusIcons = { 'בוצע': '✅', 'בטיפול': '🔄', 'בתכנון': '📋' };
+    const statusIcons = {
+        'בוצע': '<i class="fas fa-check-circle" style="color:#16a34a;font-size:1.2rem;"></i>',
+        'בטיפול': '<i class="fas fa-wrench" style="color:#f59e0b;font-size:1.2rem;"></i>',
+        'בתכנון': '<i class="fas fa-clipboard-list" style="color:#6366f1;font-size:1.2rem;"></i>'
+    };
     area.innerHTML = data.map(item => `
         <div style="background:var(--bg,#f8fafc);border-radius:0.75rem;padding:1rem;border:1px solid var(--border-color);display:flex;gap:0.75rem;align-items:flex-start;">
-            <span style="font-size:1.3rem;flex-shrink:0;">${statusIcons[item.status] || '📌'}</span>
+            <span style="flex-shrink:0;margin-top:2px;">${statusIcons[item.status] || '<i class="fas fa-map-marker-alt" style="color:#94a3b8;font-size:1.2rem;"></i>'}</span>
             <div style="flex:1;">
                 <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.25rem;">${sanitizeChatHtml(item.title || '')}</div>
                 ${item.description ? `<div style="font-size:0.82rem;color:#64748b;">${sanitizeChatHtml(item.description)}</div>` : ''}
@@ -4370,7 +4429,7 @@ async function renderMazalTovInMainArea() {
         <div class="chat-header" style="border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; padding: 15px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; position:relative; overflow:hidden;">
             <div style="display:flex; align-items:center; gap:8px; position:relative; z-index:1;">
                 <span style="font-size:1.4rem;">🎊</span>
-                <span style="font-weight:800; font-size:1.05rem;">לוח סיומים — מזל טוב!</span>
+                <span style="font-weight:800; font-size:1.05rem;">לוח סיומים - מזל טוב!</span>
                 <span style="font-size:1.4rem;">🎉</span>
             </div>
             <div style="position:relative; z-index:1;">
