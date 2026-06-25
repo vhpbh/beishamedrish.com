@@ -316,6 +316,23 @@ function showMaintenanceOverlay() {
     document.body.appendChild(overlay);
 }
 
+function updateHeaderHeight() {
+    const h = document.getElementById('mainHeader');
+    if (!h) return;
+    const hh = h.offsetHeight;
+    document.documentElement.style.setProperty('--header-h', hh + 'px');
+    document.body.style.paddingTop = hh + 'px';
+}
+
+// Run after layout is ready and on every resize
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { updateHeaderHeight(); });
+} else {
+    updateHeaderHeight();
+}
+document.fonts && document.fonts.ready && document.fonts.ready.then(updateHeaderHeight);
+window.addEventListener('resize', updateHeaderHeight);
+
 async function subscribeToMaintenanceUpdates() {
     const email = document.getElementById('maintenanceEmail').value.trim();
     const isValid = (typeof validateInput === 'function') ? validateInput(email, 'email') : /\S+@\S+\.\S+/.test(email);

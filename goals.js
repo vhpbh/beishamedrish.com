@@ -426,6 +426,7 @@ if (!bookName || !totalUnits || totalUnits <= 0) {
     if (customAmountEl) customAmountEl.value = '';
     if (quickAmountEl) quickAmountEl.value = '';
 
+    if (typeof closeAddDialog === 'function') closeAddDialog();
     showToast("הלימוד נוסף בהצלחה!", "success");
     switchScreen('dashboard', document.querySelectorAll('.nav-item')[0]);
 

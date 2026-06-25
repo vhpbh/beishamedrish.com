@@ -9,7 +9,7 @@ async function loadDonationTiersFromDB() {
         const { data, error } = await supabaseClient.from('site_config').select('value').eq('key', 'donation_tiers').maybeSingle();
         if (error || !data?.value) return;
         const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-        const normTier = t => ({ ...t, price: t.price ?? t.amount ?? t.value ?? 0 });
+        const normTier = t => ({ ...t, price: t.price ?? t.amount ?? t.value ?? 0, name: t.name ?? t.label ?? t.title ?? '' });
         if (parsed.sub && Array.isArray(parsed.sub) && parsed.sub.length > 0) {
             SUBSCRIPTION_TIERS.length = 0;
             parsed.sub.map(normTier).forEach(t => SUBSCRIPTION_TIERS.push(t));
@@ -1200,9 +1200,10 @@ async function findChavruta(bookName) {
 
     try {
 
-        const [profilesResult, goalsResult] = await Promise.all([
+        const [profilesResult, goalsResult, activeConnsResult] = await Promise.all([
             supabaseClient.from('safe_profiles').select('id, email, display_name, city, rank_score, last_seen'),
-            supabaseClient.from('user_goals').select('user_id, study_mode, chavruta_description').eq('book_name', bookName).eq('status', 'active')
+            supabaseClient.from('user_goals').select('user_id, study_mode, chavruta_description').eq('book_name', bookName).eq('status', 'active'),
+            supabaseClient.from('chavruta_connections').select('sender_id, receiver_id').eq('book_name', bookName).in('status', ['accepted', 'approved'])
         ]);
 
         if (profilesResult.error) throw profilesResult.error;
@@ -1217,6 +1218,13 @@ async function findChavruta(bookName) {
             userDescMap[g.user_id] = g.chavruta_description || null;
         });
         const studyingThisBook = new Set(Object.keys(userStudyModeMap));
+
+        // מי שכבר יש לו חברותא מאושרת לספר זה
+        const usersWithActiveConn = new Set();
+        (activeConnsResult.data || []).forEach(conn => {
+            usersWithActiveConn.add(conn.sender_id);
+            usersWithActiveConn.add(conn.receiver_id);
+        });
 
         const matches = (profilesResult.data || []).filter(u => {
             const isMe = (u.id === currentUser?.id) ||
@@ -1245,6 +1253,7 @@ async function findChavruta(bookName) {
             u.studyMode = userStudyModeMap[u.id] || null;
             u.studyModeLabel = u.studyMode ? (studyModeLabels[u.studyMode] || u.studyMode) : null;
             u.chavrutaDescription = userDescMap[u.id] || null;
+            u.hasActiveChavrutaForBook = usersWithActiveConn.has(u.id);
 
             if (u.city && u.city.trim().toLowerCase() === myCity && myCity) u.matchScore += 100;
             const uScore = u.rank_score || 0;
@@ -1473,6 +1482,22 @@ if ((isChavruta || isAdminMode || uid === 'me' || hasPermission('view_phone')) &
         } catch (e) { console.warn("Access to private profile restricted."); }
     }
 
+    // שליפת ספרים שהמשתמש הנצפה כבר לומד עמם חברותא פעילה
+    const viewedUserActiveChavrutaBooks = new Set();
+    const isMe = uid === 'me' || (user.email && user.email === currentUser?.email) || (user.id && user.id === currentUser?.id);
+    if (!isMe && user.id) {
+        try {
+            const { data: userConns } = await supabaseClient
+                .from('chavruta_connections')
+                .select('book_name')
+                .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+                .in('status', ['accepted', 'approved']);
+            if (userConns) {
+                userConns.forEach(c => viewedUserActiveChavrutaBooks.add(c.book_name));
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     const displayName = (isAdminMode && user.original_name) ? user.original_name : user.name;
     const userBadgeHtml = getUserBadgeHtml(user);
     document.getElementById('modalUserName').innerHTML = `${displayName} ${userBadgeHtml}`;
@@ -1625,7 +1650,6 @@ const avatarInner = avatarDiv.querySelector('div');
         }
     }
 
-    const isMe = uid === 'me' || (user.email && user.email === currentUser?.email) || (user.id && user.id === currentUser?.id);
     if (!isMe) {
         contactHtml += `
             <button id="followBtn" class="w-full mt-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm ${isFollowing ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-yellow-500/90 hover:bg-yellow-500 text-white'}" onclick="toggleFollow('${user.id || user.email}')">
@@ -1657,10 +1681,13 @@ const avatarInner = avatarDiv.querySelector('div');
                 if (isPending) {
                     statusHtml = `<span class="text-xs text-orange-500">(בקשה נשלחה)</span>`;
                 } else {
-                    statusHtml = `
-                     <button class="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-md flex items-center gap-1 hover:bg-blue-100" onclick="checkAndSendRequest('${userEmail}', '${b.replace(/'/g,"\\'")}', this)">
-                        <i class="fas fa-paper-plane" style="font-size: 0.65rem;"></i> שלח בקשה
-                     </button>`;
+                    const alreadyLearning = viewedUserActiveChavrutaBooks.has(b);
+                    statusHtml = `<div class="flex items-center gap-1 flex-wrap justify-end">
+                        ${alreadyLearning ? `<span style="background:#fef3c7;color:#92400e;" class="text-xs px-2 py-0.5 rounded-md flex items-center gap-1"><i class="fas fa-users" style="font-size:0.6rem;"></i> לומד עם מישהו</span>` : ''}
+                        <button class="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-md flex items-center gap-1 hover:bg-blue-100" onclick="checkAndSendRequest('${userEmail}', '${b.replace(/'/g,"\\'")}', this)">
+                            <i class="fas fa-paper-plane" style="font-size: 0.65rem;"></i> שלח בקשה
+                        </button>
+                    </div>`;
                 }
             }
 
@@ -1975,8 +2002,8 @@ async function renderFollowsList(type, tabEl) {
                     <i class="fas fa-user text-xl"></i>
                 </div>
                 <div class="flex flex-col">
-                    <span class="font-bold text-slate-800 dark:text-white text-base">${u.display_name || u.email.split('@')[0]}</span>
-                    <span class="text-xs text-slate-500 dark:text-slate-400">${u.email}</span>
+                    <span class="font-bold text-slate-800 dark:text-white text-base">${u.display_name || 'לומד'}</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">${getRankName(u.rank_score || 0)}</span>
                 </div>
             </div>
         </div>
@@ -2196,8 +2223,10 @@ function openAddDialog() {
     const boxWidth = isDesktop ? 'calc(100% - 40px)' : '100%';
     const boxMaxW = isDesktop ? '480px' : '540px';
     const boxMaxH = isDesktop ? '80vh' : '90vh';
+    const dragHandle = isDesktop ? '' : `<div onclick="closeAddDialog()" style="display:flex;justify-content:center;align-items:center;padding:10px 0 4px;cursor:pointer;flex-shrink:0;"><div style="width:40px;height:4px;border-radius:99px;background:#d1d5db;"></div></div>`;
     modal.innerHTML = `
         <div id="add-dialog-box" style="background:var(--card-bg,#fff);width:${boxWidth};max-width:${boxMaxW};border-radius:${boxRadius};padding:0;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.22);animation:${boxAnim};max-height:${boxMaxH};display:flex;flex-direction:column;">
+            ${dragHandle}
             <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border-color,#f1f5f9);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
                 <div style="font-size:1.05rem;font-weight:800;color:var(--text-main);">הוספת לימוד חדש</div>
                 <button onclick="closeAddDialog()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.3rem;line-height:1;padding:4px;"><i class="fas fa-times"></i></button>
@@ -3820,6 +3849,7 @@ function renderChavrutaResultsPage() {
                 <div class="flex flex-wrap gap-2">
                     <span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">לומד: ${currentSearchBook}</span>
                     ${!isAnon ? `<span class="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium">דרגה: ${user.rank || getRankName(user.learned || 0)}</span>` : ''}
+                    ${user.hasActiveChavrutaForBook ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" class="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><i class="fas fa-users" style="font-size:0.65rem;"></i> לומד כבר עם מישהו</span>` : ''}
                     ${user.studyModeLabel ? (() => {
                         const modeColors = { 'עיון': '#e8951a', 'עיון קל': '#6366f1', 'בקיאות': '#10b981' };
                         const c = modeColors[user.studyModeLabel] || '#64748b';
