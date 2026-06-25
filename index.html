@@ -503,40 +503,6 @@
     </style>
     <script>if(localStorage.getItem('torahApp_darkMode')==='true'){document.body.classList.add('dark-mode');}</script>
 
-    <!-- Google OAuth Loading Overlay -->
-    <div id="google-loading-overlay"
-        style="display:none; position:fixed; inset:0; z-index:999999; background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%); align-items:center; justify-content:center; flex-direction:column; gap:1.5rem;">
-        <img src="logo-remove.png" alt="" style="height:72px; animation: pulse 1.5s ease-in-out infinite;">
-        <div style="display:flex; flex-direction:column; align-items:center; gap:0.75rem;">
-            <div
-                style="width:48px; height:48px; border-radius:50%; border:3px solid rgba(245,158,11,0.2); border-top-color:#f59e0b; animation:spin 0.8s linear infinite;">
-            </div>
-            <p style="color:#e2e8f0; font-size:1rem; font-weight:600; margin:0; font-family:'Assistant',sans-serif;">
-                מתחבר עם Google...</p>
-            <p style="color:#94a3b8; font-size:0.8rem; margin:0; font-family:'Assistant',sans-serif;">רגע אחד בבקשה</p>
-        </div>
-        <style>
-            @keyframes spin {
-                to {
-                    transform: rotate(360deg);
-                }
-            }
-
-            @keyframes pulse {
-
-                0%,
-                100% {
-                    opacity: 1;
-                    transform: scale(1);
-                }
-
-                50% {
-                    opacity: 0.7;
-                    transform: scale(0.95);
-                }
-            }
-        </style>
-    </div>
 
     <div id="customAlertModal" class="modal-overlay" style="z-index: 99999;">
         <div class="modal-content" style="max-width: 300px;">

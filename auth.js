@@ -33,8 +33,11 @@ document.addEventListener('DOMContentLoaded', function checkOAuthReturn() {
     const hash = window.location.hash;
     const params = new URLSearchParams(window.location.search);
     if (hash.includes('access_token') || params.get('code') || (hash.includes('error') && hash.includes('oauth'))) {
-        const overlay = document.getElementById('google-loading-overlay');
-        if (overlay) overlay.style.display = 'flex';
+        const splash = document.getElementById('app-splash');
+        if (splash) {
+            splash.style.display = 'flex';
+            splash.style.pointerEvents = 'all';
+        }
     }
 });
 
